@@ -14,7 +14,7 @@ path = "src/lib.rs"
 default = ["runtime"]
 declaration = []
 configuration = ["declaration", "dep:chrono", "dep:url", "dep:veoveo-knowledge-contract", "dep:veoveo-audit-contract", "dep:veoveo-artifact-contract", "dep:veoveo-mcp-ext-registration"]
-runtime = ["configuration", "dep:rmcp", "veoveo-mcp-ext-knowledge/mcp", "dep:veoveo-knowledge-contract", "dep:veoveo-audit-contract", "dep:veoveo-artifact-contract", "dep:anyhow", "dep:axum", "dep:base64", "dep:chrono", "dep:futures", "dep:hex", "dep:jsonwebtoken", "dep:opentelemetry", "dep:opentelemetry-appender-tracing", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:parking_lot", "dep:reqwest", "dep:tokio", "dep:tokio-util", "dep:tower-http", "dep:tracing", "dep:tracing-opentelemetry", "dep:tracing-subscriber", "dep:url", "dep:uuid"]
+runtime = ["configuration", "veoveo-mcp-ext-registration/signing", "dep:rmcp", "veoveo-mcp-ext-knowledge/mcp", "dep:veoveo-knowledge-contract", "dep:veoveo-audit-contract", "dep:veoveo-artifact-contract", "dep:anyhow", "dep:axum", "dep:base64", "dep:chrono", "dep:futures", "dep:hex", "dep:jsonwebtoken", "dep:opentelemetry", "dep:opentelemetry-appender-tracing", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:parking_lot", "dep:reqwest", "dep:tokio", "dep:tokio-util", "dep:tower-http", "dep:tracing", "dep:tracing-opentelemetry", "dep:tracing-subscriber", "dep:url", "dep:uuid"]
 # In-process gateway for server tests: `hosting::testing`. Dev-dependencies only.
 testing = ["runtime", "dep:tower"]
 

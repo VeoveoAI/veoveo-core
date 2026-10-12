@@ -1,8 +1,8 @@
 //! Direct-hosted owning fixture identity, using the existing runtime issuer.
 use crate::{
-    AccessTokenSubject, GATEWAY_INTERNAL_TOKEN_ISSUER, GatewayInternalSigningKey,
-    GatewayInternalTokenIssuer, GatewayProfileId, GatewayRequestContext, Principal, PrincipalKind,
-    ServerSlug, TokenIssuer, TokenSubject,
+    AccessTokenSubject, ForwardedRequest, GatewayInternalSigningKey, GatewayInternalTokenIssuer,
+    GatewayProfileId, GatewayRequestContext, Principal, PrincipalKind, ServerSlug, TokenIssuer,
+    TokenSubject,
 };
 use anyhow::Result;
 use chrono::{TimeDelta, Utc};
@@ -15,8 +15,11 @@ use veoveo_types::{
 /// Configuration admitted by the owner before constructing its direct-hosted request.
 /// Private key bytes are accepted only by the existing redacted signing-key owner.
 pub struct InternalFixtureIdentity {
-    pub signing_key_id: String,
+    /// The Gateway's HTTPS issuer URL the fixture server trusts.
+    pub issuer: TokenIssuer,
     pub server: ServerSlug,
+    /// The fixture server's resource URL, the token's `aud`.
+    pub audience: veoveo_mcp_ext_registration::ResourceIndicator,
     pub profile: GatewayProfileId,
     pub work_context: WorkContextId,
     pub tenant: TenantId,
@@ -28,9 +31,9 @@ pub fn issue_internal_fixture_token(
     private_key_der: Vec<u8>,
 ) -> Result<String> {
     let issuer = GatewayInternalTokenIssuer::new(
-        TokenIssuer::parse(GATEWAY_INTERNAL_TOKEN_ISSUER)?,
-        GatewayInternalSigningKey::new(identity.signing_key_id, private_key_der)?,
-    );
+        identity.issuer,
+        GatewayInternalSigningKey::new(private_key_der)?,
+    )?;
     let principal_issuer = TokenIssuer::parse("https://conformance.veoveo.local")?;
     let principal_subject = identity.subject;
     let principal = Principal {
@@ -83,13 +86,16 @@ pub fn issue_internal_fixture_token(
         },
         principal: principal.clone(),
     };
-    let token = issuer.issue(
-        identity.profile,
-        identity.server,
-        principal,
+    let token = issuer.issue(ForwardedRequest {
+        profile: identity.profile,
+        server: identity.server,
+        audience: identity.audience,
+        client: request_context.access_token.oauth_client_id.clone(),
+        actor: principal,
         authority,
-        Some(request_context),
+        permissions: Default::default(),
+        request_context: Some(request_context),
         expires_at,
-    )?;
+    })?;
     Ok(token.bearer_token)
 }

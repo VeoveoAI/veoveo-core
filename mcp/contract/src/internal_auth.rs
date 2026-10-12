@@ -26,60 +26,61 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{GatewayProfileId, JwtId, OAuthClientId, Principal, ServerSlug, TokenIssuer};
-use veoveo_mcp_ext_registration::{Ed25519JwkSet, PermissionsDetail};
+use veoveo_mcp_ext_registration::{
+    AccessTokenTrust, Ed25519Jwk, Ed25519JwkSet, PermissionsDetail, ResourceIndicator,
+    ServerPublicKey, issuer_url, statement::ServerKeyPair,
+};
 use veoveo_types::{
     GroupId, IdentifierError, InvocationAuthority, PermissionName, PrincipalId, RoleId,
 };
 
 /// The JOSE `typ` of every token the Gateway forwards: an RFC 9068 JWT access token.
 pub const ACCESS_TOKEN_TYPE: &str = "at+jwt";
-/// The RFC 9068 `client_id` of forwarded tokens: the Gateway acts as the OAuth client
-/// that presents them to the server.
-pub const GATEWAY_CLIENT_ID: &str = "veoveo-gateway";
-/// Private claim carrying profile, actor, authority and request context.
-pub const INVOCATION_CLAIM: &str = "ai.veoveo/invocation";
-/// Private claim of HTTP resource tokens.
-pub const RESOURCE_INVOCATION_CLAIM: &str = "ai.veoveo/resource-invocation";
-
-pub const GATEWAY_INTERNAL_TOKEN_ISSUER: &str = "veoveo-internal";
-pub const DEFAULT_GATEWAY_INTERNAL_SIGNING_KEY_ID: &str = "veoveo-internal-1";
+/// Public claim, under a collision-resistant URI name (RFC 7519 §4.2), carrying the
+/// profile, actor, authority and request context.
+pub const INVOCATION_CLAIM: &str = "https://veoveo.ai/claims/invocation";
+/// Public claim of HTTP resource tokens.
+pub const RESOURCE_INVOCATION_CLAIM: &str = "https://veoveo.ai/claims/resource-invocation";
 
 /// Error text for a hosted-server request that arrived without the gateway's
 /// internal identity, forwarded bearer, or authenticated HTTP context.
 pub const GATEWAY_ROUTING_REQUIRED: &str =
     "This server only accepts requests routed through the Veoveo gateway.";
 
+/// The Gateway's Ed25519 signing key. Its `kid` is the RFC 7638 thumbprint of its
+/// public half.
 #[derive(Clone, PartialEq, Eq)]
 pub struct GatewayInternalSigningKey {
     key_id: String,
+    public_key: ServerPublicKey,
     private_key_der: Vec<u8>,
 }
 
 impl GatewayInternalSigningKey {
-    pub fn new(
-        key_id: impl Into<String>,
-        private_key_der: impl Into<Vec<u8>>,
-    ) -> Result<Self, InternalTokenError> {
+    /// Admit an Ed25519 PKCS#8 private key.
+    pub fn new(private_key_der: impl Into<Vec<u8>>) -> Result<Self, InternalTokenError> {
         ensure_jwt_crypto_provider();
-        let key_id = validate_key_id(key_id.into())?;
         let private_key_der = private_key_der.into();
         if private_key_der.is_empty() {
             return Err(InternalTokenError::EmptyPrivateKey);
         }
-        jsonwebtoken::crypto::sign(
-            b"veoveo-internal-signing-key-validation",
-            &EncodingKey::from_ed_der(&private_key_der),
-            Algorithm::EdDSA,
-        )
-        .map_err(InternalTokenError::Jwt)?;
+        let public_key = *ServerKeyPair::from_pkcs8_der(&private_key_der)
+            .map_err(|_| InternalTokenError::InvalidSigningKey)?
+            .public_key();
         Ok(Self {
-            key_id,
+            key_id: public_key.thumbprint().as_str().to_owned(),
+            public_key,
             private_key_der,
         })
     }
 
     pub fn key_id(&self) -> &str {
         &self.key_id
+    }
+
+    /// The verification key servers receive in `veoveo_access_tokens`.
+    pub fn verification_key(&self) -> Ed25519Jwk {
+        Ed25519Jwk::new(self.public_key)
     }
 }
 
@@ -105,7 +106,7 @@ impl GatewayInternalTrustBundle {
         }
         let mut keys = BTreeMap::new();
         for jwk in jwks.keys {
-            validate_verification_jwk(&jwk)?;
+            let thumbprint = validate_verification_jwk(&jwk)?;
             DecodingKey::from_jwk(&jwk).map_err(InternalTokenError::Jwt)?;
             let key_id = validate_key_id(
                 jwk.common
@@ -113,6 +114,9 @@ impl GatewayInternalTrustBundle {
                     .clone()
                     .ok_or(InternalTokenError::MissingKeyId)?,
             )?;
+            if key_id != thumbprint {
+                return Err(InternalTokenError::KeyIdNotThumbprint(key_id));
+            }
             if keys.insert(key_id.clone(), jwk).is_some() {
                 return Err(InternalTokenError::DuplicateKeyId(key_id));
             }
@@ -127,7 +131,7 @@ impl GatewayInternalTrustBundle {
         Self::new(jwks)
     }
 
-    /// The keys a registration response names in `ai.veoveo/access-tokens`.
+    /// The keys a registration response names in `veoveo_access_tokens`.
     pub fn from_key_set(keys: &Ed25519JwkSet) -> Result<Self, InternalTokenError> {
         let jwks = serde_json::to_value(keys)
             .and_then(serde_json::from_value)
@@ -150,7 +154,8 @@ fn validate_key_id(value: String) -> Result<String, InternalTokenError> {
     Ok(value)
 }
 
-fn validate_verification_jwk(jwk: &Jwk) -> Result<(), InternalTokenError> {
+/// Admit an Ed25519 signature verification key and return its RFC 7638 thumbprint.
+fn validate_verification_jwk(jwk: &Jwk) -> Result<String, InternalTokenError> {
     if jwk.common.key_algorithm != Some(KeyAlgorithm::EdDSA) {
         return Err(InternalTokenError::UnsupportedTrustKey);
     }
@@ -177,12 +182,19 @@ fn validate_verification_jwk(jwk: &Jwk) -> Result<(), InternalTokenError> {
     }
     match &jwk.algorithm {
         AlgorithmParameters::OctetKeyPair(parameters)
-            if parameters.curve == EllipticCurve::Ed25519
-                && URL_SAFE_NO_PAD
-                    .decode(&parameters.x)
-                    .is_ok_and(|key| key.len() == 32) =>
+            if parameters.curve == EllipticCurve::Ed25519 =>
         {
-            Ok(())
+            URL_SAFE_NO_PAD
+                .decode(&parameters.x)
+                .ok()
+                .and_then(|key| <[u8; 32]>::try_from(key).ok())
+                .map(|key| {
+                    ServerPublicKey::from_bytes(key)
+                        .thumbprint()
+                        .as_str()
+                        .to_owned()
+                })
+                .ok_or(InternalTokenError::UnsupportedTrustKey)
         }
         _ => Err(InternalTokenError::UnsupportedTrustKey),
     }
@@ -193,6 +205,11 @@ pub struct GatewayInternalIdentity {
     pub issuer: TokenIssuer,
     pub profile: GatewayProfileId,
     pub server: ServerSlug,
+    /// The token's `aud`: the server's resource URL.
+    #[schemars(with = "String")]
+    pub audience: ResourceIndicator,
+    /// The OAuth client the caller used to reach the Gateway.
+    pub client: OAuthClientId,
     pub actor: Principal,
     pub authority: InvocationAuthority,
     /// The permissions the caller holds in this server's namespace, as the Gateway
@@ -237,62 +254,37 @@ pub struct GatewayInternalTokenIssuer {
 }
 
 impl GatewayInternalTokenIssuer {
-    pub fn new(issuer: TokenIssuer, signing_key: GatewayInternalSigningKey) -> Self {
-        Self {
+    /// `issuer` is the Gateway's HTTPS issuer URL, the value its RFC 8414 metadata
+    /// announces.
+    pub fn new(
+        issuer: TokenIssuer,
+        signing_key: GatewayInternalSigningKey,
+    ) -> Result<Self, InternalTokenError> {
+        issuer_url(&issuer).map_err(|_| InternalTokenError::InvalidIssuer)?;
+        Ok(Self {
             issuer,
             signing_key,
-        }
+        })
     }
 
-    /// Issue an identity that carries no server permissions, for Gateway-internal paths.
+    /// Issue the access token for one forwarded request. Every granted permission
+    /// must belong to the audience server's namespace, and a request context must name
+    /// the same OAuth client.
     pub fn issue(
         &self,
-        profile: GatewayProfileId,
-        server: ServerSlug,
-        actor: Principal,
-        authority: InvocationAuthority,
-        request_context: Option<GatewayRequestContext>,
-        expires_at: DateTime<Utc>,
+        request: ForwardedRequest,
     ) -> Result<IssuedGatewayInternalToken, InternalTokenError> {
-        self.issue_granted(
-            profile,
-            server,
-            actor,
-            authority,
-            BTreeSet::new(),
-            request_context,
-            expires_at,
-        )
-    }
-
-    /// Issue an identity carrying the permissions the Gateway granted in `server`'s
-    /// namespace. Every permission must belong to that namespace.
-    #[allow(clippy::too_many_arguments)]
-    pub fn issue_granted(
-        &self,
-        profile: GatewayProfileId,
-        server: ServerSlug,
-        actor: Principal,
-        authority: InvocationAuthority,
-        permissions: BTreeSet<PermissionName>,
-        request_context: Option<GatewayRequestContext>,
-        expires_at: DateTime<Utc>,
-    ) -> Result<IssuedGatewayInternalToken, InternalTokenError> {
-        if let Some(foreign) = permissions.iter().find(|p| !p.is_owned_by(&server)) {
+        if let Some(foreign) = request
+            .permissions
+            .iter()
+            .find(|permission| !permission.is_owned_by(&request.server))
+        {
             return Err(InternalTokenError::PermissionOutsideAudience(
                 foreign.clone(),
             ));
         }
-        let identity = self.create_identity(
-            profile,
-            server,
-            actor,
-            authority,
-            permissions,
-            request_context,
-            expires_at,
-        )?;
-        let bearer_token = self.sign(&AccessTokenClaims::from_identity(&identity)?)?;
+        let identity = self.create_identity(request)?;
+        let bearer_token = self.sign(&AccessTokenClaims::from_identity(&identity))?;
         Ok(IssuedGatewayInternalToken {
             bearer_token,
             identity,
@@ -312,21 +304,28 @@ impl GatewayInternalTokenIssuer {
         .map_err(InternalTokenError::Jwt)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn create_identity(
         &self,
-        profile: GatewayProfileId,
-        server: ServerSlug,
-        actor: Principal,
-        authority: InvocationAuthority,
-        permissions: BTreeSet<PermissionName>,
-        request_context: Option<GatewayRequestContext>,
-        expires_at: DateTime<Utc>,
+        request: ForwardedRequest,
     ) -> Result<GatewayInternalIdentity, InternalTokenError> {
+        let ForwardedRequest {
+            profile,
+            server,
+            audience,
+            client,
+            actor,
+            authority,
+            permissions,
+            request_context,
+            expires_at,
+        } = request;
         ensure_jwt_crypto_provider();
         let now = Utc::now();
         let expires_at = if let Some(context) = &request_context {
             context.validate_for(&actor, &authority)?;
+            if context.access_token.oauth_client_id != client {
+                return Err(InternalTokenError::InvalidRequestContext);
+            }
             expires_at.min(context.access_token.expires_at)
         } else {
             expires_at
@@ -334,17 +333,17 @@ impl GatewayInternalTokenIssuer {
         if expires_at <= now {
             return Err(InternalTokenError::ExpiredDelegation);
         }
-        let jwt_id = JwtId::parse(uuid::Uuid::new_v4().to_string())
-            .map_err(InternalTokenError::Identifier)?;
         Ok(GatewayInternalIdentity {
             issuer: self.issuer.clone(),
             profile,
             server,
+            audience,
+            client,
             actor,
             authority,
             permissions,
             request_context,
-            jwt_id,
+            jwt_id: fresh_jwt_id()?,
             issued_at: now,
             not_before: now,
             expires_at,
@@ -355,6 +354,7 @@ impl GatewayInternalTokenIssuer {
         &self,
         protected_resource: ProtectedResourceId,
         server: ServerSlug,
+        client: OAuthClientId,
         actor: Principal,
         authority: InvocationAuthority,
         expires_at: DateTime<Utc>,
@@ -364,12 +364,12 @@ impl GatewayInternalTokenIssuer {
         if expires_at <= now {
             return Err(InternalTokenError::ExpiredDelegation);
         }
-        let jwt_id = JwtId::parse(uuid::Uuid::new_v4().to_string())
-            .map_err(InternalTokenError::Identifier)?;
+        let jwt_id = fresh_jwt_id()?;
         let identity = GatewayInternalResourceIdentity {
             issuer: self.issuer.clone(),
             protected_resource,
             server,
+            client,
             actor,
             authority,
             jwt_id,
@@ -377,7 +377,7 @@ impl GatewayInternalTokenIssuer {
             not_before: now,
             expires_at,
         };
-        let bearer_token = self.sign(&ResourceAccessTokenClaims::from_identity(&identity)?)?;
+        let bearer_token = self.sign(&ResourceAccessTokenClaims::from_identity(&identity))?;
         Ok(IssuedGatewayInternalResourceToken {
             bearer_token,
             identity,
@@ -385,11 +385,31 @@ impl GatewayInternalTokenIssuer {
     }
 }
 
+/// What the Gateway forwards for one admitted request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardedRequest {
+    pub profile: GatewayProfileId,
+    /// The registered server that receives the request.
+    pub server: ServerSlug,
+    /// The token's `aud`: that server's resource URL, its registered MCP endpoint.
+    pub audience: ResourceIndicator,
+    /// The OAuth client the caller used to reach the Gateway.
+    pub client: OAuthClientId,
+    pub actor: Principal,
+    pub authority: InvocationAuthority,
+    /// The permissions the Gateway granted in `server`'s namespace.
+    pub permissions: BTreeSet<PermissionName>,
+    pub request_context: Option<GatewayRequestContext>,
+    pub expires_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct GatewayInternalResourceIdentity {
     pub issuer: TokenIssuer,
     pub protected_resource: ProtectedResourceId,
     pub server: ServerSlug,
+    /// The OAuth client the caller used to reach the Gateway.
+    pub client: OAuthClientId,
     pub actor: Principal,
     pub authority: InvocationAuthority,
     pub jwt_id: JwtId,
@@ -417,19 +437,23 @@ impl fmt::Debug for IssuedGatewayInternalResourceToken {
 #[derive(Debug, Clone)]
 pub struct GatewayInternalResourceTokenVerifier {
     issuer: TokenIssuer,
-    audience: ServerSlug,
+    protected_resource: ProtectedResourceId,
+    server: ServerSlug,
     trust_bundle: GatewayInternalTrustBundle,
 }
 
 impl GatewayInternalResourceTokenVerifier {
+    /// Verify tokens whose `aud` is `protected_resource`, addressed to `server`.
     pub fn new(
         issuer: TokenIssuer,
-        audience: ServerSlug,
+        protected_resource: ProtectedResourceId,
+        server: ServerSlug,
         trust_bundle: GatewayInternalTrustBundle,
     ) -> Self {
         Self {
             issuer,
-            audience,
+            protected_resource,
+            server,
             trust_bundle,
         }
     }
@@ -441,22 +465,24 @@ impl GatewayInternalResourceTokenVerifier {
         let claims: ResourceAccessTokenClaims = decode_access_token(
             bearer_token,
             &self.issuer,
-            std::slice::from_ref(&self.audience),
+            &[self.protected_resource.as_str()],
             &self.trust_bundle,
         )?;
-        let server = claims.standard.audience()?;
-        if server != self.audience {
+        let invocation = claims.invocation;
+        if invocation.server != self.server
+            || invocation.protected_resource.as_str() != claims.standard.aud
+        {
             return Err(InternalTokenError::AudienceMismatch {
-                expected: self.audience.clone(),
-                actual: server,
+                expected: self.server.clone(),
+                actual: invocation.server,
             });
         }
-        let invocation = claims.invocation;
         claims.standard.check_actor(&invocation.actor)?;
         Ok(GatewayInternalResourceIdentity {
             issuer: claims.standard.iss,
             protected_resource: invocation.protected_resource,
-            server,
+            server: invocation.server,
+            client: claims.standard.client_id,
             actor: invocation.actor,
             authority: invocation.authority,
             jwt_id: claims.standard.jti,
@@ -467,18 +493,25 @@ impl GatewayInternalResourceTokenVerifier {
     }
 }
 
+/// One server a verifier admits tokens for, and the resource URL its tokens name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenAudience {
+    pub server: ServerSlug,
+    pub resource: ResourceIndicator,
+}
+
 #[derive(Debug, Clone)]
 pub struct GatewayInternalTokenVerifier {
     issuer: TokenIssuer,
-    audiences: Vec<ServerSlug>,
+    audiences: Vec<TokenAudience>,
     trust_bundle: GatewayInternalTrustBundle,
 }
 
 impl GatewayInternalTokenVerifier {
-    /// Verify tokens audienced to exactly one server (the common upstream case).
+    /// Verify tokens addressed to exactly one server (the common upstream case).
     pub fn new(
         issuer: TokenIssuer,
-        audience: ServerSlug,
+        audience: TokenAudience,
         trust_bundle: GatewayInternalTrustBundle,
     ) -> Self {
         Self {
@@ -488,16 +521,32 @@ impl GatewayInternalTokenVerifier {
         }
     }
 
-    /// Verify tokens audienced to any of `audiences`.
+    /// Verify the tokens a registration response's `veoveo_access_tokens` describes,
+    /// addressed to `server`.
+    pub fn from_access_tokens(
+        trust: &AccessTokenTrust,
+        server: ServerSlug,
+    ) -> Result<Self, InternalTokenError> {
+        Ok(Self::new(
+            trust.issuer.clone(),
+            TokenAudience {
+                server,
+                resource: trust.resource.clone(),
+            },
+            GatewayInternalTrustBundle::from_key_set(&trust.jwks)?,
+        ))
+    }
+
+    /// Verify tokens addressed to any of `audiences`.
     ///
     /// The shared artifact plane uses this: a domain server forwards the
-    /// gateway token it received (audienced to *that* server) on the principal's
-    /// behalf, so the plane must accept the set of known upstream slugs rather
+    /// gateway token it received (addressed to *that* server) on the principal's
+    /// behalf, so the plane must accept the set of known upstream servers rather
     /// than a single audience. The gateway remains the only minter, so trust is
     /// unchanged; only which forwarded audiences are honored widens.
     pub fn new_for_audiences(
         issuer: TokenIssuer,
-        audiences: Vec<ServerSlug>,
+        audiences: Vec<TokenAudience>,
         trust_bundle: GatewayInternalTrustBundle,
     ) -> Self {
         Self {
@@ -519,29 +568,31 @@ impl GatewayInternalTokenVerifier {
         &self,
         bearer_token: &str,
     ) -> Result<T, InternalTokenError> {
-        decode_access_token(
-            bearer_token,
-            &self.issuer,
-            &self.audiences,
-            &self.trust_bundle,
-        )
+        let audiences: Vec<&str> = self
+            .audiences
+            .iter()
+            .map(|audience| audience.resource.as_str())
+            .collect();
+        decode_access_token(bearer_token, &self.issuer, &audiences, &self.trust_bundle)
     }
 
     fn identity_from_claims(
         &self,
         claims: AccessTokenClaims,
     ) -> Result<GatewayInternalIdentity, InternalTokenError> {
-        let server = claims.standard.audience()?;
-        if !self.audiences.contains(&server) {
+        let server = claims.invocation.server.clone();
+        let Some(audience) = self.audiences.iter().find(|audience| {
+            audience.server == server && audience.resource.as_str() == claims.standard.aud
+        }) else {
             return Err(InternalTokenError::AudienceMismatch {
                 expected: self
                     .audiences
                     .first()
-                    .cloned()
-                    .unwrap_or_else(|| server.clone()),
+                    .map_or_else(|| server.clone(), |audience| audience.server.clone()),
                 actual: server,
             });
-        }
+        };
+        let audience = audience.resource.clone();
         let invocation = claims.invocation;
         claims.standard.check_actor(&invocation.actor)?;
         let permissions = match claims.authorization_details.as_slice() {
@@ -562,7 +613,9 @@ impl GatewayInternalTokenVerifier {
         };
         if let Some(context) = &invocation.request_context {
             context.validate_for(&invocation.actor, &invocation.authority)?;
-            if claims.standard.exp > context.access_token.expires_at.timestamp() {
+            if claims.standard.exp > context.access_token.expires_at.timestamp()
+                || context.access_token.oauth_client_id != claims.standard.client_id
+            {
                 return Err(InternalTokenError::InvalidRequestContext);
             }
         }
@@ -570,6 +623,8 @@ impl GatewayInternalTokenVerifier {
             issuer: claims.standard.iss,
             profile: invocation.profile,
             server,
+            audience,
+            client: claims.standard.client_id,
             actor: invocation.actor,
             authority: invocation.authority,
             permissions,
@@ -586,7 +641,7 @@ impl GatewayInternalTokenVerifier {
 fn decode_access_token<T: serde::de::DeserializeOwned>(
     bearer_token: &str,
     issuer: &TokenIssuer,
-    audiences: &[ServerSlug],
+    audiences: &[&str],
     trust_bundle: &GatewayInternalTrustBundle,
 ) -> Result<T, InternalTokenError> {
     ensure_jwt_crypto_provider();
@@ -612,20 +667,26 @@ fn decode_access_token<T: serde::de::DeserializeOwned>(
     validation.validate_nbf = true;
     validation.leeway = 0;
     validation.set_issuer(&[issuer.as_str()]);
-    let audiences: Vec<&str> = audiences.iter().map(ServerSlug::as_str).collect();
-    validation.set_audience(&audiences);
-    validation.set_required_spec_claims(&["exp", "iss", "aud", "sub", "nbf"]);
+    validation.set_audience(audiences);
+    validation.set_required_spec_claims(&["exp", "iat", "iss", "aud", "sub", "nbf"]);
     Ok(decode::<T>(bearer_token, &decoding_key, &validation)
         .map_err(InternalTokenError::Jwt)?
         .claims)
+}
+
+/// A fresh `jti`: a UUIDv7.
+fn fresh_jwt_id() -> Result<JwtId, InternalTokenError> {
+    JwtId::parse(uuid::Uuid::now_v7().to_string()).map_err(InternalTokenError::Identifier)
 }
 
 fn ensure_jwt_crypto_provider() {
     let _ = jsonwebtoken::crypto::aws_lc::DEFAULT_PROVIDER.install_default();
 }
 
-/// RFC 9068 §2.2 claims of every token the Gateway forwards. `sub`, `groups`, `roles`
-/// and `scope` restate the embedded actor for standard resource-server libraries; a
+/// RFC 9068 §2.2 claims of every token the Gateway forwards. `iss` is the Gateway's
+/// issuer URL, `client_id` the OAuth client the caller used, and `act` (RFC 8693 §4.1)
+/// names the Gateway as the party acting for the caller. `sub`, `groups`, `roles` and
+/// `scope` restate the embedded actor for standard resource-server libraries; a
 /// verifier rejects a token in which they disagree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct StandardClaims {
@@ -637,6 +698,7 @@ struct StandardClaims {
     nbf: i64,
     iat: i64,
     jti: JwtId,
+    act: ActingParty,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -645,42 +707,56 @@ struct StandardClaims {
     roles: BTreeSet<RoleId>,
 }
 
+/// RFC 8693 `act`: the Gateway, identified by its issuer URL. A nested actor chain is
+/// refused until delegated tokens define one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActingParty {
+    sub: TokenIssuer,
+}
+
 impl StandardClaims {
     #[allow(clippy::too_many_arguments)]
     fn new(
         issuer: &TokenIssuer,
+        client: &OAuthClientId,
         actor: &Principal,
-        audience: &ServerSlug,
+        audience: &str,
         jwt_id: &JwtId,
         issued_at: DateTime<Utc>,
         not_before: DateTime<Utc>,
         expires_at: DateTime<Utc>,
-    ) -> Result<Self, InternalTokenError> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             iss: issuer.clone(),
             sub: actor.id.as_str().to_owned(),
-            aud: audience.as_str().to_owned(),
-            client_id: gateway_client_id()?,
+            aud: audience.to_owned(),
+            client_id: client.clone(),
             exp: expires_at.timestamp(),
             nbf: not_before.timestamp(),
             iat: issued_at.timestamp(),
             jti: jwt_id.clone(),
+            act: ActingParty {
+                sub: issuer.clone(),
+            },
             scope: scope_claim(actor),
             groups: actor.groups.clone(),
             roles: actor.roles.clone(),
-        })
-    }
-
-    fn audience(&self) -> Result<ServerSlug, InternalTokenError> {
-        ServerSlug::parse(self.aud.clone()).map_err(InternalTokenError::Identifier)
+        }
     }
 
     fn check_actor(&self, actor: &Principal) -> Result<(), InternalTokenError> {
+        if uuid::Uuid::parse_str(self.jti.as_str())
+            .ok()
+            .is_none_or(|jti| jti.get_version_num() != 7)
+        {
+            return Err(InternalTokenError::InvalidTokenId);
+        }
         if PrincipalId::parse(self.sub.clone()).map_err(InternalTokenError::Identifier)? != actor.id
         {
             return Err(InternalTokenError::SubjectPrincipalMismatch);
         }
-        if self.client_id != gateway_client_id()?
+        if self.act.sub != self.iss
             || self.groups != actor.groups
             || self.roles != actor.roles
             || self.scope != scope_claim(actor)
@@ -689,10 +765,6 @@ impl StandardClaims {
         }
         Ok(())
     }
-}
-
-fn gateway_client_id() -> Result<OAuthClientId, InternalTokenError> {
-    OAuthClientId::parse(GATEWAY_CLIENT_ID).map_err(InternalTokenError::Identifier)
 }
 
 /// RFC 9068 `scope`: the actor's scopes, space-delimited, or absent when it has none.
@@ -714,15 +786,16 @@ struct AccessTokenClaims {
     /// RFC 9396: at most one [`PermissionsDetail`], absent when nothing is granted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     authorization_details: Vec<PermissionsDetail>,
-    #[serde(rename = "ai.veoveo/invocation")]
+    #[serde(rename = "https://veoveo.ai/claims/invocation")]
     invocation: Invocation,
 }
 
-/// The `ai.veoveo/invocation` claim: who acts, under which authority and request.
+/// The [`INVOCATION_CLAIM`]: who acts, under which authority and request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Invocation {
     profile: GatewayProfileId,
+    server: ServerSlug,
     actor: Principal,
     authority: InvocationAuthority,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -730,28 +803,30 @@ struct Invocation {
 }
 
 impl AccessTokenClaims {
-    fn from_identity(identity: &GatewayInternalIdentity) -> Result<Self, InternalTokenError> {
-        Ok(Self {
+    fn from_identity(identity: &GatewayInternalIdentity) -> Self {
+        Self {
             standard: StandardClaims::new(
                 &identity.issuer,
+                &identity.client,
                 &identity.actor,
-                &identity.server,
+                identity.audience.as_str(),
                 &identity.jwt_id,
                 identity.issued_at,
                 identity.not_before,
                 identity.expires_at,
-            )?,
+            ),
             authorization_details: (!identity.permissions.is_empty())
                 .then(|| PermissionsDetail::new(identity.permissions.clone()))
                 .into_iter()
                 .collect(),
             invocation: Invocation {
                 profile: identity.profile.clone(),
+                server: identity.server.clone(),
                 actor: identity.actor.clone(),
                 authority: identity.authority.clone(),
                 request_context: identity.request_context.clone(),
             },
-        })
+        }
     }
 }
 
@@ -759,45 +834,54 @@ impl AccessTokenClaims {
 struct ResourceAccessTokenClaims {
     #[serde(flatten)]
     standard: StandardClaims,
-    #[serde(rename = "ai.veoveo/resource-invocation")]
+    #[serde(rename = "https://veoveo.ai/claims/resource-invocation")]
     invocation: ResourceInvocation,
 }
 
-/// The `ai.veoveo/resource-invocation` claim of an HTTP resource token.
+/// The [`RESOURCE_INVOCATION_CLAIM`] of an HTTP resource token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ResourceInvocation {
     protected_resource: ProtectedResourceId,
+    server: ServerSlug,
     actor: Principal,
     authority: InvocationAuthority,
 }
 
 impl ResourceAccessTokenClaims {
-    fn from_identity(
-        identity: &GatewayInternalResourceIdentity,
-    ) -> Result<Self, InternalTokenError> {
-        Ok(Self {
+    fn from_identity(identity: &GatewayInternalResourceIdentity) -> Self {
+        Self {
             standard: StandardClaims::new(
                 &identity.issuer,
+                &identity.client,
                 &identity.actor,
-                &identity.server,
+                identity.protected_resource.as_str(),
                 &identity.jwt_id,
                 identity.issued_at,
                 identity.not_before,
                 identity.expires_at,
-            )?,
+            ),
             invocation: ResourceInvocation {
                 protected_resource: identity.protected_resource.clone(),
+                server: identity.server.clone(),
                 actor: identity.actor.clone(),
                 authority: identity.authority.clone(),
             },
-        })
+        }
     }
 }
 
 #[derive(Debug)]
 pub enum InternalTokenError {
     EmptyPrivateKey,
+    /// The signing key is not an Ed25519 PKCS#8 document.
+    InvalidSigningKey,
+    /// The issuer is not an HTTPS URL without credentials, query or fragment.
+    InvalidIssuer,
+    /// A trust key's `kid` is not its RFC 7638 thumbprint.
+    KeyIdNotThumbprint(String),
+    /// The token's `jti` is not a UUIDv7.
+    InvalidTokenId,
     InvalidKeyId,
     EmptyTrustBundle,
     MissingKeyId,
@@ -813,8 +897,8 @@ pub enum InternalTokenError {
         actual: ServerSlug,
     },
     SubjectPrincipalMismatch,
-    /// Standard claims disagree with the embedded actor, or the token carries more
-    /// than one permissions detail.
+    /// Standard claims disagree with the embedded actor, `act` does not name the
+    /// issuer, or the token carries more than one permissions detail.
     InconsistentClaims,
     /// A granted permission names another server's namespace.
     PermissionOutsideAudience(PermissionName),
@@ -832,6 +916,17 @@ impl fmt::Display for InternalTokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyPrivateKey => f.write_str("internal signing private key is empty"),
+            Self::InvalidSigningKey => {
+                f.write_str("internal signing key is not an Ed25519 PKCS#8 document")
+            }
+            Self::InvalidIssuer => f.write_str("token issuer must be an https URL"),
+            Self::KeyIdNotThumbprint(key_id) => {
+                write!(
+                    f,
+                    "trust key `{key_id}` is not named by its RFC 7638 thumbprint"
+                )
+            }
+            Self::InvalidTokenId => f.write_str("token jti must be a UUIDv7"),
             Self::InvalidKeyId => f.write_str("internal signing key id is empty or invalid"),
             Self::EmptyTrustBundle => f.write_str("internal trust JWKS contains no keys"),
             Self::MissingKeyId => f.write_str("internal token or trust key is missing kid"),
@@ -899,20 +994,55 @@ pub(crate) mod tests {
     use super::*;
 
     pub(crate) use crate::hosting::testing::{
-        PUBLIC_KEY_X, authority, principal, signing_key, trust_bundle,
+        TEST_CLIENT, TEST_ISSUER, authority, principal, signing_key, trust_bundle,
     };
+
+    /// The resource URL of test server `server`.
+    pub(crate) fn resource(server: &str) -> ResourceIndicator {
+        ResourceIndicator::parse(&format!("https://{server}.veoveo.test/mcp")).unwrap()
+    }
+
+    /// The test Gateway's token issuer.
+    pub(crate) fn issuer() -> GatewayInternalTokenIssuer {
+        GatewayInternalTokenIssuer::new(TokenIssuer::parse(TEST_ISSUER).unwrap(), signing_key())
+            .unwrap()
+    }
+
+    /// A verifier for tokens addressed to test server `server`.
+    pub(crate) fn verifier(server: &str) -> GatewayInternalTokenVerifier {
+        GatewayInternalTokenVerifier::new(
+            TokenIssuer::parse(TEST_ISSUER).unwrap(),
+            TokenAudience {
+                server: ServerSlug::parse(server).unwrap(),
+                resource: resource(server),
+            },
+            trust_bundle(),
+        )
+    }
+
+    /// A request from the test user through the test client, granting `permissions`.
+    pub(crate) fn forwarded(server: &str, permissions: &[&str]) -> ForwardedRequest {
+        ForwardedRequest {
+            profile: GatewayProfileId::parse("default").unwrap(),
+            server: ServerSlug::parse(server).unwrap(),
+            audience: resource(server),
+            client: OAuthClientId::parse(TEST_CLIENT).unwrap(),
+            actor: principal(),
+            authority: authority(),
+            permissions: permissions
+                .iter()
+                .map(|permission| PermissionName::parse(*permission).unwrap())
+                .collect(),
+            request_context: None,
+            expires_at: Utc::now() + TimeDelta::minutes(5),
+        }
+    }
 
     #[test]
     fn upload_assertions_require_dedicated_audience_and_signed_policy_binding() {
-        let issuer = GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key("key-1"),
-        );
-        let verifier = GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse(veoveo_artifact_contract::ARTIFACT_UPLOAD_AUDIENCE).unwrap(),
-            trust_bundle("key-1"),
-        );
+        let issuer = issuer();
+        let upload = veoveo_artifact_contract::ARTIFACT_UPLOAD_AUDIENCE;
+        let verifier = verifier(upload);
         let binding = veoveo_artifact_contract::ArtifactUploadAuthority {
             control_plane_sha256: veoveo_artifact_contract::UploadSha256::parse("a".repeat(64))
                 .unwrap(),
@@ -948,6 +1078,7 @@ pub(crate) mod tests {
         let token = issuer
             .issue_artifact_upload(
                 GatewayProfileId::parse("default").unwrap(),
+                resource(upload),
                 actor,
                 invocation,
                 request_context,
@@ -958,28 +1089,14 @@ pub(crate) mod tests {
         let verified = verifier.verify_artifact_upload(&token).unwrap();
         assert_eq!(verified.authorization, binding);
         assert_eq!(verified.identity.actor.id, principal().id);
-        let ordinary = issuer
-            .issue(
-                GatewayProfileId::parse("default").unwrap(),
-                ServerSlug::parse(veoveo_artifact_contract::ARTIFACT_UPLOAD_AUDIENCE).unwrap(),
-                principal(),
-                authority(),
-                None,
-                Utc::now() + TimeDelta::minutes(1),
-            )
-            .unwrap();
+        let ordinary = issuer.issue(forwarded(upload, &[])).unwrap();
         assert!(
             verifier
                 .verify_artifact_upload(&ordinary.bearer_token)
                 .is_err(),
             "a token without a signed policy binding was accepted"
         );
-        let domain = GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse("media").unwrap(),
-            trust_bundle("key-1"),
-        );
-        assert!(domain.verify(&token).is_err());
+        assert!(self::verifier("media").verify(&token).is_err());
         let mut segments: Vec<String> = token.split('.').map(str::to_owned).collect();
         let mut claims: serde_json::Value =
             serde_json::from_slice(&URL_SAFE_NO_PAD.decode(&segments[1]).unwrap()).unwrap();
@@ -994,73 +1111,36 @@ pub(crate) mod tests {
 
     #[test]
     fn identities_carry_only_the_audience_servers_granted_permissions() {
-        let issuer = GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key("key-1"),
-        );
-        let verifier = GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse("time").unwrap(),
-            trust_bundle("key-1"),
-        );
-        let time = ServerSlug::parse("time").unwrap();
+        let issuer = issuer();
+        let verifier = verifier("time");
         let read = PermissionName::parse("time.read").unwrap();
-        let expires = Utc::now() + TimeDelta::minutes(1);
-        let issued = issuer
-            .issue_granted(
-                GatewayProfileId::parse("default").unwrap(),
-                time.clone(),
-                principal(),
-                authority(),
-                std::collections::BTreeSet::from([read.clone()]),
-                None,
-                expires,
-            )
-            .unwrap();
+        let issued = issuer.issue(forwarded("time", &["time.read"])).unwrap();
         let identity = verifier.verify(&issued.bearer_token).unwrap();
         assert!(identity.grants(&read));
         assert!(!identity.grants(&PermissionName::parse("time.admin").unwrap()));
+        assert_eq!(identity.client.as_str(), TEST_CLIENT);
 
-        let foreign =
-            std::collections::BTreeSet::from([PermissionName::parse("map.read").unwrap()]);
         assert!(matches!(
-            issuer.issue_granted(
-                GatewayProfileId::parse("default").unwrap(),
-                time.clone(),
-                principal(),
-                authority(),
-                foreign.clone(),
-                None,
-                expires,
-            ),
+            issuer.issue(forwarded("time", &["map.read"])),
             Err(InternalTokenError::PermissionOutsideAudience(_))
         ));
 
         // A correctly signed token that grants another server's permission is refused.
         let identity = issuer
-            .create_identity(
-                GatewayProfileId::parse("default").unwrap(),
-                time,
-                principal(),
-                authority(),
-                foreign,
-                None,
-                expires,
-            )
+            .create_identity(forwarded("time", &["map.read"]))
             .unwrap();
         let mut header = Header::new(Algorithm::EdDSA);
         header.typ = Some(ACCESS_TOKEN_TYPE.to_owned());
-        header.kid = Some("key-1".to_owned());
+        header.kid = Some(signing_key().key_id().to_owned());
         let sign = |claims: &serde_json::Value| {
             encode(
                 &header,
                 claims,
-                &EncodingKey::from_ed_der(&signing_key("key-1").private_key_der),
+                &EncodingKey::from_ed_der(&signing_key().private_key_der),
             )
             .unwrap()
         };
-        let forged =
-            serde_json::to_value(AccessTokenClaims::from_identity(&identity).unwrap()).unwrap();
+        let forged = serde_json::to_value(AccessTokenClaims::from_identity(&identity)).unwrap();
         assert!(matches!(
             verifier.verify(&sign(&forged)),
             Err(InternalTokenError::PermissionOutsideAudience(_))
@@ -1080,8 +1160,18 @@ pub(crate) mod tests {
                 "actions": ["time.read"]
             }])
         );
-        assert_eq!(granted["aud"], "time");
-        assert_eq!(granted["client_id"], GATEWAY_CLIENT_ID);
+        assert_eq!(granted["aud"], resource("time").as_str());
+        assert_eq!(granted[INVOCATION_CLAIM]["server"], "time");
+        assert_eq!(
+            uuid::Uuid::parse_str(granted["jti"].as_str().unwrap())
+                .unwrap()
+                .get_version_num(),
+            7
+        );
+        assert_eq!(granted["iss"], TEST_ISSUER);
+        assert_eq!(granted["client_id"], TEST_CLIENT);
+        assert_eq!(granted["act"], serde_json::json!({"sub": TEST_ISSUER}));
+        assert!(granted[INVOCATION_CLAIM].is_object());
         let mut doubled = granted.clone();
         let detail = doubled["authorization_details"][0].clone();
         doubled["authorization_details"]
@@ -1092,6 +1182,31 @@ pub(crate) mod tests {
             verifier.verify(&sign(&doubled)),
             Err(InternalTokenError::InconsistentClaims)
         ));
+
+        // RFC 8693: `act` names the issuing Gateway and nothing else.
+        for act in [
+            serde_json::json!({"sub": "https://other.example"}),
+            serde_json::json!({"sub": TEST_ISSUER, "act": {"sub": "agent"}}),
+        ] {
+            let mut acting = granted.clone();
+            acting["act"] = act;
+            assert!(verifier.verify(&sign(&acting)).is_err());
+        }
+        let mut unacted = granted.clone();
+        unacted.as_object_mut().unwrap().remove("act");
+        assert!(verifier.verify(&sign(&unacted)).is_err());
+
+        // `jti` is a UUIDv7.
+        let mut random = granted.clone();
+        random["jti"] = serde_json::json!(uuid::Uuid::new_v4().to_string());
+        assert!(matches!(
+            verifier.verify(&sign(&random)),
+            Err(InternalTokenError::InvalidTokenId)
+        ));
+        // The audience is the server's resource URL, not its slug.
+        let mut slugged = granted.clone();
+        slugged["aud"] = serde_json::json!("time");
+        assert!(verifier.verify(&sign(&slugged)).is_err());
     }
 
     #[test]
@@ -1106,165 +1221,134 @@ pub(crate) mod tests {
 
     #[test]
     fn internal_token_round_trips_typed_identity() {
-        let issuer = GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key("key-1"),
-        );
-        let issued = issuer
-            .issue(
-                GatewayProfileId::parse("default").unwrap(),
-                ServerSlug::parse("media").unwrap(),
-                principal(),
-                authority(),
-                None,
-                Utc::now() + TimeDelta::minutes(5),
-            )
-            .unwrap();
+        let issued = issuer().issue(forwarded("media", &[])).unwrap();
         assert!(!format!("{issued:?}").contains(&issued.bearer_token));
-
-        let verified = GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse("media").unwrap(),
-            trust_bundle("key-1"),
-        )
-        .verify(&issued.bearer_token)
-        .unwrap();
-
+        let verified = verifier("media").verify(&issued.bearer_token).unwrap();
         assert_eq!(verified.profile.as_str(), "default");
         assert_eq!(verified.server.as_str(), "media");
+        assert_eq!(verified.audience, resource("media"));
         assert_eq!(verified.actor.id.as_str(), "https://idp.example.com#user-1");
     }
 
     #[test]
+    fn issuers_are_https_urls() {
+        for issuer in ["veoveo-internal", "http://gateway.example"] {
+            assert!(matches!(
+                GatewayInternalTokenIssuer::new(TokenIssuer::parse(issuer).unwrap(), signing_key()),
+                Err(InternalTokenError::InvalidIssuer)
+            ));
+        }
+    }
+
+    #[test]
     fn internal_resource_token_round_trips_without_a_synthetic_profile() {
-        let issuer = GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key("key-1"),
-        );
-        let issued = issuer
+        let recordings =
+            ProtectedResourceId::parse("https://veoveo.example/ingest/recordings").unwrap();
+        let issued = issuer()
             .issue_resource(
-                ProtectedResourceId::parse("https://veoveo.example/ingest/recordings").unwrap(),
+                recordings.clone(),
                 ServerSlug::parse("recording-hub").unwrap(),
+                OAuthClientId::parse(TEST_CLIENT).unwrap(),
                 principal(),
                 authority(),
                 Utc::now() + TimeDelta::minutes(5),
             )
             .unwrap();
         assert!(!format!("{issued:?}").contains(&issued.bearer_token));
-
-        let verified = GatewayInternalResourceTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse("recording-hub").unwrap(),
-            trust_bundle("key-1"),
-        )
-        .verify(&issued.bearer_token)
-        .unwrap();
-        assert_eq!(
-            verified.protected_resource.as_str(),
-            "https://veoveo.example/ingest/recordings"
-        );
+        let verifier = |server: &str| {
+            GatewayInternalResourceTokenVerifier::new(
+                TokenIssuer::parse(TEST_ISSUER).unwrap(),
+                recordings.clone(),
+                ServerSlug::parse(server).unwrap(),
+                trust_bundle(),
+            )
+        };
+        let verified = verifier("recording-hub")
+            .verify(&issued.bearer_token)
+            .unwrap();
+        assert_eq!(verified.protected_resource, recordings);
         assert_eq!(verified.server.as_str(), "recording-hub");
+        assert_eq!(verified.client.as_str(), TEST_CLIENT);
+        assert!(verifier("media").verify(&issued.bearer_token).is_err());
     }
 
     #[test]
     fn internal_token_rejects_wrong_server_audience() {
-        let issuer = GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key("key-1"),
-        );
-        let issued = issuer
-            .issue(
-                GatewayProfileId::parse("default").unwrap(),
-                ServerSlug::parse("media").unwrap(),
-                principal(),
-                authority(),
-                None,
-                Utc::now() + TimeDelta::minutes(5),
-            )
-            .unwrap();
-
-        let err = GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse("simulation").unwrap(),
-            trust_bundle("key-1"),
-        )
-        .verify(&issued.bearer_token)
-        .expect_err("wrong server audience should be rejected");
-
+        let issued = issuer().issue(forwarded("media", &[])).unwrap();
+        let err = verifier("simulation")
+            .verify(&issued.bearer_token)
+            .expect_err("wrong server audience should be rejected");
         assert!(matches!(err, InternalTokenError::Jwt(_)));
+        // The right resource URL with another server's name is refused too.
+        let crossed = GatewayInternalTokenVerifier::new(
+            TokenIssuer::parse(TEST_ISSUER).unwrap(),
+            TokenAudience {
+                server: ServerSlug::parse("simulation").unwrap(),
+                resource: resource("media"),
+            },
+            trust_bundle(),
+        );
+        assert!(matches!(
+            crossed.verify(&issued.bearer_token),
+            Err(InternalTokenError::AudienceMismatch { .. })
+        ));
+    }
+
+    fn generated_key() -> GatewayInternalSigningKey {
+        GatewayInternalSigningKey::new(ServerKeyPair::generate().unwrap().pkcs8_der()).unwrap()
     }
 
     #[test]
     fn internal_token_rejects_unknown_key_id() {
-        let issuer = GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key("retired-key"),
-        );
-        let issued = issuer
-            .issue(
-                GatewayProfileId::parse("default").unwrap(),
-                ServerSlug::parse("media").unwrap(),
-                principal(),
-                authority(),
-                None,
-                Utc::now() + TimeDelta::minutes(5),
-            )
-            .unwrap();
-
-        let err = GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse("media").unwrap(),
-            trust_bundle("active-key"),
+        let retired = generated_key();
+        let issued = GatewayInternalTokenIssuer::new(
+            TokenIssuer::parse(TEST_ISSUER).unwrap(),
+            retired.clone(),
         )
-        .verify(&issued.bearer_token)
-        .expect_err("unknown kid should be rejected");
-
-        assert!(matches!(err, InternalTokenError::UnknownKeyId(key) if key == "retired-key"));
+        .unwrap()
+        .issue(forwarded("media", &[]))
+        .unwrap();
+        let err = verifier("media")
+            .verify(&issued.bearer_token)
+            .expect_err("unknown kid should be rejected");
+        assert!(matches!(err, InternalTokenError::UnknownKeyId(key) if key == retired.key_id()));
     }
 
     #[test]
-    fn trust_bundle_accepts_rotation_set() {
-        let bundle = GatewayInternalTrustBundle::from_json(&format!(
-            r#"{{"keys":[
-                {{"kty":"OKP","crv":"Ed25519","x":"{PUBLIC_KEY_X}","alg":"EdDSA","use":"sig","kid":"key-1"}},
-                {{"kty":"OKP","crv":"Ed25519","x":"{PUBLIC_KEY_X}","alg":"EdDSA","use":"sig","kid":"key-2"}}
-            ]}}"#
-        ))
+    fn signing_keys_are_named_by_their_thumbprint() {
+        let key = signing_key();
+        assert_eq!(key.key_id(), key.verification_key().kid().as_str());
+        let rotation = Ed25519JwkSet::new(vec![
+            key.verification_key(),
+            generated_key().verification_key(),
+        ])
         .unwrap();
-
-        assert_eq!(bundle.key_ids().collect::<Vec<_>>(), vec!["key-1", "key-2"]);
+        let bundle = GatewayInternalTrustBundle::from_key_set(&rotation).unwrap();
+        assert_eq!(bundle.key_ids().count(), 2);
+        assert!(bundle.key_ids().any(|kid| kid == key.key_id()));
+        // A trust key named by anything but its thumbprint is refused.
+        let x = key.verification_key().key().x();
+        assert!(matches!(
+            GatewayInternalTrustBundle::from_json(&format!(
+                r#"{{"keys":[{{"kty":"OKP","crv":"Ed25519","x":"{x}","alg":"EdDSA","use":"sig","kid":"key-1"}}]}}"#
+            )),
+            Err(InternalTokenError::KeyIdNotThumbprint(_))
+        ));
     }
 
     #[test]
     fn registration_key_sets_become_trust_bundles() {
-        let key = veoveo_mcp_ext_registration::ServerPublicKey::from_bytes(
-            URL_SAFE_NO_PAD
-                .decode(PUBLIC_KEY_X)
-                .unwrap()
-                .try_into()
-                .unwrap(),
-        );
-        let keys =
-            Ed25519JwkSet::new(vec![veoveo_mcp_ext_registration::Ed25519Jwk::new(key)]).unwrap();
-        let bundle = GatewayInternalTrustBundle::from_key_set(&keys).unwrap();
-        let issued = GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key(key.thumbprint().as_str()),
-        )
-        .issue(
-            GatewayProfileId::parse("default").unwrap(),
+        let trust = AccessTokenTrust {
+            issuer: TokenIssuer::parse(TEST_ISSUER).unwrap(),
+            jwks: Ed25519JwkSet::new(vec![signing_key().verification_key()]).unwrap(),
+            resource: resource("time"),
+        };
+        let issued = issuer().issue(forwarded("time", &[])).unwrap();
+        GatewayInternalTokenVerifier::from_access_tokens(
+            &trust,
             ServerSlug::parse("time").unwrap(),
-            principal(),
-            authority(),
-            None,
-            Utc::now() + TimeDelta::minutes(1),
         )
-        .unwrap();
-        GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse("veoveo-internal").unwrap(),
-            ServerSlug::parse("time").unwrap(),
-            bundle,
-        )
+        .unwrap()
         .verify(&issued.bearer_token)
         .unwrap();
     }

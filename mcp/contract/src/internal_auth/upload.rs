@@ -9,38 +9,45 @@ pub struct VerifiedArtifactUploadIdentity {
     pub authorization: ArtifactUploadAuthority,
 }
 
-/// Private claim binding an upload token to the Gateway's checked configuration.
-pub const ARTIFACT_UPLOAD_CLAIM: &str = "ai.veoveo/artifact-upload";
+/// Public claim, under a collision-resistant URI name, binding an upload token to the
+/// Gateway's checked configuration.
+pub const ARTIFACT_UPLOAD_CLAIM: &str = "https://veoveo.ai/claims/artifact-upload";
 
 #[derive(Serialize, Deserialize)]
 struct UploadClaims {
     #[serde(flatten)]
     identity: AccessTokenClaims,
-    #[serde(rename = "ai.veoveo/artifact-upload")]
+    #[serde(rename = "https://veoveo.ai/claims/artifact-upload")]
     upload_authorization: ArtifactUploadAuthority,
 }
 
 impl GatewayInternalTokenIssuer {
+    /// `audience` is the upload service's resource URL.
+    #[allow(clippy::too_many_arguments)]
     pub fn issue_artifact_upload(
         &self,
         profile: GatewayProfileId,
+        audience: ResourceIndicator,
         actor: Principal,
         authority: InvocationAuthority,
         request_context: GatewayRequestContext,
         authorization: ArtifactUploadAuthority,
         expires_at: DateTime<Utc>,
     ) -> Result<String, InternalTokenError> {
-        let identity = self.create_identity(
+        let identity = self.create_identity(ForwardedRequest {
             profile,
-            ServerSlug::parse(ARTIFACT_UPLOAD_AUDIENCE).map_err(InternalTokenError::Identifier)?,
+            server: ServerSlug::parse(ARTIFACT_UPLOAD_AUDIENCE)
+                .map_err(InternalTokenError::Identifier)?,
+            audience,
+            client: request_context.access_token.oauth_client_id.clone(),
             actor,
             authority,
-            BTreeSet::new(),
-            Some(request_context),
+            permissions: BTreeSet::new(),
+            request_context: Some(request_context),
             expires_at,
-        )?;
+        })?;
         self.sign(&UploadClaims {
-            identity: AccessTokenClaims::from_identity(&identity)?,
+            identity: AccessTokenClaims::from_identity(&identity),
             upload_authorization: authorization,
         })
     }
@@ -54,7 +61,7 @@ impl GatewayInternalTokenVerifier {
         let claims = self.decode_claims::<UploadClaims>(token)?;
         let expected =
             ServerSlug::parse(ARTIFACT_UPLOAD_AUDIENCE).map_err(InternalTokenError::Identifier)?;
-        let actual = claims.identity.standard.audience()?;
+        let actual = claims.identity.invocation.server.clone();
         if actual != expected {
             return Err(InternalTokenError::AudienceMismatch { expected, actual });
         }

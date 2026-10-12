@@ -8,6 +8,25 @@ struct Fixture {
     authority: InvocationAuthority,
     request_context: GatewayRequestContext,
 }
+/// A request carrying `context`, through the OAuth client its access token names.
+fn forwarded_with(
+    actor: &Principal,
+    authority: InvocationAuthority,
+    context: GatewayRequestContext,
+) -> ForwardedRequest {
+    ForwardedRequest {
+        profile: GatewayProfileId::parse("operator").unwrap(),
+        server: ServerSlug::parse("computers").unwrap(),
+        audience: tests::resource("computers"),
+        client: context.access_token.oauth_client_id.clone(),
+        actor: actor.clone(),
+        authority,
+        permissions: Default::default(),
+        request_context: Some(context),
+        expires_at: Utc::now() + TimeDelta::seconds(60),
+    }
+}
+
 fn fixtures() -> Vec<Fixture> {
     serde_json::from_str(include_str!(
         "../../../../testing/fixtures/gateway-request-context.json"
@@ -17,25 +36,15 @@ fn fixtures() -> Vec<Fixture> {
 
 #[test]
 fn all_invocation_modes_preserve_signed_source_and_session_context() {
-    let issuer = GatewayInternalTokenIssuer::new(
-        TokenIssuer::parse("veoveo-internal").unwrap(),
-        tests::signing_key("key-1"),
-    );
-    let verifier = GatewayInternalTokenVerifier::new(
-        TokenIssuer::parse("veoveo-internal").unwrap(),
-        ServerSlug::parse("computers").unwrap(),
-        tests::trust_bundle("key-1"),
-    );
+    let issuer = tests::issuer();
+    let verifier = tests::verifier("computers");
     for fixture in fixtures() {
         let issued = issuer
-            .issue(
-                GatewayProfileId::parse("operator").unwrap(),
-                ServerSlug::parse("computers").unwrap(),
-                fixture.actor.clone(),
+            .issue(forwarded_with(
+                &fixture.actor,
                 fixture.authority,
-                Some(fixture.request_context.clone()),
-                Utc::now() + TimeDelta::seconds(60),
-            )
+                fixture.request_context.clone(),
+            ))
             .unwrap();
         let received = verifier.verify(&issued.bearer_token).unwrap();
         assert_eq!(received.actor, fixture.actor, "{}", fixture.name);
@@ -52,25 +61,15 @@ fn all_invocation_modes_preserve_signed_source_and_session_context() {
 fn source_expiry_caps_assertions_and_cannot_be_extended_by_a_signed_context() {
     let mut fixture = fixtures().remove(0);
     fixture.request_context.access_token.expires_at = Utc::now() + TimeDelta::seconds(10);
-    let key = tests::signing_key("key-1");
-    let issuer = GatewayInternalTokenIssuer::new(
-        TokenIssuer::parse("veoveo-internal").unwrap(),
-        key.clone(),
-    );
-    let verifier = GatewayInternalTokenVerifier::new(
-        TokenIssuer::parse("veoveo-internal").unwrap(),
-        ServerSlug::parse("computers").unwrap(),
-        tests::trust_bundle("key-1"),
-    );
+    let key = tests::signing_key();
+    let issuer = tests::issuer();
+    let verifier = tests::verifier("computers");
     let issue = |context| {
-        issuer.issue(
-            GatewayProfileId::parse("operator").unwrap(),
-            ServerSlug::parse("computers").unwrap(),
-            fixture.actor.clone(),
+        issuer.issue(forwarded_with(
+            &fixture.actor,
             fixture.authority.clone(),
-            Some(context),
-            Utc::now() + TimeDelta::seconds(60),
-        )
+            context,
+        ))
     };
     let issued = issue(fixture.request_context.clone()).unwrap();
     assert_eq!(
@@ -78,11 +77,11 @@ fn source_expiry_caps_assertions_and_cannot_be_extended_by_a_signed_context() {
         fixture.request_context.access_token.expires_at
     );
     verifier.verify(&issued.bearer_token).unwrap();
-    let mut claims = AccessTokenClaims::from_identity(&issued.identity).unwrap();
+    let mut claims = AccessTokenClaims::from_identity(&issued.identity);
     claims.standard.exp += 1;
     let mut header = Header::new(Algorithm::EdDSA);
     header.typ = Some(ACCESS_TOKEN_TYPE.into());
-    header.kid = Some("key-1".into());
+    header.kid = Some(key.key_id().to_owned());
     let forged = encode(
         &header,
         &claims,
@@ -162,25 +161,15 @@ fn forwarded_tokens_reject_other_types_and_invalid_execution_attribution() {
                 .is_some()
         })
         .unwrap();
-    let key = tests::signing_key("key-1");
-    let issuer = GatewayInternalTokenIssuer::new(
-        TokenIssuer::parse("veoveo-internal").unwrap(),
-        key.clone(),
-    );
-    let verifier = GatewayInternalTokenVerifier::new(
-        TokenIssuer::parse("veoveo-internal").unwrap(),
-        ServerSlug::parse("computers").unwrap(),
-        tests::trust_bundle("key-1"),
-    );
+    let key = tests::signing_key();
+    let issuer = tests::issuer();
+    let verifier = tests::verifier("computers");
     let issued = issuer
-        .issue(
-            GatewayProfileId::parse("operator").unwrap(),
-            ServerSlug::parse("computers").unwrap(),
-            fixture.actor.clone(),
+        .issue(forwarded_with(
+            &fixture.actor,
             fixture.authority.clone(),
-            Some(fixture.request_context.clone()),
-            Utc::now() + TimeDelta::seconds(60),
-        )
+            fixture.request_context.clone(),
+        ))
         .unwrap();
     let mut segments = issued.bearer_token.split('.');
     let issued_header: serde_json::Value =
@@ -198,7 +187,7 @@ fn forwarded_tokens_reject_other_types_and_invalid_execution_attribution() {
     };
     let mut header = Header::new(Algorithm::EdDSA);
     header.typ = Some(ACCESS_TOKEN_TYPE.into());
-    header.kid = Some("key-1".into());
+    header.kid = Some(key.key_id().to_owned());
     verifier.verify(&sign(&header, &original)).unwrap();
     // RFC 9068 §4: tokens of any other type are refused.
     for typ in [Some("JWT"), None] {
@@ -281,4 +270,31 @@ fn signed_execution_projection_preserves_frozen_audit_actor_shape() {
     let actor = serde_json::to_value(audit.actor).unwrap();
     assert_eq!(actor["managed_agent"]["dispatch_epoch"], 2);
     assert!(actor.get("managed_execution").is_none());
+}
+
+#[test]
+fn the_token_names_the_client_the_caller_used() {
+    let fixture = fixtures().remove(0);
+    let issuer = tests::issuer();
+    let verifier = tests::verifier("computers");
+    let request = forwarded_with(
+        &fixture.actor,
+        fixture.authority.clone(),
+        fixture.request_context.clone(),
+    );
+    let identity = verifier
+        .verify(&issuer.issue(request.clone()).unwrap().bearer_token)
+        .unwrap();
+    assert_eq!(
+        identity.client,
+        fixture.request_context.access_token.oauth_client_id
+    );
+    let elsewhere = ForwardedRequest {
+        client: crate::OAuthClientId::parse("another-client").unwrap(),
+        ..request
+    };
+    assert!(matches!(
+        issuer.issue(elsewhere),
+        Err(InternalTokenError::InvalidRequestContext)
+    ));
 }

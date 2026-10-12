@@ -87,10 +87,10 @@ use axum::{
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
+use veoveo_mcp_ext_registration::AccessTokenTrust;
 
 use crate::{
-    GATEWAY_INTERNAL_TOKEN_ISSUER, GatewayInternalTokenVerifier, GatewayInternalTrustBundle,
-    PublicDeployment, ServerPublicEndpoint, ServerSlug, TokenIssuer,
+    GatewayInternalTokenVerifier, PublicDeployment, ServerPublicEndpoint, ServerSlug,
     canonical_streamable_http_server_config, enforce_serialized_mcp_response, public_allowed_hosts,
     server_contract::McpServerContract, stateless_session_manager,
 };
@@ -313,17 +313,15 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         self.with_deployment(Mount::InternalRoot, allowed_hosts.into_iter().collect())
     }
 
-    /// Admits the gateway's internal tokens addressed to this server's slug.
+    /// Admits the Gateway's access tokens addressed to this server's slug, from the
+    /// issuer and keys its registration response names in `ai.veoveo/access-tokens`.
     pub fn internal_trust(
         self,
-        trust: GatewayInternalTrustBundle,
+        trust: &AccessTokenTrust,
     ) -> anyhow::Result<HostedServerBuilder<D, Dep, Provided<Arc<GatewayInternalTokenVerifier>>, H>>
     {
-        let verifier = GatewayInternalTokenVerifier::new(
-            TokenIssuer::parse(GATEWAY_INTERNAL_TOKEN_ISSUER)?,
-            D::Contract::slug(),
-            trust,
-        );
+        let verifier =
+            GatewayInternalTokenVerifier::from_access_tokens(trust, D::Contract::slug())?;
         Ok(HostedServerBuilder {
             domain: self.domain,
             deployment: self.deployment,

@@ -16,46 +16,51 @@ verified by `veoveo-mcp-contract`, described under [Forwarded Identity](#forward
 
 | Standard | Profile |
 |---|---|
-| OAuth 2.0 Dynamic Client Registration, RFC 7591 | Registration request and response. The installation's registration secret is the initial access token. A server registers `jwks`, `token_endpoint_auth_method` `private_key_jwt`, empty `grant_types` and `response_types`, a `software_statement` it signs itself, and the three declarations as client metadata. Errors use the §3.2.2 codes. |
+| OAuth 2.0 Dynamic Client Registration, RFC 7591 | Registration request and response. The installation's registration secret is the initial access token. A server registers `jwks`, `token_endpoint_auth_method` `private_key_jwt`, empty `grant_types` and `response_types`, its slug as `software_id`, its build as `software_version`, a `software_statement` it signs itself, and Veoveo members for its declarations. Errors use the §3.2.2 codes. |
 | OAuth 2.0 Dynamic Client Registration Management, RFC 7592 | Read (`GET`), update (`PUT`) and delete (`DELETE`) at `registration_client_uri` with the registration access token. Renewing a lease is an ordinary update. |
-| Bearer tokens, RFC 6750 | Initial access token, registration access token and forwarded access token travel in `Authorization: Bearer`. |
-| JWT, RFC 7519, with JWS, RFC 7515, and EdDSA over Ed25519, RFC 8037 | Software statements and forwarded access tokens. `alg` is `EdDSA`; no other algorithm verifies. |
-| JWK and JWK Set, RFC 7517, and JWK Thumbprint, RFC 7638 | Ed25519 `OKP` keys with `kid`, `alg: EdDSA` and `use: sig`. A server's `kid` is its key's thumbprint. |
-| JWT assertions, RFC 7523 §3 | Claim rules for the software statement: `iss` and `sub` name the server, `aud` is the URL the request is sent to, `jti` is unique, and the lifetime is at most 60 seconds. |
-| JWT access tokens, RFC 9068 | The forwarded identity: `typ: at+jwt`, `aud` names the server, `client_id` names the Gateway, and `scope`, `groups` and `roles` restate the caller. |
+| OAuth 2.0, RFC 6749 §8.2 | Registration members without a standard equivalent take the `veoveo_` vendor prefix in snake_case. |
+| Bearer tokens, RFC 6750 | Initial access token, registration access token and forwarded access token travel in `Authorization: Bearer`. Every 401 carries `WWW-Authenticate: Bearer`, with `error="invalid_token"` once a token was sent. |
+| JWT, RFC 7519, with JWS, RFC 7515, and EdDSA over Ed25519, RFC 8037 | Software statements and forwarded access tokens. `alg` is `EdDSA`; no other algorithm verifies. Times in OAuth documents are NumericDate seconds. |
+| JWK and JWK Set, RFC 7517, and JWK Thumbprint, RFC 7638 | Ed25519 `OKP` keys with `kid`, `alg: EdDSA` and `use: sig`. Every `kid`, a server's or the Gateway's, is the key's RFC 7638 thumbprint. |
+| JWT assertions, RFC 7523 §3 | Claim rules for the software statement: `iss` and `sub` name the server, `aud` is the URL the request is sent to, `jti` is a UUIDv7, and the lifetime is at most 60 seconds. |
+| JWT access tokens, RFC 9068 | The forwarded identity: `typ: at+jwt`, `iss` is the Gateway's HTTPS issuer URL, `aud` is the target server's resource URL, `client_id` names the OAuth client the caller used, `jti` is a UUIDv7, and `scope`, `groups` and `roles` restate the caller. |
+| Resource indicators, RFC 8707 | A forwarded token's `aud` is an absolute URL: the target server's registered MCP endpoint. |
+| OAuth 2.0 Token Exchange, RFC 8693 §4.1 | The `act` claim of a forwarded token names the Gateway as the party acting for the caller. Nested actor chains are refused. |
 | Rich Authorization Requests, RFC 9396 | `authorization_details` carries one entry of type `https://veoveo.ai/oauth/permissions` whose `actions` are the granted permissions. |
-| Authorization server metadata, RFC 8414 | A server reads `issuer` and `registration_endpoint` from the Gateway's well-known metadata. |
-| MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`. |
+| Authorization server metadata, RFC 8414 | A server reads `issuer` and `registration_endpoint` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`. |
+| MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
 | JSON Schema 2020-12 | Schemas for every request, response and declaration are generated from the Rust types by Schemars 1.2. |
-| Veoveo module manifests | `ai.veoveo/module` is the `veoveo-modules` manifest, admitted exactly as a compiled module declaration. |
+| Veoveo module manifests | `veoveo_module` is the `veoveo-modules` manifest, admitted exactly as a compiled module declaration. |
 
-Every Veoveo addition uses the extension point of the standard it extends, under a
-collision-resistant name:
+Every Veoveo addition uses the extension point of the standard it extends:
 
 | Extension point | Names |
 |---|---|
-| RFC 7591 client metadata | `ai.veoveo/registration`, `ai.veoveo/authorization`, `ai.veoveo/module` |
-| RFC 7591 response members | `ai.veoveo/lease`, `ai.veoveo/access-tokens`, `ai.veoveo/database` |
+| RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization`, `veoveo_module` |
+| RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_lease`, `veoveo_access_tokens`, `veoveo_database` |
 | RFC 9396 authorization details type | `https://veoveo.ai/oauth/permissions` |
-| JWT private claims | `ai.veoveo/invocation`, `ai.veoveo/resource-invocation`, `ai.veoveo/artifact-upload` |
+| JWT public claims, RFC 7519 §4.2 collision-resistant names | `https://veoveo.ai/claims/invocation`, `https://veoveo.ai/claims/resource-invocation`, `https://veoveo.ai/claims/artifact-upload` |
 | MCP `capabilities.extensions` | `ai.veoveo/registration`, `ai.veoveo/authorization`, `ai.veoveo/module` |
 
 Following RFC 7591, a receiver ignores client metadata it does not understand. Each
-Veoveo member admits only its own declared fields and refuses unknown ones.
+Veoveo member admits only its own declared fields and refuses unknown ones. OAuth
+documents spell members in snake_case, and MCP advertisements in camelCase.
 
 ## Declarations
 
-### `ai.veoveo/registration`
+### Identity
 
-The server's slug, the URI scheme of its resources, its build version and the URL
-where the Gateway reaches its MCP endpoint.
+A server registers its slug as `software_id`, its build as `software_version`, the URI
+scheme of its resources as `veoveo_uri_scheme` and the URL where the Gateway reaches
+its MCP endpoint as `veoveo_mcp_endpoint`. MCP Discover advertises the same values as
+`ai.veoveo/registration`:
 
 ```json
 {
   "slug": "time",
   "uriScheme": "time",
   "version": "0.1.0",
-  "endpoint": "http://vv-mcp-time:8800/mcp"
+  "endpoint": "https://time.internal.example/mcp"
 }
 ```
 
@@ -63,10 +68,10 @@ The version holds 1 to 64 ASCII letters, digits, dots, underscores, plus signs o
 hyphens. The endpoint uses `http` or `https`, names a host and carries no credentials,
 query or fragment.
 
-### `ai.veoveo/authorization`
+### Authorization
 
 The server's permissions and the permission each tool, resource, resource template and
-prompt requires.
+prompt requires. The registration member `veoveo_authorization` spells it in snake_case:
 
 ```json
 {
@@ -77,11 +82,14 @@ prompt requires.
   ],
   "requirements": {
     "tools": { "resolve_time": "time.read", "create_temporal_event": "time.events.write" },
-    "resourceTemplates": { "time://events/{event}": "time.read" },
+    "resource_templates": { "time://events/{event}": "time.read" },
     "prompts": { "plan_window": "time.read" }
   }
 }
 ```
+
+MCP Discover advertises the same declaration as `ai.veoveo/authorization`, where the
+requirements member is `resourceTemplates`.
 
 `access` is exactly one of `read` or `write`. `risks` holds any of `sensitive`,
 `destructive`, `billed`, `physical` and `administer`, and an empty set is omitted.
@@ -104,16 +112,17 @@ A target the declaration omits is denied. An exact resource entry takes preceden
 over templates, and a URI matched by templates that require different permissions
 requires none and is denied.
 
-### `ai.veoveo/module`
+### Module
 
-The module manifest for a server that owns tables. A server without tables omits it.
+`veoveo_module` is the module manifest for a server that owns tables. A server without
+tables omits it.
 
 ```json
 {
   "name": "time",
   "ownership": [
-    { "kind": "tablePrefix", "name": "time_" },
-    { "kind": "functionPrefix", "name": "fn::time::" }
+    { "kind": "table_prefix", "name": "time_" },
+    { "kind": "function_prefix", "name": "fn::time::" }
   ],
   "requires": [{ "module": "identity" }],
   "migrations": [
@@ -131,8 +140,8 @@ from its compiled declaration with `ModuleManifest::from_setup`.
 
 MCP Discover advertises `ModuleSummary` under `ai.veoveo/module` instead of the full
 manifest: the name, the latest migration version and the SHA-256 of the manifest's
-JSON form. Discover advertises the registration and authorization declarations in
-full, so the Gateway compares what a server registered with what it serves.
+JSON form. Discover advertises the identity and authorization declarations in full, so
+the Gateway compares what a server registered with what it serves.
 
 ## Namespace Claims
 
@@ -160,9 +169,12 @@ Content-Type: application/json
   "token_endpoint_auth_method": "private_key_jwt",
   "grant_types": [],
   "response_types": [],
-  "ai.veoveo/registration": { "slug": "time", "uriScheme": "time", "version": "0.1.0", "endpoint": "http://vv-mcp-time:8800/mcp" },
-  "ai.veoveo/authorization": { "permissions": [], "requirements": {} },
-  "ai.veoveo/module": { "name": "time", "ownership": [], "migrations": [] },
+  "software_id": "time",
+  "software_version": "0.1.0",
+  "veoveo_uri_scheme": "time",
+  "veoveo_mcp_endpoint": "https://time.internal.example/mcp",
+  "veoveo_authorization": { "permissions": [], "requirements": {} },
+  "veoveo_module": { "name": "time", "ownership": [], "migrations": [] },
   "software_statement": "eyJ0eXAiOiJKV1QiLCJhbGciOiJFZERTQSIsImtpZCI6Ii4uLiJ9.eyIuLi4iOiIuLi4ifQ.c2ln"
 }
 ```
@@ -173,7 +185,8 @@ and the proxy substitutes the real value only on requests to the registration en
 `jwks` holds exactly one key, and its `kid` is the key's RFC 7638 thumbprint. The
 Gateway admits a request in this order and stops at the first failure:
 
-1. The bearer is the installation's registration secret, or the answer is HTTP 401.
+1. The bearer is the installation's registration secret, or the answer is HTTP 401
+   with `WWW-Authenticate: Bearer`.
 2. The body decodes into `ClientRegistrationRequest`.
 3. `ClientMetadata::check` passes: empty grant and response types, the authorization
    declaration within the namespace, and the module within its prefixes.
@@ -194,16 +207,20 @@ database credentials, creates the server's database user and answers HTTP 201:
   "token_endpoint_auth_method": "private_key_jwt",
   "grant_types": [],
   "response_types": [],
-  "ai.veoveo/registration": { "...": "..." },
-  "ai.veoveo/authorization": { "...": "..." },
-  "ai.veoveo/module": { "...": "..." },
+  "software_id": "time",
+  "software_version": "0.1.0",
+  "veoveo_uri_scheme": "time",
+  "veoveo_mcp_endpoint": "https://time.internal.example/mcp",
+  "veoveo_authorization": { "...": "..." },
+  "veoveo_module": { "...": "..." },
   "software_statement": "<as sent>",
-  "ai.veoveo/lease": { "expiresAt": "2026-10-11T12:00:30Z", "renewEverySeconds": 10 },
-  "ai.veoveo/access-tokens": {
-    "issuer": "veoveo-internal",
-    "jwks": { "keys": [{ "kty": "OKP", "crv": "Ed25519", "x": "...", "kid": "gateway-1", "alg": "EdDSA", "use": "sig" }] }
+  "veoveo_lease": { "expires_at": 1791763230, "renew_every_seconds": 10 },
+  "veoveo_access_tokens": {
+    "issuer": "https://gateway.example",
+    "jwks": { "keys": [{ "kty": "OKP", "crv": "Ed25519", "x": "...", "kid": "<thumbprint>", "alg": "EdDSA", "use": "sig" }] },
+    "resource": "https://time.internal.example/mcp"
   },
-  "ai.veoveo/database": {
+  "veoveo_database": {
     "endpoint": "ws://surrealdb:8000/",
     "namespace": "veoveo",
     "database": "platform",
@@ -214,11 +231,13 @@ database credentials, creates the server's database user and answers HTTP 201:
 ```
 
 The response repeats the registered metadata unchanged, and the registration client
-rejects a response that differs from what it sent. `ai.veoveo/database` appears when
-the server registered a module and the Gateway issued its user. The user has
-database-wide access and never administrator rights. `ai.veoveo/access-tokens` names
-the issuer and keys of the access tokens the Gateway forwards to this server.
-`registration_client_uri` uses `http` or `https`.
+rejects a response that differs from what it sent. `veoveo_database` appears when the
+server registered a module and the Gateway issued its user. The user has database-wide
+access and never administrator rights. `veoveo_access_tokens` names the issuer, keys
+and audience of the access tokens the Gateway forwards to this server. The issuer is
+the Gateway's HTTPS issuer URL, the value its RFC 8414 metadata announces, and the
+audience is the registered MCP endpoint. `registration_client_uri` uses `http` or
+`https`.
 
 ### Software Statement
 
@@ -232,7 +251,7 @@ client metadata together with:
 | `iss`, `sub` | the server's slug |
 | `aud` | the URL the request is sent to: the registration endpoint, or `registration_client_uri` for an update |
 | `iat`, `exp` | issue and expiry time, at most 60 seconds apart |
-| `jti` | a fresh UUID |
+| `jti` | a fresh UUIDv7 |
 
 The Gateway verifies the signature with the key in `jwks`, requires that key to equal
 the pinned key when the namespace has one, and requires the statement's metadata to
@@ -242,9 +261,9 @@ namespace, which is `unapproved_software_statement`.
 
 ## Lease Renewal
 
-A registration is a lease. `ai.veoveo/lease` gives the expiry and the interval at
-which the server renews. The server renews with an RFC 7592 update that repeats its
-metadata:
+A registration is a lease. `veoveo_lease` gives the expiry as NumericDate seconds and
+the interval at which the server renews. The server renews with an RFC 7592 update
+that repeats its metadata:
 
 ```http
 PUT /oauth/register/time-0b6f HTTP/1.1
@@ -277,7 +296,7 @@ as already removed.
 
 | Condition | HTTP | Body |
 |---|---|---|
-| Missing or wrong initial access token or registration access token | 401 | none |
+| Missing or wrong initial access token or registration access token | 401 with `WWW-Authenticate: Bearer` | none |
 | Malformed body or a declaration outside the namespace | 400 | `invalid_client_metadata` |
 | Malformed, stale, misaddressed or mismatched software statement | 400 | `invalid_software_statement` |
 | Namespace pinned to another key | 400 | `unapproved_software_statement` |
@@ -290,29 +309,31 @@ reason and names declared identifiers only, never request contents or secrets.
 The Gateway authorizes each request with installation roles over the target server's
 declared permissions, as the [policy evaluator](../../platform/policy/DESIGN.md#registered-server-decisions)
 describes. It then forwards the request with a fresh RFC 9068 access token signed by
-one of the keys in `ai.veoveo/access-tokens`:
+one of the keys in `veoveo_access_tokens`:
 
 ```json
-{ "typ": "at+jwt", "alg": "EdDSA", "kid": "gateway-1" }
+{ "typ": "at+jwt", "alg": "EdDSA", "kid": "<RFC 7638 thumbprint>" }
 ```
 
 ```json
 {
-  "iss": "veoveo-internal",
+  "iss": "https://gateway.example",
   "sub": "https://idp.example#alice",
-  "aud": "time",
-  "client_id": "veoveo-gateway",
+  "aud": "https://time.internal.example/mcp",
+  "client_id": "console",
+  "act": { "sub": "https://gateway.example" },
   "iat": 1791763200,
   "nbf": 1791763200,
   "exp": 1791763260,
-  "jti": "0b6f6a0e-6c55-4d4e-9c43-8f1f6f1b2a10",
+  "jti": "0199d4a1-7c00-7b3e-9f2a-6c1d2e3f4a5b",
   "scope": "time:use",
   "groups": ["tenant-members"],
   "authorization_details": [
     { "type": "https://veoveo.ai/oauth/permissions", "actions": ["time.events.write", "time.read"] }
   ],
-  "ai.veoveo/invocation": {
+  "https://veoveo.ai/claims/invocation": {
     "profile": "default",
+    "server": "time",
     "actor": { "id": "https://idp.example#alice", "kind": "user", "...": "..." },
     "authority": { "work_context": "development", "tenant": "dev", "membership": "contributor", "...": "..." },
     "request_context": { "...": "..." }
@@ -320,32 +341,43 @@ one of the keys in `ai.veoveo/access-tokens`:
 }
 ```
 
-`ai.veoveo/invocation` carries the profile, the actor, the invocation authority with
-its tenant, Work Context and membership, and the signed request context when one
-exists. `authorization_details` is omitted when nothing is granted. A server verifies
-the token and rejects it when:
+`sub` is the caller and `client_id` the OAuth client the caller used to reach the
+Gateway. The Gateway is the party acting for the caller, so `act` names it by its
+issuer URL. `aud` is the target server's resource URL, its registered MCP endpoint, and
+the invocation claim names the server's slug. The invocation claim also carries the
+profile, the actor, the invocation authority with its tenant, Work Context and
+membership, and the signed request context when one exists. RFC 7519 §4.2 asks for
+collision-resistant names for claims outside the IANA registry, and every registered
+server reads the invocation claim, so it uses a URI in the `veoveo.ai` domain rather
+than a private name. `authorization_details` is omitted when nothing is granted. A
+server verifies the token and rejects it when:
 
 - `typ` is neither `at+jwt` nor `application/at+jwt`, or `alg` is not `EdDSA`;
-- `kid` names no key from `ai.veoveo/access-tokens`, or the signature fails;
-- `iss` differs from the registered issuer, `aud` is not the server's slug, or `exp`
-  and `nbf` place the current time outside the token's lifetime, with no leeway;
-- `client_id` is not `veoveo-gateway`, or `sub`, `groups`, `roles` and `scope`
-  disagree with the embedded actor;
+- `kid` names no key from `veoveo_access_tokens`, or the signature fails;
+- `iss` differs from the registered issuer, `aud` differs from the registered
+  resource, the invocation claim names another server, or `exp` and `nbf` place the
+  current time outside the token's lifetime, with no leeway;
+- `jti` is not a UUIDv7;
+- `act` is missing, carries anything but `sub`, or names another party than `iss`;
+- `sub`, `groups`, `roles` and `scope` disagree with the embedded actor, or
+  `client_id` differs from the client in the request context;
 - the token carries more than one authorization details entry, or a granted
   permission lies outside the server's namespace;
 - the request context disagrees with the actor or authority, or the token outlives
   the caller's own access token.
 
-An ordinary request's token lives at most 60 seconds, and a token that opens
-`subscriptions/listen` at most 15 minutes. Both end no later than the caller's own
-access token.
+A rejected request receives HTTP 401 with `WWW-Authenticate: Bearer`, adding
+`error="invalid_token"` when a token was sent. An ordinary request's token lives at
+most 60 seconds, and a token that opens `subscriptions/listen` at most 15 minutes.
+Both end no later than the caller's own access token.
 
 The server checks the required permission again with
 `GatewayInternalIdentity::grants`. Per-object rules, such as an owner-only event,
-stay with the server. `veoveo-mcp-contract` issues and verifies these tokens with
-`GatewayInternalTokenIssuer::issue_granted` and `GatewayInternalTokenVerifier`, and
-`GatewayInternalTrustBundle::from_key_set` turns `ai.veoveo/access-tokens` into the
-verifier's key set. The hosted runtime admits the issuer `veoveo-internal`.
+stay with the server. `veoveo-mcp-contract` issues these tokens with
+`GatewayInternalTokenIssuer::issue` from a `ForwardedRequest`, and
+`GatewayInternalTokenVerifier::from_access_tokens` verifies them against the issuer,
+keys and resource in `veoveo_access_tokens`. The hosted runtime takes the same value
+through `HostedServerBuilder::internal_trust`.
 
 ## Registration Client
 
@@ -365,7 +397,9 @@ let metadata = ClientMetadata::new(
 let client = RegistrationClient::new(http, endpoint, registration_secret, key, metadata)?;
 let registration = client.register().await?;
 let database = registration.database();
-let trust = GatewayInternalTrustBundle::from_key_set(&registration.access_tokens().jwks)?;
+let server = HostedServer::for_domain::<TimeDomain>()
+    .deployment(&deployment, false)?
+    .internal_trust(registration.access_tokens())?;
 tokio::spawn(async move { client.maintain(registration, shutdown_signal()).await });
 ```
 
@@ -397,6 +431,7 @@ It checks the RFC 7638 thumbprint against RFC 8037 Appendix A. `tests/client.rs`
 the registration client against an in-process endpoint that applies the admission
 steps above: registration, read, renewal with token rotation, re-registration after
 expiry, removal, the pinned key and the initial access token. The software statement
-tests cover the pinned key, metadata, audience and lifetime. The forwarded token tests
-in `veoveo-mcp-contract` cover the token type, the single authorization detail, the
-namespace of granted permissions and agreement between standard and Veoveo claims.
+tests cover the pinned key, metadata, audience and lifetime. The forwarded token
+tests in `veoveo-mcp-contract` cover the token type, issuer, audience, actor, `jti`,
+the single authorization detail, the namespace of granted permissions and agreement
+between standard and Veoveo claims.

@@ -28,8 +28,8 @@ in its crate documents and in its contract resource.
 | OAuth 2.0, RFC 8414, RFC 9207, RFC 8707, RFC 9728, and OpenID Connect Discovery 1.0 | private-installation profile with installation or governed managed-client registrations, exact issuer and resource binding, step-up scopes, and `private_key_jwt`; end-user clients do not use Dynamic Client Registration |
 | OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, renew and remove themselves through the profile in [the server registration protocol](../ext-registration/DESIGN.md) |
 | Veoveo resumable artifact HTTP upload | repository-owned JSON admission/completion and raw part PUT contract, UUIDv7 idempotency, SHA-256 integrity, and bounded browser-safe 64-bit counters; independent of MCP methods |
-| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `aud` is the server slug, with granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail and the actor, authority and request context in the `ai.veoveo/invocation` claim; specified in [the server registration protocol](../ext-registration/DESIGN.md#forwarded-identity) |
-| Veoveo upload token | the same access token with `artifact-upload` audience and signed control-plane and context digests in the `ai.veoveo/artifact-upload` claim; restricted to the HTTP upload service |
+| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `iss` is the Gateway's HTTPS issuer URL, `aud` the server's resource URL (RFC 8707), `client_id` the caller's OAuth client and `jti` a UUIDv7, with the Gateway in the RFC 8693 `act` claim, granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail, and the actor, authority and request context in the `https://veoveo.ai/claims/invocation` claim; specified in [the server registration protocol](../ext-registration/DESIGN.md#forwarded-identity) |
+| Veoveo upload token | the same access token addressed to the upload service's resource URL, naming the `artifact-upload` server and carrying signed control-plane and context digests in the `https://veoveo.ai/claims/artifact-upload` claim; restricted to the HTTP upload service |
 | Veoveo access-token `session_family` | Signed UUIDv7 refresh-family binding for browser tokens; current family revocation is enforced by the gateway, and absence supplies no renewable session authority |
 | Veoveo `request_context` | Signed source principal, verified access-token metadata and required audit request correlation; includes OAuth client, optional session family and managed-agent execution metadata; contains no bearer value and grants no independent renewal permission |
 | `ai.veoveo/knowledge-source` | Veoveo extension that declares resource collections as knowledge, with typed read observations and conditional reads; specified in [the knowledge source extension](../ext-knowledge/DESIGN.md) |
@@ -309,7 +309,7 @@ on validated transport security and catalog generation; request authority stays 
 token and request metadata.
 
 Authenticated MCP and HTTP proxy requests include typed `request_context` in the
-token's `ai.veoveo/invocation` claim, which refuses unknown fields. Access-token
+token's `https://veoveo.ai/claims/invocation` claim, which refuses unknown fields. Access-token
 metadata carries checked `AuditManagedExecution` attribution rather than an owner
 public claim.
 Attributed requests must match automated service identity, client, tenant and Work
@@ -489,7 +489,7 @@ supplies three things:
 let server = HostedServer::for_domain::<MyDomain>()
     .deployment(&public_deployment, args.allow_loopback_hosts)?
     .allowed_hosts(args.allowed_hosts.iter().cloned())
-    .internal_trust(GatewayInternalTrustBundle::from_key_set(&registration.access_tokens().jwks)?)?
+    .internal_trust(registration.access_tokens())?
     .handler(move || {
         Hosted::new(MyDomain::new(state.clone()))
             .with_tasks(DurableTasks::tasks_only(MyTasks::new(state.clone())))
@@ -525,7 +525,7 @@ The host gives every server the same behavior:
 | Behavior | Host rule |
 |---|---|
 | Routes | `{mount}/healthz`, optional `{mount}/readyz`, `{mount}/admin/docs/*` and `{mount}/mcp` |
-| Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes; the token audience is the server slug |
+| Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug; a rejection is 401 with `WWW-Authenticate: Bearer` |
 | Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` after the domain's list hooks, sorted, 100 per page, private, five-second cache |
 | Well-known reads | `{scheme}://docs` routes and `{scheme}://contract` |
@@ -542,8 +542,9 @@ template repository.
 The crate's `testing` feature provides `hosting::testing` for a server's
 dev-dependencies. `testing::for_domain` starts the builder on a fixed test deployment
 that trusts a published test key. `TestGateway` signs gateway access tokens for a test
-user and sends MCP and HTTP requests through the complete router, so discovery,
-reads, tools and prompts are testable without a deployment.
+user, carrying the permissions `TestGateway::granting` sets, and sends MCP and HTTP
+requests through the complete router, so discovery, reads, tools and prompts are
+testable without a deployment.
 
 ## Deployment Identity
 

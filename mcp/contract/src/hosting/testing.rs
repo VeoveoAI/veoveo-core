@@ -18,7 +18,7 @@
 //! ```
 //!
 //! The signing key is a published test key. Production servers trust only the
-//! JWKS they receive at startup, which never contains it.
+//! keys their registration response names, which never contain it.
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -30,6 +30,7 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{TimeDelta, Utc};
 use tower::ServiceExt;
+use veoveo_mcp_ext_registration::{AccessTokenTrust, Ed25519JwkSet, ResourceIndicator};
 use veoveo_types::{
     AccessSubject, GroupId, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
     RoleId, ScopeName, TenantId, WorkContextId, WorkContextMembershipLevel,
@@ -40,32 +41,46 @@ use super::{
     DomainServer, HostedServer, HostedServerBuilder, Missing, Provided, server::Deployment,
 };
 use crate::{
-    GATEWAY_INTERNAL_TOKEN_ISSUER, GatewayInternalSigningKey, GatewayInternalTokenIssuer,
-    GatewayInternalTokenVerifier, GatewayInternalTrustBundle, GatewayProfileId, Principal,
-    PrincipalKind, PublicDeployment, TokenIssuer, TokenSubject,
+    ForwardedRequest, GatewayInternalSigningKey, GatewayInternalTokenIssuer,
+    GatewayInternalTokenVerifier, GatewayInternalTrustBundle, GatewayProfileId, OAuthClientId,
+    Principal, PrincipalKind, PublicDeployment, TokenIssuer, TokenSubject,
 };
 
 /// The host authority of the test deployment.
 pub const TEST_HOST: &str = "veoveo.test";
 /// The protocol version test requests declare.
 pub const TEST_PROTOCOL_VERSION: &str = "2026-07-28";
+/// The test Gateway's issuer URL.
+pub const TEST_ISSUER: &str = "https://gateway.veoveo.test";
+/// The OAuth client the test user calls through.
+pub const TEST_CLIENT: &str = "test-client";
+/// The resource URL test tokens are addressed to.
+pub const TEST_RESOURCE: &str = "https://veoveo.test/mcp";
 
-const TEST_KEY_ID: &str = "test-key";
 const PRIVATE_KEY_DER_B64: &str =
     "MC4CAQAwBQYDK2VwBCIEII4AsVspz8h7mpqvOkgslJP07HfqpiWMZA+6Ii90lVBl";
-pub(crate) const PUBLIC_KEY_X: &str = "OMOoJJu_AQS7UM8u2GVtMVj8W1zcE6QhR0DMBr9HEcg";
 
-/// The test signing key under `key_id`.
-pub fn signing_key(key_id: &str) -> GatewayInternalSigningKey {
-    GatewayInternalSigningKey::new(key_id, STANDARD.decode(PRIVATE_KEY_DER_B64).unwrap()).unwrap()
+/// The test signing key, named by its RFC 7638 thumbprint.
+pub fn signing_key() -> GatewayInternalSigningKey {
+    GatewayInternalSigningKey::new(STANDARD.decode(PRIVATE_KEY_DER_B64).unwrap()).unwrap()
 }
 
-/// A trust bundle holding the test public key under `key_id`.
-pub fn trust_bundle(key_id: &str) -> GatewayInternalTrustBundle {
-    GatewayInternalTrustBundle::from_json(&format!(
-        r#"{{"keys":[{{"kty":"OKP","crv":"Ed25519","x":"{PUBLIC_KEY_X}","alg":"EdDSA","use":"sig","kid":"{key_id}"}}]}}"#
-    ))
-    .unwrap()
+fn test_keys() -> Ed25519JwkSet {
+    Ed25519JwkSet::new(vec![signing_key().verification_key()]).unwrap()
+}
+
+/// A trust bundle holding the test public key.
+pub fn trust_bundle() -> GatewayInternalTrustBundle {
+    GatewayInternalTrustBundle::from_key_set(&test_keys()).unwrap()
+}
+
+/// The test Gateway's issuer, key and audience, as a registration response names them.
+pub fn access_token_trust() -> AccessTokenTrust {
+    AccessTokenTrust {
+        issuer: TokenIssuer::parse(TEST_ISSUER).unwrap(),
+        jwks: test_keys(),
+        resource: ResourceIndicator::parse(TEST_RESOURCE).unwrap(),
+    }
 }
 
 /// The test user: `user-1` in `tenant-a`, operator, without data labels.
@@ -116,7 +131,7 @@ pub fn for_domain<D: DomainServer>() -> HostedServerBuilder<
     HostedServer::for_domain::<D>()
         .deployment(&deployment, false)
         .unwrap()
-        .internal_trust(trust_bundle(TEST_KEY_ID))
+        .internal_trust(&access_token_trust())
         .unwrap()
 }
 
@@ -130,7 +145,7 @@ pub fn internal_for_domain<D: DomainServer>() -> HostedServerBuilder<
 > {
     HostedServer::for_domain::<D>()
         .internal([TEST_HOST.to_owned()])
-        .internal_trust(trust_bundle(TEST_KEY_ID))
+        .internal_trust(&access_token_trust())
         .unwrap()
 }
 
@@ -144,7 +159,7 @@ pub fn internal_root_for_domain<D: DomainServer>() -> HostedServerBuilder<
 > {
     HostedServer::for_domain::<D>()
         .internal_root([TEST_HOST.to_owned()])
-        .internal_trust(trust_bundle(TEST_KEY_ID))
+        .internal_trust(&access_token_trust())
         .unwrap()
 }
 
@@ -164,22 +179,23 @@ impl TestGateway {
         }
     }
 
-    /// A gateway assertion for the test user, addressed to this server.
+    /// An access token for the test user, addressed to this server.
     pub fn token(&self) -> String {
-        GatewayInternalTokenIssuer::new(
-            TokenIssuer::parse(GATEWAY_INTERNAL_TOKEN_ISSUER).unwrap(),
-            signing_key(TEST_KEY_ID),
-        )
-        .issue(
-            GatewayProfileId::parse("operations").unwrap(),
-            self.slug.clone(),
-            principal(),
-            authority(),
-            None,
-            Utc::now() + TimeDelta::minutes(5),
-        )
-        .unwrap()
-        .bearer_token
+        GatewayInternalTokenIssuer::new(TokenIssuer::parse(TEST_ISSUER).unwrap(), signing_key())
+            .unwrap()
+            .issue(ForwardedRequest {
+                profile: GatewayProfileId::parse("operations").unwrap(),
+                server: self.slug.clone(),
+                audience: ResourceIndicator::parse(TEST_RESOURCE).unwrap(),
+                client: OAuthClientId::parse(TEST_CLIENT).unwrap(),
+                actor: principal(),
+                authority: authority(),
+                permissions: BTreeSet::new(),
+                request_context: None,
+                expires_at: Utc::now() + TimeDelta::minutes(5),
+            })
+            .unwrap()
+            .bearer_token
     }
 
     /// Sends a raw request to the router.
