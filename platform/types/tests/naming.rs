@@ -645,19 +645,12 @@ fn referenced_owner_classification_is_preserved_and_conflicts_are_rejected() {
 }
 
 #[test]
-fn actual_profile_schema_keeps_closed_revision_and_owner_reference_forms() {
+fn actual_profile_schema_keeps_closed_role_and_owner_reference_forms() {
     let root = schemars::schema_for!(NamingProfile);
     assert_eq!(root.get("type"), Some(&json!("object")));
     assert_eq!(root.get("additionalProperties"), Some(&json!(false)));
-    assert_eq!(
-        root.as_value()["properties"]["revision"]["minimum"],
-        json!(1)
-    );
-    assert_eq!(
-        root.as_value()["properties"]["revision"]["maximum"],
-        json!(1)
-    );
-    assert_eq!(root.as_value()["required"], json!(["revision", "role"]));
+    assert!(root.as_value()["properties"].get("revision").is_none());
+    assert_eq!(root.as_value()["required"], json!(["role"]));
     let mut wrong = declaration();
     wrong.authority = NamingAuthority::Standard {
         document: HttpsUrl::parse("https://www.rfc-editor.org/rfc/rfc9562").unwrap(),

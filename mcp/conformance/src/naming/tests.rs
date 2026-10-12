@@ -102,14 +102,13 @@ fn local_recursive_references_keep_their_field_context_and_refuse_nonprogress() 
 #[test]
 fn scalar_roles_are_narrow_and_uniform_alternatives_preserve_siblings() {
     let scope = marker(ScalarGrammar::ScopeToken);
-    inspect(json!({"type":"string","enum":["owner:read"],"ai.veoveo/naming-profile":scope}))
-        .unwrap();
-    assert!(inspect(json!({"type":"object","properties":{"bad_field":{"type":"string"}},"ai.veoveo/naming-profile":scope})).is_err());
-    inspect(json!({"enum":["owner:read"],"anyOf":[{"type":"string","ai.veoveo/naming-profile":scope},{"type":"null"}]})).unwrap();
-    assert!(inspect(json!({"type":"object","properties":{"scope":{"type":"string","enum":["owner:read"],"ai.veoveo/naming-profile":scope},"bad_field":{"type":"string"}}})).is_err());
+    inspect(json!({"type":"string","enum":["owner:read"],"namingProfile":scope})).unwrap();
+    assert!(inspect(json!({"type":"object","properties":{"bad_field":{"type":"string"}},"namingProfile":scope})).is_err());
+    inspect(json!({"enum":["owner:read"],"anyOf":[{"type":"string","namingProfile":scope},{"type":"null"}]})).unwrap();
+    assert!(inspect(json!({"type":"object","properties":{"scope":{"type":"string","enum":["owner:read"],"namingProfile":scope},"bad_field":{"type":"string"}}})).is_err());
     let mut unsupported = scope.clone();
-    unsupported["revision"] = json!(99);
-    assert!(inspect(json!({"type":"string","ai.veoveo/naming-profile":unsupported})).is_err());
+    unsupported["unknownMember"] = json!(99);
+    assert!(inspect(json!({"type":"string","namingProfile":unsupported})).is_err());
 }
 #[test]
 fn dictionary_key_association_never_exempts_mapped_value_fields() {
@@ -493,7 +492,7 @@ fn declared_subtree_exceptions_preserve_surrounding_fields_and_reference_limits(
         },
     ] {
         let marker = serde_json::to_value(NamingProfile::new(role).unwrap()).unwrap();
-        let external = json!({"type":"object","properties":{"external_field":{"type":"string","enum":["ExternalValue"]}},"ai.veoveo/naming-profile":marker});
+        let external = json!({"type":"object","properties":{"external_field":{"type":"string","enum":["ExternalValue"]}},"namingProfile":marker});
         let result = inspect(external.clone()).unwrap();
         assert!(result.roots()[0].source_review_required);
         inspect(json!({"type":"object","properties":{"externalBody":external.clone(),"camelField":{"type":"string"}}})).unwrap();
@@ -518,7 +517,7 @@ fn exception_edges_never_mask_unclassified_siblings_or_second_uses() {
     let profile =
         serde_json::to_value(NamingProfile::new(NamingRole::External { declaration }).unwrap())
             .unwrap();
-    let external = json!({"type":"object","properties":{"external_field":{"type":"integer"}},"ai.veoveo/naming-profile":profile});
+    let external = json!({"type":"object","properties":{"external_field":{"type":"integer"}},"namingProfile":profile});
     for keyword in ["allOf", "anyOf", "oneOf"] {
         let positive =
             json!({keyword:[external.clone(),{"properties":{"localField":{"type":"integer"}}}]});
@@ -537,7 +536,7 @@ fn exception_edges_never_mask_unclassified_siblings_or_second_uses() {
     inspect(json!({"$defs":{"External":external.clone()},"$ref":"#/$defs/External","properties":{"localField":{"type":"integer"}}})).unwrap();
     assert!(inspect(json!({"$defs":{"External":external},"$ref":"#/$defs/External","properties":{"bad_field":{"type":"integer"}}})).is_err());
     let classified =
-        json!({"$ref":"#/$defs/Raw","ai.veoveo/naming-profile":marker(ScalarGrammar::ScopeToken)});
+        json!({"$ref":"#/$defs/Raw","namingProfile":marker(ScalarGrammar::ScopeToken)});
     let raw = json!({"type":"string","enum":["owner:read"]});
     inspect(json!({"type":"object","$defs":{"Raw":raw.clone()},"properties":{"scope":classified.clone()}})).unwrap();
     assert!(inspect(json!({"type":"object","$defs":{"Raw":raw.clone()},"properties":{"scope":classified,"other":{"$ref":"#/$defs/Raw"}}})).is_err());
@@ -748,8 +747,7 @@ fn definition_use_contexts_cover_draft7_custom_paths_and_captured_key_references
             "#/components/owner~1schemas/Raw",
         ),
     ] {
-        let scope =
-            json!({"$ref":reference,"ai.veoveo/naming-profile":marker(ScalarGrammar::ScopeToken)});
+        let scope = json!({"$ref":reference,"namingProfile":marker(ScalarGrammar::ScopeToken)});
         let mut positive = document.clone();
         positive["type"] = json!("object");
         positive["properties"] = json!({"scope":scope.clone()});
@@ -818,7 +816,7 @@ fn definition_use_contexts_cover_draft7_custom_paths_and_captured_key_references
             "{path}"
         );
     }
-    let open = json!({"$defs":{"Map":{"type":"object","additionalProperties":true,"ai.veoveo/naming-profile":serde_json::to_value(NamingProfile::new(NamingRole::Dictionary { key_schema: json_schema!({"type":"string"}) }).unwrap()).unwrap()}},"$ref":"#/$defs/Map","const":{"user-key":{"provider_payload":1}}});
+    let open = json!({"$defs":{"Map":{"type":"object","additionalProperties":true,"namingProfile":serde_json::to_value(NamingProfile::new(NamingRole::Dictionary { key_schema: json_schema!({"type":"string"}) }).unwrap()).unwrap()}},"$ref":"#/$defs/Map","const":{"user-key":{"provider_payload":1}}});
     inspect(open).unwrap();
     let provider = json!({"type":"object","properties":{"providerPayload":{}},"const":{"providerPayload":{"provider_key":1}}});
     inspect(provider).unwrap();
@@ -867,12 +865,12 @@ fn nested_external_literal_and_scalar_reference_preserve_owner_roles() {
     let marker =
         serde_json::to_value(NamingProfile::new(NamingRole::External { declaration }).unwrap())
             .unwrap();
-    inspect(json!({"type":"object","properties":{"payload":{"type":"object","properties":{"external_field":{"type":"integer"}},"ai.veoveo/naming-profile":marker}},"const":{"payload":{"external_field":1}}})).unwrap();
+    inspect(json!({"type":"object","properties":{"payload":{"type":"object","properties":{"external_field":{"type":"integer"}},"namingProfile":marker}},"const":{"payload":{"external_field":1}}})).unwrap();
     let scope = marker_for_scope();
     inspect(json!({"type":"object","$defs":{"Scope":scope},"properties":{"scope":{"$ref":"#/$defs/Scope"}},"const":{"scope":"owner:read"}})).unwrap();
 }
 fn marker_for_scope() -> Value {
-    json!({"type":"string","enum":["owner:read"],"ai.veoveo/naming-profile":marker(ScalarGrammar::ScopeToken)})
+    json!({"type":"string","enum":["owner:read"],"namingProfile":marker(ScalarGrammar::ScopeToken)})
 }
 
 #[test]
@@ -885,7 +883,7 @@ fn literal_constraint_sources_do_not_reclassify_ref_arrays_or_foreign_siblings()
         version: NamingLabel::new("v1").unwrap(),
         applicability: NamingLabel::new("external subtree").unwrap(),
     };
-    let external = json!({"type":"object","properties":{"external_field":{"type":"integer"}},"ai.veoveo/naming-profile":serde_json::to_value(NamingProfile::new(NamingRole::External { declaration }).unwrap()).unwrap()});
+    let external = json!({"type":"object","properties":{"external_field":{"type":"integer"}},"namingProfile":serde_json::to_value(NamingProfile::new(NamingRole::External { declaration }).unwrap()).unwrap()});
     for wrapper in [
         json!({"$ref":"#/$defs/Scopes"}),
         json!({"allOf":[{"$ref":"#/$defs/Scopes"}]}),
@@ -907,7 +905,7 @@ fn productive_recursive_dictionary_memo_uses_captured_role_identity() {
         .unwrap(),
     )
     .unwrap();
-    let mut graph = json!({"$defs":{"Map":{"type":"object","additionalProperties":{"$ref":"#/$defs/Map"},"ai.veoveo/naming-profile":profile}},"$ref":"#/$defs/Map"});
+    let mut graph = json!({"$defs":{"Map":{"type":"object","additionalProperties":{"$ref":"#/$defs/Map"},"namingProfile":profile}},"$ref":"#/$defs/Map"});
     inspect(graph.clone()).unwrap();
     graph["$defs"]["Map"]["additionalProperties"] =
         json!({"type":"object","properties":{"bad_field":{"type":"integer"}}});
@@ -920,8 +918,8 @@ fn productive_recursive_dictionary_memo_uses_captured_role_identity() {
 #[test]
 fn complete_literal_constraint_source_matrix_uses_maintained_applicability() {
     let scope = marker_for_scope();
-    let key = json!({"type":"string","pattern":"^[a-z]+:read$","ai.veoveo/naming-profile":marker(ScalarGrammar::ScopeToken)});
-    let dictionary = json!({"type":"object","patternProperties":{"^[a-z]+:read$":scope.clone()},"additionalProperties":false,"ai.veoveo/naming-profile":serde_json::to_value(NamingProfile::new(NamingRole::Dictionary { key_schema: Schema::try_from(key).unwrap() }).unwrap()).unwrap()});
+    let key = json!({"type":"string","pattern":"^[a-z]+:read$","namingProfile":marker(ScalarGrammar::ScopeToken)});
+    let dictionary = json!({"type":"object","patternProperties":{"^[a-z]+:read$":scope.clone()},"additionalProperties":false,"namingProfile":serde_json::to_value(NamingProfile::new(NamingRole::Dictionary { key_schema: Schema::try_from(key).unwrap() }).unwrap()).unwrap()});
     inspect(json!({"type":"object","$defs":{"Map":dictionary},"properties":{"values":{"$ref":"#/$defs/Map"}},"const":{"values":{"owner:read":"owner:read"}}})).unwrap();
     let then = json!({"type":"object","properties":{"kind":{"type":"string"},"payload":{"type":"string"}},"if":{"properties":{"kind":{"const":"selected"}}},"then":{"properties":{"payload":scope.clone()}},"else":{"properties":{"payload":{"type":"string","enum":["ordinary"]}}},"const":{"kind":"selected","payload":"owner:read"}});
     inspect(then.clone()).unwrap();
@@ -979,7 +977,7 @@ fn literal_full_applicator_roles_footprints_and_legacy_guards() {
             declaration: declaration.clone(),
         },
     ] {
-        let external = json!({"type":"object","required":["external_field"],"properties":{"external_field":{"type":"string"}},"ai.veoveo/naming-profile":serde_json::to_value(NamingProfile::new(role).unwrap()).unwrap()});
+        let external = json!({"type":"object","required":["external_field"],"properties":{"external_field":{"type":"string"}},"namingProfile":serde_json::to_value(NamingProfile::new(role).unwrap()).unwrap()});
         for wrapper in [
             json!({"$ref":"#/$defs/Array"}),
             json!({"allOf":[{"$ref":"#/$defs/Array"}]}),
@@ -1013,7 +1011,7 @@ fn literal_full_applicator_roles_footprints_and_legacy_guards() {
     let mut inactive = dependency;
     inactive["const"] = json!({"payload":"owner:read"});
     assert!(inspect(inactive).is_err());
-    let predicate = json!({"type":"object","not":{"type":"object","required":["external_field"],"ai.veoveo/naming-profile":serde_json::to_value(NamingProfile::new(NamingRole::External { declaration }).unwrap()).unwrap()},"const":{"localField":1}});
+    let predicate = json!({"type":"object","not":{"type":"object","required":["external_field"],"namingProfile":serde_json::to_value(NamingProfile::new(NamingRole::External { declaration }).unwrap()).unwrap()},"const":{"localField":1}});
     inspect(predicate.clone()).unwrap();
     let mut bad = predicate;
     bad["const"] = json!({"bad_field":1});
@@ -1034,7 +1032,7 @@ fn literal_full_applicator_roles_footprints_and_legacy_guards() {
     }
     assert!(inspect(json!({"dependencies":{"trigger":{"type":"object"}}})).is_err());
     assert!(inspect(json!({"$schema":"http://json-schema.org/draft-07/schema#","prefixItems":[{"type":"string"}]})).is_err());
-    let fake = json!({"type":"object","properties":{"providerPayload":true},"const":{"providerPayload":{"$ref":"https://foreign.example/schema","ai.veoveo/naming-profile":{"kind":"made_up"}}}});
+    let fake = json!({"type":"object","properties":{"providerPayload":true},"const":{"providerPayload":{"$ref":"https://foreign.example/schema","namingProfile":{"kind":"made_up"}}}});
     inspect(fake).unwrap();
     assert!(
         inspect(json!({"type":"object","const":{"$ref":"https://foreign.example/schema"}}))
@@ -1059,8 +1057,7 @@ fn literal_full_applicator_roles_footprints_and_legacy_guards() {
 
 #[test]
 fn detached_unevaluated_item_refs_and_indexed_large_footprints_remain_bounded() {
-    let scope =
-        json!({"type":"string","ai.veoveo/naming-profile":marker(ScalarGrammar::ScopeToken)});
+    let scope = json!({"type":"string","namingProfile":marker(ScalarGrammar::ScopeToken)});
     inspect(json!({"$defs":{"Scope":scope},"type":"object","properties":{"payload":{"type":"array","unevaluatedItems":{"$ref":"#/$defs/Scope"}}},"const":{"payload":["owner:read"]}})).unwrap();
     let values: serde_json::Map<String, Value> =
         (0..10000).map(|i| (format!("a{i}"), json!(i))).collect();
@@ -1090,7 +1087,7 @@ fn draft7_ignored_ref_siblings_cannot_supply_payload_exemptions() {
         },
         NamingRole::Jwt { declaration },
     ] {
-        let ext = json!({"type":"object","ai.veoveo/naming-profile":serde_json::to_value(NamingProfile::new(role).unwrap()).unwrap()});
+        let ext = json!({"type":"object","namingProfile":serde_json::to_value(NamingProfile::new(role).unwrap()).unwrap()});
         let mut graph = json!({"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"Base":{"type":"object","properties":{"payload":{"type":"object"}}}},"type":"object","properties":{"value":{"$ref":"#/definitions/Base","allOf":[{"properties":{"payload":ext}}]}},"const":{"value":{"payload":{"bad_field":1}}}});
         assert!(inspect(graph.clone()).is_err());
         for uri in [

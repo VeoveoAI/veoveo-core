@@ -25,9 +25,9 @@ pub use id::Identity;
 pub use veoveo_macros::{Vocabulary, embedded_document, id, resource_address};
 pub mod naming;
 pub use naming::{
-    NAMING_PROFILE_KEY, NamingAuthority, NamingDeclaration, NamingLabel, NamingProfile,
-    NamingProfileError, NamingRole, NamingSchemaContext, ScalarGrammar, ScalarNaming,
-    dictionary_schema, dictionary_schema_with_key, naming_profile, scalar_schema,
+    NAMING_META_SCHEMA, NAMING_PROFILE_KEY, NAMING_VOCABULARY, NamingAuthority, NamingDeclaration,
+    NamingLabel, NamingProfile, NamingProfileError, NamingRole, NamingSchemaContext, ScalarGrammar,
+    ScalarNaming, dictionary_schema, dictionary_schema_with_key, naming_profile, scalar_schema,
     with_naming_profile,
 };
 mod id_profile;
@@ -105,9 +105,8 @@ pub use task_type::{TaskTypeDefinition, TaskTypeName};
 
 pub use permission_names::{PermissionName, ResourceTypeName};
 pub use platform_names::{
-    RESERVED_SERVER_SLUGS,
     CanonicalTaskId, GatewayProfileId, GatewayRefreshFamilyId, LocalToolName, OAuthClientId,
-    PromptName, ServerSlug,
+    PromptName, RESERVED_SERVER_SLUGS, ServerSlug,
 };
 
 mod agent_names;

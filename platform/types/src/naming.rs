@@ -7,7 +7,12 @@ use std::collections::BTreeSet;
 
 mod dictionary;
 
-pub const NAMING_PROFILE_KEY: &str = "ai.veoveo/naming-profile";
+/// The annotation keyword of the Veoveo naming vocabulary, `https://veoveo.ai/schemas/vocab/naming`.
+pub const NAMING_PROFILE_KEY: &str = "namingProfile";
+/// The naming vocabulary's identifier.
+pub const NAMING_VOCABULARY: &str = "https://veoveo.ai/schemas/vocab/naming";
+/// The meta-schema that declares the naming vocabulary.
+pub const NAMING_META_SCHEMA: &str = "https://veoveo.ai/schemas/meta/naming";
 
 /// Built-in grammars describe existing admission, independently of DTO field casing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, crate::Vocabulary)]
@@ -220,16 +225,11 @@ pub enum NamingRole {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct NamingProfileValue {
-    #[schemars(range(min = 1, max = 1))]
-    revision: u8,
     role: NamingRole,
 }
 impl Check for NamingProfileValue {
     type Error = NamingProfileError;
     fn check(&self) -> Result<(), Self::Error> {
-        if self.revision != 1 {
-            return Err(NamingProfileError::Revision);
-        }
         match &self.role {
             NamingRole::Scalar { profile } => profile.check(),
             NamingRole::Dictionary { key_schema } => {
@@ -249,13 +249,10 @@ impl Check for NamingProfileValue {
 pub struct NamingProfile(Checked<NamingProfileValue>);
 impl NamingProfile {
     pub fn new(role: NamingRole) -> Result<Self, NamingProfileError> {
-        Checked::new(NamingProfileValue { revision: 1, role }).map(Self)
+        Checked::new(NamingProfileValue { role }).map(Self)
     }
     pub fn role(&self) -> &NamingRole {
         &self.0.role
-    }
-    pub fn revision(&self) -> u8 {
-        self.0.revision
     }
 }
 impl JsonSchema for NamingProfile {
@@ -271,8 +268,6 @@ impl JsonSchema for NamingProfile {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum NamingProfileError {
-    #[error("unsupported naming profile revision")]
-    Revision,
     #[error("invalid naming profile declaration")]
     Declaration,
     #[error("invalid naming profile metadata")]

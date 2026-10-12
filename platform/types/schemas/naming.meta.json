@@ -1,0 +1,321 @@
+{
+  "$defs": {
+    "HttpsUrl": {
+      "description": "Canonical ASCII HTTPS URL without credentials or a fragment. The URL parser also checks host syntax, escaping and normalization; runtime policy checks access.",
+      "format": "uri",
+      "pattern": "^https://[^/?#@\\s]+/[^#\\s]*$",
+      "type": "string"
+    },
+    "NamingAuthority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "owner",
+              "type": "string"
+            },
+            "module": {
+              "$ref": "#/$defs/NamingLabel"
+            }
+          },
+          "required": [
+            "kind",
+            "module"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "document": {
+              "$ref": "#/$defs/HttpsUrl"
+            },
+            "kind": {
+              "const": "standard",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "document"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "document": {
+              "$ref": "#/$defs/ResourceUri"
+            },
+            "kind": {
+              "const": "schema",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "document"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "NamingDeclaration": {
+      "additionalProperties": false,
+      "description": "These references describe a local schema declaration; they select no executable grammar.",
+      "properties": {
+        "applicability": {
+          "$ref": "#/$defs/NamingLabel"
+        },
+        "authority": {
+          "$ref": "#/$defs/NamingAuthority"
+        },
+        "profile": {
+          "$ref": "#/$defs/NamingLabel"
+        },
+        "version": {
+          "$ref": "#/$defs/NamingLabel"
+        }
+      },
+      "required": [
+        "authority",
+        "profile",
+        "version",
+        "applicability"
+      ],
+      "type": "object"
+    },
+    "NamingLabel": {
+      "description": "Admitted informational text. Source review establishes its semantic truth.",
+      "type": "string"
+    },
+    "NamingProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/NamingRole"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "NamingProfile",
+      "type": "object"
+    },
+    "NamingRole": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "scalar",
+              "type": "string"
+            },
+            "profile": {
+              "$ref": "#/$defs/ScalarNaming"
+            }
+          },
+          "required": [
+            "kind",
+            "profile"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Key schema is produced by the SAME live generator as the map's value schema.",
+          "properties": {
+            "keySchema": true,
+            "kind": {
+              "const": "dictionary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keySchema"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "declaration": {
+              "$ref": "#/$defs/NamingDeclaration"
+            },
+            "kind": {
+              "const": "jwt",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "declaration"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "declaration": {
+              "$ref": "#/$defs/NamingDeclaration"
+            },
+            "kind": {
+              "const": "frozen",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "declaration"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "declaration": {
+              "$ref": "#/$defs/NamingDeclaration"
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "declaration"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ResourceUri": {
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "grammar": "resource_uri",
+            "kind": "builtin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "ScalarGrammar": {
+      "description": "Built-in grammars describe existing admission, independently of DTO field casing.",
+      "enum": [
+        "scope_token",
+        "scope_name",
+        "task_type_name",
+        "server_slug",
+        "resource_scheme",
+        "resource_uri",
+        "resource_template",
+        "resource_selector_template",
+        "resource_prefix",
+        "extension_name",
+        "format_uri",
+        "contract_uri"
+      ],
+      "type": "string"
+    },
+    "ScalarNaming": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "grammar": {
+              "$ref": "#/$defs/ScalarGrammar"
+            },
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "grammar"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "declaration": {
+              "$ref": "#/$defs/NamingDeclaration"
+            },
+            "kind": {
+              "const": "owner_identity",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "declaration"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "declaration": {
+              "$ref": "#/$defs/NamingDeclaration"
+            },
+            "kind": {
+              "const": "owner_resource",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "declaration"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "declaration": {
+              "$ref": "#/$defs/NamingDeclaration"
+            },
+            "kind": {
+              "const": "standard",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "declaration"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$dynamicAnchor": "meta",
+  "$id": "https://veoveo.ai/schemas/meta/naming",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2020-12/vocab/applicator": true,
+    "https://json-schema.org/draft/2020-12/vocab/content": true,
+    "https://json-schema.org/draft/2020-12/vocab/core": true,
+    "https://json-schema.org/draft/2020-12/vocab/format-annotation": true,
+    "https://json-schema.org/draft/2020-12/vocab/meta-data": true,
+    "https://json-schema.org/draft/2020-12/vocab/unevaluated": true,
+    "https://json-schema.org/draft/2020-12/vocab/validation": true,
+    "https://veoveo.ai/schemas/vocab/naming": false
+  },
+  "allOf": [
+    {
+      "$ref": "https://json-schema.org/draft/2020-12/schema"
+    }
+  ],
+  "properties": {
+    "namingProfile": {
+      "$ref": "#/$defs/NamingProfile"
+    }
+  },
+  "title": "Veoveo naming vocabulary"
+}

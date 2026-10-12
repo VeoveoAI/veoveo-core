@@ -24,6 +24,15 @@
       "enum": [
         "https://veoveo.ai/formats/hosted-mcp-compliance"
       ],
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "grammar": "format_uri",
+            "kind": "builtin"
+          }
+        }
+      },
       "type": "string"
     },
     "ComplianceStatus": {
@@ -39,27 +48,18 @@
       "enum": [
         "https://veoveo.ai/contracts/hosted-mcp"
       ],
-      "type": "string"
-    },
-    "RequirementId": {
-      "ai.veoveo/naming-profile": {
-        "revision": 1,
+      "namingProfile": {
         "role": {
           "kind": "scalar",
           "profile": {
-            "declaration": {
-              "applicability": "the declared scalar identity schema",
-              "authority": {
-                "kind": "owner",
-                "module": "veoveo_mcp_contract::docs::catalog"
-              },
-              "profile": "requirement-catalog-identity",
-              "version": "unversioned"
-            },
-            "kind": "owner_identity"
+            "grammar": "contract_uri",
+            "kind": "builtin"
           }
         }
       },
+      "type": "string"
+    },
+    "RequirementId": {
       "enum": [
         "C01",
         "C02",
@@ -95,11 +95,28 @@
         "C32",
         "C33"
       ],
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "declaration": {
+              "applicability": "the declared scalar identity schema",
+              "authority": {
+                "kind": "owner",
+                "module": "veoveo_mcp_contract::docs::catalog"
+              },
+              "profile": "requirement-catalog-identity",
+              "version": "unversioned"
+            },
+            "kind": "owner_identity"
+          }
+        }
+      },
       "type": "string"
     },
     "ServerSlug": {
-      "ai.veoveo/naming-profile": {
-        "revision": 1,
+      "description": "Canonical hosted MCP server id used in manifests, profiles, and gateway routes.",
+      "namingProfile": {
         "role": {
           "kind": "scalar",
           "profile": {
@@ -108,7 +125,6 @@
           }
         }
       },
-      "description": "Canonical hosted MCP server id used in manifests, profiles, and gateway routes.",
       "type": "string"
     }
   },

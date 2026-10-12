@@ -14,7 +14,7 @@ that their generated code implements. Each consuming library owns its domain dec
 | RFC 3986 and WHATWG URL resource components | Resource routes delegate concrete parsing and encoding to the foundational URI profile; network adapters keep their own profiles |
 | RFC 6570 URI Templates | Resource declarations support literal scheme/authority, literal or scalar path segments, one final `{+tail}`, and a final optional `{?query,...}` expression; the attribute does not implement all template operators |
 | OAuth 2.0, RFC 6749 section 3.3 | Code-owned scope-token syntax; dynamic installation scopes keep `ScopeName` admission |
-| `ai.veoveo/naming-profile` revision 1 | Scope and Task hooks and identity/resource schema emitters delegate local classification to public foundational helpers; instance serialization is unchanged. |
+| Naming vocabulary keyword `namingProfile` | Scope and Task hooks and identity/resource schema emitters delegate local classification to public foundational helpers; instance serialization is unchanged. |
 | Veoveo Task operation names | The `TaskTypeName` lexical profile, with distinct spellings |
 | SurrealDB Rust SDK 3.3.0 | Optional consumer-only `SurrealValue` delegation preserves the owner's literal-string mapping |
 | SHA-256, FIPS 180-4 | Digest of the embedded document's original UTF-8 bytes |

@@ -103,7 +103,7 @@ mod identity_profiles {
         let annotation = value
             .as_object_mut()
             .unwrap()
-            .remove("ai.veoveo/naming-profile")
+            .remove("namingProfile")
             .expect("identity schemas carry the naming-profile annotation");
         assert_eq!(annotation["role"]["kind"], "scalar");
         value

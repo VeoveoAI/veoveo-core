@@ -1,8 +1,8 @@
 {
   "ArtifactId": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "ai.veoveo/naming-profile": {
-      "revision": 1,
+    "description": "Canonical identity of one logical artifact occurrence. Every put creates a\nfresh UUIDv7 even when its bytes deduplicate to an existing tenant blob.",
+    "namingProfile": {
       "role": {
         "kind": "scalar",
         "profile": {
@@ -19,7 +19,6 @@
         }
       }
     },
-    "description": "Canonical identity of one logical artifact occurrence. Every put creates a\nfresh UUIDv7 even when its bytes deduplicate to an existing tenant blob.",
     "title": "ArtifactId",
     "type": "string"
   },
@@ -65,8 +64,8 @@
         ]
       },
       "ArtifactId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Canonical identity of one logical artifact occurrence. Every put creates a\nfresh UUIDv7 even when its bytes deduplicate to an existing tenant blob.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -83,7 +82,6 @@
             }
           }
         },
-        "description": "Canonical identity of one logical artifact occurrence. Every put creates a\nfresh UUIDv7 even when its bytes deduplicate to an existing tenant blob.",
         "type": "string"
       },
       "ArtifactProvenance": {
@@ -281,8 +279,8 @@
         "type": "object"
       },
       "DataLabelId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Policy data label such as `cui`, `itar`, `pii`, or an IdP-provided clearance label.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -299,12 +297,11 @@
             }
           }
         },
-        "description": "Policy data label such as `cui`, `itar`, `pii`, or an IdP-provided clearance label.",
         "type": "string"
       },
       "DelegationId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Auditable identity of authority delegated by an initiator to another actor.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -321,12 +318,11 @@
             }
           }
         },
-        "description": "Auditable identity of authority delegated by an initiator to another actor.",
         "type": "string"
       },
       "GroupId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Identity-provider group identifier used by gateway policy.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -343,13 +339,12 @@
             }
           }
         },
-        "description": "Identity-provider group identifier used by gateway policy.",
         "type": "string"
       },
       "NoIdentity": false,
       "PolicyVersion": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Immutable policy version identifier emitted with decisions and audit records.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -366,12 +361,11 @@
             }
           }
         },
-        "description": "Immutable policy version identifier emitted with decisions and audit records.",
         "type": "string"
       },
       "PrincipalId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Stable authenticated user or service-principal identity.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -388,12 +382,11 @@
             }
           }
         },
-        "description": "Stable authenticated user or service-principal identity.",
         "type": "string"
       },
       "TenantId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Tenant, organization, or customer boundary identifier.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -410,12 +403,11 @@
             }
           }
         },
-        "description": "Tenant, organization, or customer boundary identifier.",
         "type": "string"
       },
       "WorkContextId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Tenant-local boundary that governs related work and every output it produces.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -432,7 +424,6 @@
             }
           }
         },
-        "description": "Tenant-local boundary that governs related work and every output it produces.",
         "type": "string"
       }
     },
@@ -500,8 +491,8 @@
   "ArtifactProvenance": {
     "$defs": {
       "DelegationId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Auditable identity of authority delegated by an initiator to another actor.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -518,13 +509,12 @@
             }
           }
         },
-        "description": "Auditable identity of authority delegated by an initiator to another actor.",
         "type": "string"
       },
       "NoIdentity": false,
       "PolicyVersion": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Immutable policy version identifier emitted with decisions and audit records.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -541,12 +531,11 @@
             }
           }
         },
-        "description": "Immutable policy version identifier emitted with decisions and audit records.",
         "type": "string"
       },
       "PrincipalId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Stable authenticated user or service-principal identity.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -563,7 +552,6 @@
             }
           }
         },
-        "description": "Stable authenticated user or service-principal identity.",
         "type": "string"
       }
     },
@@ -840,8 +828,8 @@
         ]
       },
       "DataLabelId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Policy data label such as `cui`, `itar`, `pii`, or an IdP-provided clearance label.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -858,12 +846,11 @@
             }
           }
         },
-        "description": "Policy data label such as `cui`, `itar`, `pii`, or an IdP-provided clearance label.",
         "type": "string"
       },
       "DelegationId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Auditable identity of authority delegated by an initiator to another actor.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -880,12 +867,11 @@
             }
           }
         },
-        "description": "Auditable identity of authority delegated by an initiator to another actor.",
         "type": "string"
       },
       "GroupId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Identity-provider group identifier used by gateway policy.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -902,13 +888,12 @@
             }
           }
         },
-        "description": "Identity-provider group identifier used by gateway policy.",
         "type": "string"
       },
       "NoIdentity": false,
       "PolicyVersion": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Immutable policy version identifier emitted with decisions and audit records.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -925,12 +910,11 @@
             }
           }
         },
-        "description": "Immutable policy version identifier emitted with decisions and audit records.",
         "type": "string"
       },
       "PrincipalId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Stable authenticated user or service-principal identity.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -947,12 +931,11 @@
             }
           }
         },
-        "description": "Stable authenticated user or service-principal identity.",
         "type": "string"
       },
       "TenantId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Tenant, organization, or customer boundary identifier.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -969,12 +952,11 @@
             }
           }
         },
-        "description": "Tenant, organization, or customer boundary identifier.",
         "type": "string"
       },
       "WorkContextId": {
-        "ai.veoveo/naming-profile": {
-          "revision": 1,
+        "description": "Tenant-local boundary that governs related work and every output it produces.",
+        "namingProfile": {
           "role": {
             "kind": "scalar",
             "profile": {
@@ -991,7 +973,6 @@
             }
           }
         },
-        "description": "Tenant-local boundary that governs related work and every output it produces.",
         "type": "string"
       }
     },

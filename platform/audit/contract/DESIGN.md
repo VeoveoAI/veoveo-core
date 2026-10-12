@@ -8,7 +8,7 @@
 | W3C Trace Context | Nonzero lowercase 32-hex trace IDs and 16-hex span IDs |
 | RFC 9162, RFC 8785 and RFC 8032 | Typed block heads, decimal-string versionstamps, Merkle roots and Ed25519 signatures |
 | JSON Schema draft 2020-12 | Composed closed target union, local definitions, scalar constraints and arrays; owner registration rejects open schemas, unresolved or nonlocal references and undeclared schema mechanics |
-| `ai.veoveo/naming-profile` v1 | Source annotation admitted through the foundational parser against the complete owner schema; Audit still enforces closed target payloads and lookup references |
+| Naming vocabulary keyword `namingProfile` | Source annotation admitted through the foundational parser against the complete owner schema; Audit still enforces closed target payloads and lookup references |
 | RFC 3339 and JSON | Typed timestamps, tagged closed enums and checked deserialization |
 | `https://veoveo.ai/formats/audit-record` | One reviewed record shape across platform producers and readers |
 | `ai.veoveo/knowledge-source` | Reviewed observation fields from the protocol-independent extension contract |
