@@ -25,7 +25,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     time::Duration,
 };
-use veoveo_mcp_knowledge_extension::{ChangeSignal, SearchDeclaration, SearchResults};
+use veoveo_mcp_ext_knowledge::{ChangeSignal, SearchDeclaration, SearchResults};
 use veoveo_types::ResourceUri;
 
 #[path = "creation.rs"]

@@ -17,9 +17,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     time::Duration,
 };
-use veoveo_mcp_knowledge_extension::{
-    self as knowledge, CollectionDescriptor, Observation, Revision,
-};
+use veoveo_mcp_ext_knowledge::{self as knowledge, CollectionDescriptor, Observation, Revision};
 use veoveo_types::{
     ResourceScheme, ResourceTemplateUri, ResourceUri, ResourceUriBuilder, ResourceUriParts,
 };

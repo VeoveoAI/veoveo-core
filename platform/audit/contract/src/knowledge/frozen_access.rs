@@ -2,7 +2,7 @@
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use veoveo_mcp_knowledge_extension::{AccessDescriptor, ReadGrant, ReadPolicy};
+use veoveo_mcp_ext_knowledge::{AccessDescriptor, ReadGrant, ReadPolicy};
 use veoveo_types::{AccessSubject, DataLabelId, GatewayProfileId, TenantId, WorkContextId};
 
 #[derive(Serialize, Deserialize, JsonSchema)]

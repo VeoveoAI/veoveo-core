@@ -1,6 +1,6 @@
 //! Approved indexing reads aggregate only after their attribution has been checked.
 use crate::*;
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 
 #[derive(Debug, Clone)]
 pub struct IndexingRead {

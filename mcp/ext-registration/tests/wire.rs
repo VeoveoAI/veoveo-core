@@ -1,6 +1,6 @@
 //! Wire format, schema and admission checks for the three registration declarations.
 use serde_json::json;
-use veoveo_mcp_registration_extension::*;
+use veoveo_mcp_ext_registration::*;
 use veoveo_types::{
     LocalToolName, PermissionName, PromptName, ResourceScheme, ResourceTemplateUri, ResourceUri,
     ServerSlug,

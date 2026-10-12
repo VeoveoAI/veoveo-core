@@ -2,7 +2,7 @@
 //! lifecycle callbacks stay outside serializable profiles and reports.
 use std::{collections::BTreeSet, future::Future, pin::Pin};
 
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::{LocalToolName, ResourceUri};
 
 use crate::ConformanceCredentials;

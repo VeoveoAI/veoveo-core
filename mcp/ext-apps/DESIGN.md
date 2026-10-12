@@ -2,7 +2,7 @@
 
 This document is the canonical contract for how domain MCP servers ship
 user-facing views and administrative surfaces to Veoveo hosts (the Console
-today, any MCP Apps host tomorrow). The crate `veoveo-mcp-apps-extension`
+today, any MCP Apps host tomorrow). The crate `veoveo-mcp-ext-apps`
 owns the pinned protocol constants and helpers; this document owns the rules.
 
 ## Status

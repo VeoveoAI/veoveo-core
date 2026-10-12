@@ -18,7 +18,7 @@ replaces a server's resources with a second copy. The
 [knowledge sharing design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/KNOWLEDGE.md) describes how the audit log records
 knowledge reads and the `knowledge-mcp` catalog and index built on this extension.
 
-The crate `veoveo-mcp-knowledge-extension` in this directory owns the typed
+The crate `veoveo-mcp-ext-knowledge` in this directory owns the typed
 models, the capability declaration, the read and search helpers, and the shared
 implementation of the well-known docs collection. The
 [implementation plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md) tracks its

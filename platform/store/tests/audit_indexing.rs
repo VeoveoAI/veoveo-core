@@ -4,7 +4,7 @@ mod fixture;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 use veoveo_audit_contract::*;
-use veoveo_mcp_knowledge_extension::{Observation, Revision, content_digest, docs};
+use veoveo_mcp_ext_knowledge::{Observation, Revision, content_digest, docs};
 use veoveo_platform_store::PlatformStore;
 
 fn hex(bytes: impl AsRef<[u8]>) -> String {

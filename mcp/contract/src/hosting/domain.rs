@@ -405,7 +405,7 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
     ) -> Result<CompleteResult, ErrorData> {
         if Self::setup().is_document_completion(&request) {
             let identity = gateway_identity(&context)?;
-            let index = crate::docs::knowledge_extension::docs::index_uri(&D::Contract::scheme());
+            let index = crate::docs::ext_knowledge::docs::index_uri(&D::Contract::scheme());
             self.domain.authorize_documents(&identity, &index).await?;
         }
         if let Some(result) = Self::setup().complete_documents(&request, &context)? {

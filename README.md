@@ -26,16 +26,16 @@ revision of this repository.
 | `platform/runtimes/embedding/contract` | `veoveo-embedding-contract` | Embedding request and profile types |
 | `platform/gateway/contract` | `veoveo-gateway-contract` | Gateway catalog registry, actions and admission types |
 | `mcp/contract` | `veoveo-mcp-contract` | The hosted MCP server contract and its hosting runtime |
-| `mcp/apps-extension` | `veoveo-mcp-apps-extension` | The MCP Apps extension |
-| `mcp/knowledge-extension` | `veoveo-mcp-knowledge-extension` | The `ai.veoveo/knowledge-source` extension |
-| `mcp/registration-extension` | `veoveo-mcp-registration-extension` | The server registration protocol: the `ai.veoveo/registration`, `ai.veoveo/authorization` and `ai.veoveo/module` declarations, RFC 7591 and RFC 7592 registration types, granted-permission details and the registration client servers run |
+| `mcp/ext-apps` | `veoveo-mcp-ext-apps` | The MCP Apps extension |
+| `mcp/ext-knowledge` | `veoveo-mcp-ext-knowledge` | The `ai.veoveo/knowledge-source` extension |
+| `mcp/ext-registration` | `veoveo-mcp-ext-registration` | The server registration protocol: the `ai.veoveo/registration`, `ai.veoveo/authorization` and `ai.veoveo/module` declarations, RFC 7591 and RFC 7592 registration types, granted-permission details and the registration client servers run |
 | `mcp/conformance` | `veoveo-mcp-conformance` | Hosted server conformance checks |
 | `testing/fixtures/modular-mcp` | `veoveo-modular-fixture-mcp` | An independently typed server used as a conformance and Gateway test peer |
 | `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable SurrealDB store and tool-input cases |
 
 Core names no specific server, and neither does an installation's configuration.
 Servers register with the Gateway through the
-[server registration protocol](mcp/registration-extension/DESIGN.md), and the
+[server registration protocol](mcp/ext-registration/DESIGN.md), and the
 installation grants roles that select their declared permissions by access kind and
 risk.
 

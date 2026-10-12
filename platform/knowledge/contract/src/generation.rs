@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 use veoveo_embedding_contract::EmbeddingSpace;
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::Sha256Digest;
 
 #[derive(

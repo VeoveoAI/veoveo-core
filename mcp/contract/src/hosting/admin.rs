@@ -32,7 +32,7 @@ pub(super) fn docs_router(
     scheme: ResourceScheme,
     authorize: DocumentAuthorizer,
 ) -> Router {
-    let index = crate::docs::knowledge_extension::docs::index_uri(&scheme);
+    let index = crate::docs::ext_knowledge::docs::index_uri(&scheme);
     let index_authorize = authorize.clone();
     Router::new()
         .route(
@@ -74,7 +74,7 @@ pub(super) fn docs_router(
 }
 
 fn member_address(scheme: &ResourceScheme, doc_id: &str) -> Option<ResourceUri> {
-    let index = crate::docs::knowledge_extension::docs::index_uri(scheme);
+    let index = crate::docs::ext_knowledge::docs::index_uri(scheme);
     ResourceUriBuilder::new(index.as_str())
         .ok()?
         .segment(UriSegment::new(doc_id).ok()?)

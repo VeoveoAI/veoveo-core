@@ -84,7 +84,7 @@ impl ServerHandler for DomainFixture {
             .build();
         if self.0.load(std::sync::atomic::Ordering::SeqCst) == 3 {
             info.capabilities.extensions.get_or_insert_default().insert(
-                veoveo_mcp_contract::docs::knowledge_extension::EXTENSION_ID.into(),
+                veoveo_mcp_contract::docs::ext_knowledge::EXTENSION_ID.into(),
                 JsonObject::new(),
             );
         }

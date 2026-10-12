@@ -3,7 +3,7 @@ use super::*;
 use crate::PlatformStore;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use veoveo_mcp_knowledge_extension::Observation;
+use veoveo_mcp_ext_knowledge::Observation;
 use veoveo_types::{
     AccessSubject, DataLabelId, GatewayProfileId, ResourceSelection, ResourceUri, ScopeName,
     WorkContextId,

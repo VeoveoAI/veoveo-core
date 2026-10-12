@@ -93,15 +93,11 @@ pub(crate) fn inspect_discovery_since(
         if let Some(meta) = tool.meta.as_ref() {
             inspection.charge(&serde_json::to_value(meta)?)?;
             inspection.value_work(&serde_json::to_value(meta)?, 0)?;
-            if let Some(value) = meta.get(veoveo_mcp_apps_extension::UI_META_KEY) {
-                adopted::<veoveo_mcp_apps_extension::ToolUiMeta>(
-                    value,
-                    &mut inspection,
-                    "tools/ui",
-                )?;
+            if let Some(value) = meta.get(veoveo_mcp_ext_apps::UI_META_KEY) {
+                adopted::<veoveo_mcp_ext_apps::ToolUiMeta>(value, &mut inspection, "tools/ui")?;
             }
-            if let Some(value) = meta.get(veoveo_mcp_knowledge_extension::EXTENSION_ID) {
-                adopted::<veoveo_mcp_knowledge_extension::SearchDeclaration>(
+            if let Some(value) = meta.get(veoveo_mcp_ext_knowledge::EXTENSION_ID) {
+                adopted::<veoveo_mcp_ext_knowledge::SearchDeclaration>(
                     value,
                     &mut inspection,
                     "tools/knowledge",
@@ -146,8 +142,8 @@ pub(crate) fn inspect_discovery_since(
         if let Some(meta) = resource.meta.as_ref() {
             inspection.charge(&serde_json::to_value(meta)?)?;
             inspection.value_work(&serde_json::to_value(meta)?, 0)?;
-            if let Some(value) = meta.get(veoveo_mcp_apps_extension::UI_META_KEY) {
-                adopted::<veoveo_mcp_apps_extension::ResourceUiMeta>(
+            if let Some(value) = meta.get(veoveo_mcp_ext_apps::UI_META_KEY) {
+                adopted::<veoveo_mcp_ext_apps::ResourceUiMeta>(
                     value,
                     &mut inspection,
                     "resources/ui",
@@ -162,11 +158,10 @@ pub(crate) fn inspect_discovery_since(
                     "resources/appDependencies",
                 )?;
             }
-            if let Some(value) = meta.get(veoveo_mcp_apps_extension::AGENT_MESSAGE_TARGETS_META_KEY)
-            {
+            if let Some(value) = meta.get(veoveo_mcp_ext_apps::AGENT_MESSAGE_TARGETS_META_KEY) {
                 let targets: Vec<String> = serde_json::from_value(value.clone())?;
                 ensure!(
-                    veoveo_mcp_apps_extension::AgentMessageTargets::new(targets).is_some(),
+                    veoveo_mcp_ext_apps::AgentMessageTargets::new(targets).is_some(),
                     "invalid adopted agent-message targets"
                 );
                 inspection.charge(value)?;
@@ -187,9 +182,9 @@ pub(crate) fn inspect_discovery_since(
         if let Some(value) = template
             .meta
             .as_ref()
-            .and_then(|meta| meta.get(veoveo_mcp_knowledge_extension::EXTENSION_ID))
+            .and_then(|meta| meta.get(veoveo_mcp_ext_knowledge::EXTENSION_ID))
         {
-            adopted::<veoveo_mcp_knowledge_extension::CollectionDescriptor>(
+            adopted::<veoveo_mcp_ext_knowledge::CollectionDescriptor>(
                 value,
                 &mut inspection,
                 "templates/knowledge",
@@ -209,14 +204,14 @@ pub(crate) fn inspect_discovery_since(
     if let Some(extensions) = extensions {
         inspection.charge(&serde_json::to_value(extensions)?)?;
         inspection.value_work(&serde_json::to_value(extensions)?, 0)?;
-        if let Some(value) = extensions.get(veoveo_mcp_apps_extension::EXTENSION_ID) {
-            adopted::<veoveo_mcp_apps_extension::AppExtensionCapability>(
+        if let Some(value) = extensions.get(veoveo_mcp_ext_apps::EXTENSION_ID) {
+            adopted::<veoveo_mcp_ext_apps::AppExtensionCapability>(
                 &Value::Object(value.clone()),
                 &mut inspection,
                 "capabilities/apps",
             )?;
         }
-        if let Some(value) = extensions.get(veoveo_mcp_knowledge_extension::EXTENSION_ID) {
+        if let Some(value) = extensions.get(veoveo_mcp_ext_knowledge::EXTENSION_ID) {
             ensure!(
                 value.is_empty(),
                 "unsupported adopted knowledge capability settings"

@@ -67,7 +67,7 @@ async fn run(
             .capabilities
             .extensions
             .as_ref()
-            .is_some_and(|e| e.contains_key(veoveo_mcp_knowledge_extension::EXTENSION_ID));
+            .is_some_and(|e| e.contains_key(veoveo_mcp_ext_knowledge::EXTENSION_ID));
         if declares {
             let mut coverage = target
                 .gateway_server()

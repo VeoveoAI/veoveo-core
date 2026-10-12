@@ -1,6 +1,6 @@
 use chrono::Utc;
 use serde_json::json;
-use veoveo_mcp_knowledge_extension::*;
+use veoveo_mcp_ext_knowledge::*;
 use veoveo_types::{AccessSubject, ResourceScheme, ServerSlug};
 
 fn docs_collection() -> CollectionDescriptor {
@@ -69,7 +69,7 @@ fn access_descriptor_is_required_by_collection_and_cannot_cross_owners() {
     let observed = builder()
         .access(AccessDescriptor {
             expires_at: None,
-            read_policy: veoveo_mcp_knowledge_extension::ReadPolicy::WorkContext {},
+            read_policy: veoveo_mcp_ext_knowledge::ReadPolicy::WorkContext {},
             tenant: "tenant".parse().unwrap(),
             work_context: "work".parse().unwrap(),
             owner: AccessSubject::Principal("owner".parse().unwrap()),

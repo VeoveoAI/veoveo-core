@@ -24,7 +24,7 @@ pub use profile::{
 };
 #[doc(hidden)]
 pub use veoveo_macros::embedded_document;
-pub use veoveo_mcp_knowledge_extension as knowledge_extension;
+pub use veoveo_mcp_ext_knowledge as ext_knowledge;
 
 /// The normative contract revision this crate implements.
 pub const CONTRACT_REVISION: u32 = 4;
@@ -78,7 +78,7 @@ impl ServerDocs {
             id,
             title,
             body,
-            digest: knowledge_extension::content_digest(body),
+            digest: ext_knowledge::content_digest(body),
         });
         self
     }

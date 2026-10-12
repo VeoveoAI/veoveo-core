@@ -193,7 +193,7 @@ impl<C: McpServerContract> McpServerSetup<C> {
             }
         }
         let mut templates = C::resource_templates()?;
-        let docs_template = crate::docs::knowledge_extension::docs::member_template(&scheme);
+        let docs_template = crate::docs::ext_knowledge::docs::member_template(&scheme);
         let mut found_docs = false;
         for template in &mut templates {
             if template.template == docs_template {

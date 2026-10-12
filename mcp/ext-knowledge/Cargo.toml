@@ -1,5 +1,5 @@
 [package]
-name = "veoveo-mcp-knowledge-extension"
+name = "veoveo-mcp-ext-knowledge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

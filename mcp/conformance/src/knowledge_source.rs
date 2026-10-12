@@ -5,7 +5,7 @@ use anyhow::{Result, ensure};
 use rmcp::model::{ResourceTemplate, Tool};
 use url::Url;
 use veoveo_gateway_contract::GatewayToolName;
-use veoveo_mcp_knowledge_extension::client;
+use veoveo_mcp_ext_knowledge::client;
 use veoveo_types::{LocalToolName, ResourceScheme, ServerSlug};
 
 /// The transport's tool naming contract. Resource addresses retain their owners.
@@ -146,7 +146,7 @@ impl TryFrom<&crate::HostedServerConformanceProfile> for KnowledgeSourceTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use veoveo_mcp_knowledge_extension::{docs, server};
+    use veoveo_mcp_ext_knowledge::{docs, server};
 
     #[test]
     fn gateway_selection_preserves_owner_checks_and_projects_local_tools() -> Result<()> {

@@ -2,7 +2,7 @@ use super::{reads::Row, *};
 use crate::PlatformStore;
 use std::collections::BTreeSet;
 use veoveo_embedding_contract::{EmbeddingText, EmbeddingVector};
-use veoveo_mcp_knowledge_extension::{CollectionDescriptor, EntityKind};
+use veoveo_mcp_ext_knowledge::{CollectionDescriptor, EntityKind};
 
 /// Closed expansion budgets also supply the numeric HNSW query syntax.
 #[derive(Debug, Clone, Copy)]
@@ -54,7 +54,7 @@ struct RankedRow {
     ordinal: i64,
     text: String,
     admission: admission::Admission,
-    observation: Document<veoveo_mcp_knowledge_extension::Observation>,
+    observation: Document<veoveo_mcp_ext_knowledge::Observation>,
     registration: RegistrationRow,
     rrf_score: f64,
 }

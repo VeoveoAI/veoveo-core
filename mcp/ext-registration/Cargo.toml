@@ -1,5 +1,5 @@
 [package]
-name = "veoveo-mcp-registration-extension"
+name = "veoveo-mcp-ext-registration"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

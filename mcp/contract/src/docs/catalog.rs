@@ -244,7 +244,7 @@ impl RequirementId {
             ),
             Self::C32 => (
                 RequirementLevel::MustWhenAdopted,
-                "A server that declares `ai.veoveo/knowledge-source` publishes its `{slug}.docs` collection and satisfies K01–K10 for every declared collection under the [knowledge extension](../knowledge-extension/DESIGN.md). A server that does not declare the extension marks C32 not applicable.",
+                "A server that declares `ai.veoveo/knowledge-source` publishes its `{slug}.docs` collection and satisfies K01–K10 for every declared collection under the [knowledge extension](../ext-knowledge/DESIGN.md). A server that does not declare the extension marks C32 not applicable.",
                 Some(ApplicabilityCondition::KnowledgeSource),
             ),
             Self::C33 => (

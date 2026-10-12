@@ -125,7 +125,7 @@ impl McpServerContract for FixtureContract {
         .collect()
     }
     fn resource_templates() -> Result<Vec<McpResourceTemplate>, McpSetupError> {
-        let docs = veoveo_mcp_knowledge_extension::docs::member_template(&Self::scheme());
+        let docs = veoveo_mcp_ext_knowledge::docs::member_template(&Self::scheme());
         vec![McpResourceTemplate::new(docs, |uri| {
             ResourceTemplate::new(uri, "doc")
         })]

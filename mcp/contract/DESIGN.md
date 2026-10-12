@@ -26,13 +26,13 @@ in its crate documents and in its contract resource.
 | RFC 6570 URI Templates | Checked MCP setup uses the foundational ASCII-template profile and iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses. Gateway policy selectors retain their documented restricted matching language. |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
 | OAuth 2.0, RFC 8414, RFC 9207, RFC 8707, RFC 9728, and OpenID Connect Discovery 1.0 | private-installation profile with installation or governed managed-client registrations, exact issuer and resource binding, step-up scopes, and `private_key_jwt`; end-user clients do not use Dynamic Client Registration |
-| OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, renew and remove themselves through the profile in [the server registration protocol](../registration-extension/DESIGN.md) |
+| OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, renew and remove themselves through the profile in [the server registration protocol](../ext-registration/DESIGN.md) |
 | Veoveo resumable artifact HTTP upload | repository-owned JSON admission/completion and raw part PUT contract, UUIDv7 idempotency, SHA-256 integrity, and bounded browser-safe 64-bit counters; independent of MCP methods |
-| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `aud` is the server slug, with granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail and the actor, authority and request context in the `ai.veoveo/invocation` claim; specified in [the server registration protocol](../registration-extension/DESIGN.md#forwarded-identity) |
+| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `aud` is the server slug, with granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail and the actor, authority and request context in the `ai.veoveo/invocation` claim; specified in [the server registration protocol](../ext-registration/DESIGN.md#forwarded-identity) |
 | Veoveo upload token | the same access token with `artifact-upload` audience and signed control-plane and context digests in the `ai.veoveo/artifact-upload` claim; restricted to the HTTP upload service |
 | Veoveo access-token `session_family` | Signed UUIDv7 refresh-family binding for browser tokens; current family revocation is enforced by the gateway, and absence supplies no renewable session authority |
 | Veoveo `request_context` | Signed source principal, verified access-token metadata and required audit request correlation; includes OAuth client, optional session family and managed-agent execution metadata; contains no bearer value and grants no independent renewal permission |
-| `ai.veoveo/knowledge-source` | Veoveo extension that declares resource collections as knowledge, with typed read observations and conditional reads; specified in [the knowledge source extension](../knowledge-extension/DESIGN.md) |
+| `ai.veoveo/knowledge-source` | Veoveo extension that declares resource collections as knowledge, with typed read observations and conditional reads; specified in [the knowledge source extension](../ext-knowledge/DESIGN.md) |
 
 A hosted server declares its MCP endpoint when it registers with the Gateway and
 renews its registration lease while it can serve traffic. The Gateway never uses an
@@ -556,7 +556,7 @@ session locality is never a reason for singleton deployment.
 ## Packaging And Registration
 
 A server ships as an OCI image and registers itself with the Gateway at startup
-through the [server registration protocol](../registration-extension/DESIGN.md), an
+through the [server registration protocol](../ext-registration/DESIGN.md), an
 RFC 7591 and RFC 7592 profile. Its client metadata carries three declarations:
 `ai.veoveo/registration` states the slug, URI scheme, version and endpoint,
 `ai.veoveo/authorization` lists the server's permissions and the permission every
@@ -713,7 +713,7 @@ Their loaders perform the same semantic admission without repository reads.
 | C29 | MUST | Ordinary hosted servers and the gateway tolerate load-balanced replica changes; singleton workloads name the real exclusive state or GPU owner. |
 | C30 | MUST | Requests with equivalent upstream transport security share one catalog-revision-scoped HTTP connection pool and TLS trust store without sharing request authority. |
 | C31 | MUST | Readiness calls Discover and required list methods, compares the observed surface with installation allow/require policy, and fails closed on mismatch. |
-| C32 | MUST when adopted | A server that declares `ai.veoveo/knowledge-source` publishes its `{slug}.docs` collection and satisfies K01–K10 for every declared collection under the [knowledge extension](../knowledge-extension/DESIGN.md). A server that does not declare the extension marks C32 not applicable. |
+| C32 | MUST when adopted | A server that declares `ai.veoveo/knowledge-source` publishes its `{slug}.docs` collection and satisfies K01–K10 for every declared collection under the [knowledge extension](../ext-knowledge/DESIGN.md). A server that does not declare the extension marks C32 not applicable. |
 | C33 | MUST | Discovery identifiers, controlled DTO fields and values, adopted extension metadata and selected owner schema evidence satisfy the naming classes; narrow owner, JWT, frozen and external declarations require source review. |
 <!-- veoveo:requirement-catalog:end -->
 

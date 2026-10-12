@@ -9,7 +9,7 @@
 | Database transport | SurrealDB Rust SDK `=3.3.0`, WebSocket with Rustls, explicit native transactions |
 | Generated installation plan | Repository-owned `veoveo.ai/module-selection/v1` and `veoveo.ai/module-plan/v1` JSON; camelCase fields, positive u64 generation encoded as canonical decimal text |
 | Migration identity | SHA-256 over the owner body and recorded declaration identity; append-only numbered lane history |
-| Module manifest | camelCase JSON form of one optional module, carried as `ai.veoveo/module` by the [server registration protocol](../../mcp/registration-extension/DESIGN.md); JSON Schema 2020-12 through the `schema` feature |
+| Module manifest | camelCase JSON form of one optional module, carried as `ai.veoveo/module` by the [server registration protocol](../../mcp/ext-registration/DESIGN.md); JSON Schema 2020-12 through the `schema` feature |
 
 ## Declaration Ownership
 

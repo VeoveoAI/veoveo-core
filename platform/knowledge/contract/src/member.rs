@@ -2,7 +2,7 @@ use crate::{CollectionApproval, CollectionRegistration, GenerationSpec, Knowledg
 use serde::Serialize;
 use std::ops::Range;
 use veoveo_embedding_contract::{EmbeddingVector, QualifiedEmbeddingRuntime};
-use veoveo_mcp_knowledge_extension::{IndexingMode, Observation, content_digest};
+use veoveo_mcp_ext_knowledge::{IndexingMode, Observation, content_digest};
 use veoveo_types::{ResourceUri, ResourceUriParts, Sha256Digest};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -210,11 +210,11 @@ pub fn metadata_text(title: &crate::MemberTitle, observation: &Observation) -> S
     #[serde(rename_all = "camelCase")]
     struct Metadata<'a> {
         title: &'a crate::MemberTitle,
-        collection: &'a veoveo_mcp_knowledge_extension::CollectionId,
-        revision: &'a veoveo_mcp_knowledge_extension::Revision,
+        collection: &'a veoveo_mcp_ext_knowledge::CollectionId,
+        revision: &'a veoveo_mcp_ext_knowledge::Revision,
         modified_at: Option<String>,
-        external_system: Option<&'a veoveo_mcp_knowledge_extension::ExternalSystemId>,
-        external_record: Option<&'a veoveo_mcp_knowledge_extension::ExternalRecordId>,
+        external_system: Option<&'a veoveo_mcp_ext_knowledge::ExternalSystemId>,
+        external_record: Option<&'a veoveo_mcp_ext_knowledge::ExternalRecordId>,
     }
     serde_json::to_string(&Metadata {
         title,

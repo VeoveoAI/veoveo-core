@@ -26,7 +26,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{GatewayProfileId, JwtId, OAuthClientId, Principal, ServerSlug, TokenIssuer};
-use veoveo_mcp_registration_extension::{Ed25519JwkSet, PermissionsDetail};
+use veoveo_mcp_ext_registration::{Ed25519JwkSet, PermissionsDetail};
 use veoveo_types::{
     GroupId, IdentifierError, InvocationAuthority, PermissionName, PrincipalId, RoleId,
 };
@@ -1076,7 +1076,7 @@ pub(crate) mod tests {
         assert_eq!(
             granted["authorization_details"],
             serde_json::json!([{
-                "type": veoveo_mcp_registration_extension::PERMISSIONS_DETAIL_TYPE,
+                "type": veoveo_mcp_ext_registration::PERMISSIONS_DETAIL_TYPE,
                 "actions": ["time.read"]
             }])
         );

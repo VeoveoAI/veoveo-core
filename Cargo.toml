@@ -1,11 +1,11 @@
 [workspace]
 resolver = "3"
 members = [
-    "mcp/apps-extension",
     "mcp/conformance",
     "mcp/contract",
-    "mcp/knowledge-extension",
-    "mcp/registration-extension",
+    "mcp/ext-apps",
+    "mcp/ext-knowledge",
+    "mcp/ext-registration",
     "platform/artifacts/client",
     "platform/artifacts/contract",
     "platform/audit",
@@ -38,7 +38,7 @@ publish = false
 veoveo-task-contract = { path = "platform/task-runtime/contract" }
 veoveo-embedding-contract = { path = "platform/runtimes/embedding/contract" }
 veoveo-knowledge-contract = { path = "platform/knowledge/contract" }
-veoveo-mcp-knowledge-extension = { path = "mcp/knowledge-extension", default-features = false }
+veoveo-mcp-ext-knowledge = { path = "mcp/ext-knowledge", default-features = false }
 veoveo-macros = { path = "platform/macros" }
 veoveo-audit-contract = { path = "platform/audit/contract" }
 anyhow = "=1.0.104"
@@ -101,7 +101,7 @@ zeroize = "=1.9.0"
 veoveo-mcp-contract = { path = "mcp/contract", default-features = false }
 veoveo-types = { path = "platform/types" }
 veoveo-modules = { path = "platform/modules", default-features = false }
-veoveo-mcp-registration-extension = { path = "mcp/registration-extension", default-features = false }
+veoveo-mcp-ext-registration = { path = "mcp/ext-registration", default-features = false }
 veoveo-gateway-contract = { path = "platform/gateway/contract" }
 veoveo-artifact-client = { path = "platform/artifacts/client" }
 veoveo-artifact-contract = { path = "platform/artifacts/contract" }

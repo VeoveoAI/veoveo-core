@@ -132,7 +132,7 @@ impl ServerHandler for ObservatoryMcp {
         let Reference::Resource(reference) = &request.r#ref else {
             return Ok(CompleteResult::default());
         };
-        let template = veoveo_mcp_contract::docs::knowledge_extension::docs::member_template(
+        let template = veoveo_mcp_contract::docs::ext_knowledge::docs::member_template(
             &ObservatoryContract::scheme(),
         );
         if reference.uri != template.as_str() || request.argument.name != "doc_id" {

@@ -134,28 +134,28 @@ pub(super) async fn cmd_apps_check(client: &Client) -> Result<()> {
     let info = client
         .peer_info()
         .ok_or_else(|| anyhow!("no server info"))?;
-    if !veoveo_mcp_apps_extension::server_declares_ui(&info.capabilities) {
+    if !veoveo_mcp_ext_apps::server_declares_ui(&info.capabilities) {
         bail!(
             "server does not declare the `{}` extension",
-            veoveo_mcp_apps_extension::EXTENSION_ID
+            veoveo_mcp_ext_apps::EXTENSION_ID
         );
     }
     let resources = catalog::resources(client).await?;
     let app_uris: Vec<String> = resources
         .iter()
-        .filter(|resource| veoveo_mcp_apps_extension::is_app_resource(resource))
+        .filter(|resource| veoveo_mcp_ext_apps::is_app_resource(resource))
         .map(|resource| resource.uri.clone())
         .collect();
     if app_uris.is_empty() {
         bail!(
             "server declares the apps extension but lists no `{}` resources",
-            veoveo_mcp_apps_extension::APP_MIME_TYPE
+            veoveo_mcp_ext_apps::APP_MIME_TYPE
         );
     }
     let tools = catalog::tools(client).await?;
     let mut linked_tools = 0usize;
     for tool in &tools {
-        if let Some(link) = veoveo_mcp_apps_extension::tool_app_link(tool) {
+        if let Some(link) = veoveo_mcp_ext_apps::tool_app_link(tool) {
             if !app_uris.contains(&link.resource_uri) {
                 bail!(
                     "tool `{}` links app `{}` which is not a listed app resource",
@@ -181,11 +181,11 @@ pub(super) async fn cmd_apps_check(client: &Client) -> Result<()> {
             })
             .ok_or_else(|| anyhow!("app resource {uri} returned no text contents"))?;
         let (html, mime_type) = contents;
-        if mime_type.as_deref() != Some(veoveo_mcp_apps_extension::APP_MIME_TYPE) {
+        if mime_type.as_deref() != Some(veoveo_mcp_ext_apps::APP_MIME_TYPE) {
             bail!(
                 "app resource {uri} has mime `{}` (expected `{}`)",
                 mime_type.unwrap_or_default(),
-                veoveo_mcp_apps_extension::APP_MIME_TYPE
+                veoveo_mcp_ext_apps::APP_MIME_TYPE
             );
         }
         if html.len() > MAX_APP_HTML_BYTES {

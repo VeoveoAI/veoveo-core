@@ -139,7 +139,7 @@ impl<C: McpServerContract> McpServerSetup<C> {
         let Reference::Resource(reference) = &request.r#ref else {
             return false;
         };
-        let template = crate::docs::knowledge_extension::docs::member_template(&C::scheme());
+        let template = crate::docs::ext_knowledge::docs::member_template(&C::scheme());
         reference.uri == template.as_str() && request.argument.name == "doc_id"
     }
 

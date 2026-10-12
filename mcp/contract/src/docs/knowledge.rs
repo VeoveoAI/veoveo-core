@@ -8,7 +8,7 @@ use rmcp::{
     },
     service::RequestContext,
 };
-use veoveo_mcp_knowledge_extension::{self as knowledge, DocumentId};
+use veoveo_mcp_ext_knowledge::{self as knowledge, DocumentId};
 use veoveo_types::{ResourceScheme, ResourceUriParts, ServerSlug};
 
 impl ServerDocs {

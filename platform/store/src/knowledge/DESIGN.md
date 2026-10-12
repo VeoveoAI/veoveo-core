@@ -6,7 +6,7 @@
 |---|---|
 | SurrealDB 3.3.0 / SurrealQL | schemafull catalog records, transactions, native record-reference cleanup, FULLTEXT BM25 and HNSW cosine indexes |
 | [Knowledge domain contract](../../../knowledge/contract/DESIGN.md) | typed approvals, generation specifications, retrieval measurements and source-bound chunks |
-| [Knowledge-source extension](../../../../mcp/knowledge-extension/DESIGN.md) | typed source observations; the Store imports its contract feature without MCP runtime |
+| [Knowledge-source extension](../../../../mcp/ext-knowledge/DESIGN.md) | typed source observations; the Store imports its contract feature without MCP runtime |
 | RFC 9562 / SHA-256 | generation identity and checked specification/approval fingerprints |
 
 The `native_approval` adapter converts admitted public approvals to the indexed native `authoritative_for`, `data_labels` and `catalog-only` representation. Registration writes, catalog selection and completion bind this same native value. Hydration compares it with the current public registration document before returning a usable registration. Owner migration declarations and SQL columns keep their existing bytes.

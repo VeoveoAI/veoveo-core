@@ -15,7 +15,7 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 veoveo-mcp-contract = { workspace = true, features = ["runtime"] }
-veoveo-mcp-registration-extension.workspace = true
+veoveo-mcp-ext-registration.workspace = true
 
 [dev-dependencies]
 schemars.workspace = true

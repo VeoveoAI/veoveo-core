@@ -18,7 +18,7 @@ use axum::{
 use chrono::{TimeDelta, Utc};
 use secrecy::SecretString;
 use serde_json::json;
-use veoveo_mcp_registration_extension::{
+use veoveo_mcp_ext_registration::{
     client::{ClientError, KeyDirectory, RegistrationClient},
     statement::{ServerKeyPair, verify_statement},
     *,

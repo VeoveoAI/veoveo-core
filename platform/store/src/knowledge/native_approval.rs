@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use veoveo_knowledge_contract::{
     CollectionApproval, KnowledgeCollectionApproval, KnowledgeSubject,
 };
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::{DataLabelId, GroupId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, veoveo_types::Vocabulary)]

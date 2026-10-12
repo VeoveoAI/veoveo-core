@@ -2,7 +2,7 @@
 use super::Document;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::{ResourceScheme, ResourceSelection, ResourceSelector, ResourceUriPrefix};
 
 #[derive(Serialize, Deserialize)]

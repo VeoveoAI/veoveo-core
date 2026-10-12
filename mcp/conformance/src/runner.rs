@@ -497,7 +497,7 @@ async fn read_text_resource(client: &Client, uri: &str) -> Result<String> {
 }
 
 async fn read_document_index(client: &Client, scheme: &str) -> Result<Vec<String>> {
-    use veoveo_mcp_contract::docs::knowledge_extension::docs;
+    use veoveo_mcp_contract::docs::ext_knowledge::docs;
     use veoveo_types::{ResourceScheme, ResourceUriBuilder};
     let scheme = ResourceScheme::parse(scheme)?;
     let root = docs::index_uri(&scheme);
@@ -636,7 +636,7 @@ async fn check_well_known_surface(
                         .and_then(|info| info.capabilities.extensions.as_ref())
                         .is_some_and(|extensions| {
                             extensions.contains_key(
-                                veoveo_mcp_contract::docs::knowledge_extension::EXTENSION_ID,
+                                veoveo_mcp_contract::docs::ext_knowledge::EXTENSION_ID,
                             )
                         });
                     let applicability = declaration

@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use veoveo_embedding_contract::EmbeddingText;
-use veoveo_mcp_knowledge_extension::{CollectionId, Revision};
+use veoveo_mcp_ext_knowledge::{CollectionId, Revision};
 use veoveo_types::{ResourceUri, Sha256Digest};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]

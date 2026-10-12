@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use statistics::CollectionStatistics;
 pub use title::MemberTitle;
-use veoveo_mcp_knowledge_extension::CollectionDescriptor;
+use veoveo_mcp_ext_knowledge::CollectionDescriptor;
 use veoveo_types::{Sha256Digest, TenantId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +60,7 @@ impl CollectionRegistration {
             return Err(KnowledgeError("approval belongs to another collection"));
         }
         if self.approval.mode == CollectionApproval::Index
-            && self.descriptor.indexing() == veoveo_mcp_knowledge_extension::IndexingMode::None
+            && self.descriptor.indexing() == veoveo_mcp_ext_knowledge::IndexingMode::None
         {
             return Err(KnowledgeError(
                 "a non-indexable collection cannot be approved for indexing",
@@ -72,7 +72,7 @@ impl CollectionRegistration {
     /// to embeddings and again when accepting source-bound chunks for storage.
     pub fn admit_observation(
         &self,
-        observation: &veoveo_mcp_knowledge_extension::Observation,
+        observation: &veoveo_mcp_ext_knowledge::Observation,
     ) -> Result<(), KnowledgeError> {
         self.validate()?;
         observation

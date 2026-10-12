@@ -7,7 +7,7 @@ forwards each admitted request with the caller's granted permissions, and the se
 checks them again. Neither the Gateway nor the installation configuration names a
 server, so every server enters the catalog through this protocol.
 
-The crate `veoveo-mcp-registration-extension` holds the typed declarations, the OAuth
+The crate `veoveo-mcp-ext-registration` holds the typed declarations, the OAuth
 request and response types, the software statement, the granted-permissions detail and
 the registration client that servers run. The forwarded access token is issued and
 verified by `veoveo-mcp-contract`, described under [Forwarded Identity](#forwarded-identity).

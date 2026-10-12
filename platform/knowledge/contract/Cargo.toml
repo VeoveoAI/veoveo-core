@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 veoveo-types.workspace = true
 veoveo-embedding-contract.workspace = true
-veoveo-mcp-knowledge-extension = { workspace = true, features = ["contract"] }
+veoveo-mcp-ext-knowledge = { workspace = true, features = ["contract"] }
 serde.workspace = true
 serde_json.workspace = true
 schemars = { workspace = true, features = ["uuid1"] }

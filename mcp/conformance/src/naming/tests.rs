@@ -603,19 +603,17 @@ fn adopted_metadata_visits_actual_knowledge_apps_and_capability_producers() {
         )
         .unwrap(),
     ));
-    let collection = veoveo_mcp_knowledge_extension::docs::collection(
+    let collection = veoveo_mcp_ext_knowledge::docs::collection(
         &veoveo_types::ServerSlug::parse("independent").unwrap(),
         &veoveo_types::ResourceScheme::parse("example").unwrap(),
     );
-    veoveo_mcp_knowledge_extension::server::attach_search(
+    veoveo_mcp_ext_knowledge::server::attach_search(
         &mut tool,
-        &veoveo_mcp_knowledge_extension::SearchDeclaration::new(vec![
-            collection.collection().clone(),
-        ])
-        .unwrap(),
+        &veoveo_mcp_ext_knowledge::SearchDeclaration::new(vec![collection.collection().clone()])
+            .unwrap(),
     );
     let mut template = ResourceTemplate::new("example://docs/{document}", "Documents");
-    veoveo_mcp_knowledge_extension::server::attach_collection(&mut template, &collection);
+    veoveo_mcp_ext_knowledge::server::attach_collection(&mut template, &collection);
     let mut resource = Resource::new("example://app/main", "App");
     let dependencies: Vec<veoveo_gateway_contract::AppResourceDependency> = serde_json::from_value(json!([{
         "appResource":"example://app/main", "server":"independent", "scheme":"example", "uriPrefix":"example://docs/", "requiredScope":"owner:read", "operations":["read"]
@@ -624,7 +622,7 @@ fn adopted_metadata_visits_actual_knowledge_apps_and_capability_producers() {
         veoveo_gateway_contract::APP_RESOURCE_DEPENDENCIES_META_KEY.into(),
         serde_json::to_value(&dependencies).unwrap(),
     );
-    let (key, declaration) = veoveo_mcp_apps_extension::host_extension_capability();
+    let (key, declaration) = veoveo_mcp_ext_apps::host_extension_capability();
     let capabilities = [(key, declaration)].into_iter().collect();
     let evidence = NamingEvidence::default();
     inspect_discovery(
@@ -637,12 +635,11 @@ fn adopted_metadata_visits_actual_knowledge_apps_and_capability_producers() {
     )
     .unwrap();
     let mut bad = template.clone();
-    bad.meta.as_mut().unwrap()[veoveo_mcp_knowledge_extension::EXTENSION_ID]["changeSignal"] =
+    bad.meta.as_mut().unwrap()[veoveo_mcp_ext_knowledge::EXTENSION_ID]["changeSignal"] =
         json!("invented");
     assert!(inspect_discovery(&[tool.clone()], &[], &[bad], &[], None, &evidence).is_err());
     let mut bad = tool.clone();
-    bad.meta.as_mut().unwrap()[veoveo_mcp_knowledge_extension::EXTENSION_ID]["role"] =
-        json!("Search");
+    bad.meta.as_mut().unwrap()[veoveo_mcp_ext_knowledge::EXTENSION_ID]["role"] = json!("Search");
     assert!(inspect_discovery(&[bad], &[], &[], &[], None, &evidence).is_err());
     let mut bad = resource;
     bad.meta.as_mut().unwrap()[veoveo_gateway_contract::APP_RESOURCE_DEPENDENCIES_META_KEY][0]["operations"] =
@@ -653,7 +650,7 @@ fn adopted_metadata_visits_actual_knowledge_apps_and_capability_producers() {
         .meta
         .as_mut()
         .unwrap()
-        .get_mut(veoveo_mcp_knowledge_extension::EXTENSION_ID)
+        .get_mut(veoveo_mcp_ext_knowledge::EXTENSION_ID)
         .unwrap()
         .as_object_mut()
         .unwrap();

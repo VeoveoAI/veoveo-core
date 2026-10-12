@@ -21,7 +21,7 @@ path = "src/bin/certify.rs"
 [dependencies]
 veoveo-gateway-contract.workspace = true
 veoveo-types.workspace = true
-veoveo-mcp-knowledge-extension = { workspace = true, features = ["mcp"] }
+veoveo-mcp-ext-knowledge = { workspace = true, features = ["mcp"] }
 anyhow.workspace = true
 axum.workspace = true
 axum-server.workspace = true
@@ -44,7 +44,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
-veoveo-mcp-apps-extension = { path = "../apps-extension" }
+veoveo-mcp-ext-apps = { path = "../ext-apps" }
 veoveo-mcp-contract = { workspace = true, default-features = false, features = ["declaration"] }
 
 [dev-dependencies]

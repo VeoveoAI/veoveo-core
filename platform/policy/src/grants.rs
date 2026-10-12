@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use veoveo_mcp_contract::{GrantSubject, InstallationAuthorization, PermissionOverride, Principal};
-use veoveo_mcp_registration_extension::{AuthorizationDeclaration, PermissionDeclaration, Risk};
+use veoveo_mcp_ext_registration::{AuthorizationDeclaration, PermissionDeclaration, Risk};
 use veoveo_types::{PermissionName, RoleId};
 
 /// The installation roles `principal` holds: grants to the principal itself or to one of
@@ -81,7 +81,7 @@ fn effective_risks(
 mod tests {
     use super::*;
     use veoveo_mcp_contract::{InstallationRole, PrincipalKind, RoleGrant};
-    use veoveo_mcp_registration_extension::{Access, PermissionDeclaration, Requirements};
+    use veoveo_mcp_ext_registration::{Access, PermissionDeclaration, Requirements};
     use veoveo_types::{GroupId, PrincipalId, ResourceTypeName, TenantId};
 
     fn permission(name: &str, access: Access, risks: &[Risk]) -> PermissionDeclaration {

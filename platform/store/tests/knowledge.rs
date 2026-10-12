@@ -8,7 +8,7 @@ use std::{
 };
 use veoveo_embedding_contract::*;
 use veoveo_knowledge_contract::*;
-use veoveo_mcp_knowledge_extension::{
+use veoveo_mcp_ext_knowledge::{
     self as source, AccessDescriptor, AccessModel, ChangeSignal, CollectionDescriptor,
     CollectionId, EntityKind, Freshness, IndexingMode, Observation, Revision,
 };

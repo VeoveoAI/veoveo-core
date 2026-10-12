@@ -3,7 +3,7 @@ use crate::{CollectionApproval, KnowledgeError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::{DataLabelId, GroupId};
 
 /// A catalog topic for which an installation treats a collection as authoritative.

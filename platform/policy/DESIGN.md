@@ -5,7 +5,7 @@
 | Boundary | Supported profile |
 |---|---|
 | Veoveo gateway control plane | Typed profiles, policy sets, principal attributes, installation roles, grants and overrides, and registered owner sections |
-| `ai.veoveo/authorization` | Registered servers' permission declarations, read through `PolicyCatalogView::server_authorization`; defined in [the server registration protocol](../../mcp/registration-extension/DESIGN.md) |
+| `ai.veoveo/authorization` | Registered servers' permission declarations, read through `PolicyCatalogView::server_authorization`; defined in [the server registration protocol](../../mcp/ext-registration/DESIGN.md) |
 | MCP 2026-07-28 | Canonical method/action names and domain resource ownership; evaluation itself performs no protocol I/O |
 | JSON / JSON Schema 2020-12 | `mcp/contract` owns policy decisions and core targets; owner contracts supply registered target codecs. The protocol schema adapter composes their bound declarations |
 | SurrealDB 3.3.0 | Caller-owned current revision read in `platform/store`; the evaluator has no database dependency |
@@ -65,7 +65,7 @@ operations and Tasks require at least one granted permission in the server's
 namespace. An allowed decision records the required permission and the full granted
 set, which the Gateway forwards as the RFC 9396 authorization detail of the RFC 9068
 access token defined by the
-[server registration protocol](../../mcp/registration-extension/DESIGN.md#forwarded-identity).
+[server registration protocol](../../mcp/ext-registration/DESIGN.md#forwarded-identity).
 
 ## Internal Client Authority Port
 

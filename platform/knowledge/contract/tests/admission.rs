@@ -24,7 +24,7 @@ fn generation_and_chunk_settings_reject_unusable_values_on_deserialization() {
 fn metadata_constructor_rejects_body_chunks_and_mismatched_mode() {
     use veoveo_embedding_contract::*;
     use veoveo_knowledge_contract::*;
-    use veoveo_mcp_knowledge_extension::*;
+    use veoveo_mcp_ext_knowledge::*;
     use veoveo_types::{ResourceTemplateUri, ResourceUri, Sha256Digest};
     let registration = CollectionRegistration {
         source_contract_revision: 3,

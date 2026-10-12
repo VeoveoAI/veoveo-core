@@ -2,7 +2,7 @@
 use super::serialize_subject;
 use chrono::{DateTime, Utc};
 use surrealdb::types::SurrealValue;
-use veoveo_mcp_knowledge_extension::{AccessDescriptor, ReadPolicy};
+use veoveo_mcp_ext_knowledge::{AccessDescriptor, ReadPolicy};
 
 #[derive(Debug, PartialEq, SurrealValue)]
 pub(super) struct Admission {

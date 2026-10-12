@@ -3,7 +3,7 @@ use veoveo_mcp_contract::{
     DataLabelDefinition, GatewayControlPlane, GatewayControlPlaneError, GatewayProfile,
     GatewayProfileId, InstallationAuthorization, PolicySet, ServerSlug, TenantDefinition,
 };
-use veoveo_mcp_registration_extension::AuthorizationDeclaration;
+use veoveo_mcp_ext_registration::AuthorizationDeclaration;
 use veoveo_types::{DataLabelId, PolicyVersion, TenantId};
 
 /// Implementations expose one validated, immutable control-plane revision and one

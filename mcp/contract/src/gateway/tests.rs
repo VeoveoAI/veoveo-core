@@ -2,7 +2,7 @@ use super::*;
 use veoveo_gateway_contract::{
     CertificateAuthorityFilePath, GatewayAction, SecretLocator, SecretSource,
 };
-use veoveo_mcp_registration_extension::{Access, Risk};
+use veoveo_mcp_ext_registration::{Access, Risk};
 
 fn identity_provider() -> IdentityProvider {
     IdentityProvider {

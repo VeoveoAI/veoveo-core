@@ -101,7 +101,7 @@ in subject order. The timestamp describes metadata; access revisions also includ
 read grants and their deadlines.
 
 The Artifact service admits the caller before returning a snapshot. The type confers
-no authority by itself and introduces no knowledge-extension dependency. Consumers
+no authority by itself and introduces no dependency on the knowledge extension. Consumers
 can map it into their own protocol observations while keeping Artifact policy in the
 service. `tests/snapshot.rs` qualifies construction, decoding and schema output.
 

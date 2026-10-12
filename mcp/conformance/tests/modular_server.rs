@@ -199,7 +199,7 @@ async fn qualify() -> anyhow::Result<()> {
                 },
             )
             .await?;
-        use veoveo_mcp_contract::docs::knowledge_extension as knowledge;
+        use veoveo_mcp_contract::docs::ext_knowledge as knowledge;
         let document_uri = veoveo_types::ResourceUri::new("observatory://docs/design")?;
         if allowed {
             let plain = client
@@ -391,9 +391,9 @@ fn expect_mcp_error(error: rmcp::ServiceError, expected: rmcp::model::ErrorCode)
 async fn knowledge_read(
     client: &rmcp::Peer<rmcp::RoleClient>,
     uri: &veoveo_types::ResourceUri,
-    revision: Option<&veoveo_mcp_contract::docs::knowledge_extension::Revision>,
+    revision: Option<&veoveo_mcp_contract::docs::ext_knowledge::Revision>,
 ) -> Result<rmcp::model::ReadResourceResult, rmcp::ServiceError> {
-    let (request, options) = veoveo_mcp_contract::docs::knowledge_extension::client::read_request(
+    let (request, options) = veoveo_mcp_contract::docs::ext_knowledge::client::read_request(
         ReadResourceRequestParams::new(uri.as_str()),
         rmcp::model::ClientCapabilities::default(),
         revision,

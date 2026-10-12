@@ -27,16 +27,16 @@ struct IndexedChunkRecord {
     embedding: Vec<f32>,
     producer_batch: RecordId,
     producer_profile: RecordId,
-    observation: Document<veoveo_mcp_knowledge_extension::Observation>,
+    observation: Document<veoveo_mcp_ext_knowledge::Observation>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MemberReadTicket {
     lease: CoordinatorLease,
     source_epoch: i64,
-    previous: Option<veoveo_mcp_knowledge_extension::Observation>,
+    previous: Option<veoveo_mcp_ext_knowledge::Observation>,
     title: Option<veoveo_knowledge_contract::MemberTitle>,
-    freshness: veoveo_mcp_knowledge_extension::Freshness,
+    freshness: veoveo_mcp_ext_knowledge::Freshness,
     tenant: TenantId,
     generation: GenerationId,
     collection: CollectionId,
@@ -47,7 +47,7 @@ pub struct MemberReadTicket {
     runtime: RuntimeRows,
 }
 impl MemberReadTicket {
-    pub fn previous(&self) -> Option<&veoveo_mcp_knowledge_extension::Observation> {
+    pub fn previous(&self) -> Option<&veoveo_mcp_ext_knowledge::Observation> {
         self.previous.as_ref()
     }
     pub fn title(&self) -> Option<&veoveo_knowledge_contract::MemberTitle> {
@@ -105,7 +105,7 @@ impl PlatformStore {
     pub async fn revalidate_knowledge_member(
         &self,
         ticket: &MemberReadTicket,
-        observation: &veoveo_mcp_knowledge_extension::Observation,
+        observation: &veoveo_mcp_ext_knowledge::Observation,
     ) -> Result<(), StoreError> {
         let _mutation = ticket.lease.mutation().await;
         let previous = ticket.previous.as_ref().ok_or(StoreError::Knowledge(
@@ -189,7 +189,7 @@ impl PlatformStore {
         struct Prior {
             epoch: i64,
             source_epoch: i64,
-            observation: Option<Document<veoveo_mcp_knowledge_extension::Observation>>,
+            observation: Option<Document<veoveo_mcp_ext_knowledge::Observation>>,
             title: Option<String>,
         }
         let prior: Option<Prior> = response.take(index)?;
@@ -302,12 +302,12 @@ impl PlatformStore {
 }
 
 fn valid_until(
-    observation: &veoveo_mcp_knowledge_extension::Observation,
-    freshness: veoveo_mcp_knowledge_extension::Freshness,
+    observation: &veoveo_mcp_ext_knowledge::Observation,
+    freshness: veoveo_mcp_ext_knowledge::Freshness,
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
     match freshness {
-        veoveo_mcp_knowledge_extension::Freshness::Immutable { .. } => Ok(None),
-        veoveo_mcp_knowledge_extension::Freshness::MaxAge { max_age_seconds } => observation
+        veoveo_mcp_ext_knowledge::Freshness::Immutable { .. } => Ok(None),
+        veoveo_mcp_ext_knowledge::Freshness::MaxAge { max_age_seconds } => observation
             .observed_at()
             .checked_add_signed(chrono::TimeDelta::seconds(i64::from(max_age_seconds)))
             .map(Some)
@@ -321,14 +321,14 @@ mod tests {
 
     #[test]
     fn chunk_record_keeps_native_links_floats_and_observation() {
-        let descriptor = veoveo_mcp_knowledge_extension::docs::collection(
+        let descriptor = veoveo_mcp_ext_knowledge::docs::collection(
             &"knowledge".parse().unwrap(),
             &"knowledge".parse().unwrap(),
         );
-        let observation = veoveo_mcp_knowledge_extension::Observation::builder(
+        let observation = veoveo_mcp_ext_knowledge::Observation::builder(
             descriptor.collection().clone(),
-            veoveo_mcp_knowledge_extension::Revision::parse("revision-1").unwrap(),
-            veoveo_mcp_knowledge_extension::content_digest("body"),
+            veoveo_mcp_ext_knowledge::Revision::parse("revision-1").unwrap(),
+            veoveo_mcp_ext_knowledge::content_digest("body"),
             chrono::Utc::now(),
         )
         .build(&descriptor)

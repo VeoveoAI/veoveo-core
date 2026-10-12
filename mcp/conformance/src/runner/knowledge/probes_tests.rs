@@ -24,7 +24,7 @@ use std::{
     },
 };
 use veoveo_mcp_contract::subscriptions::{SubscriptionHub, listen_resources};
-use veoveo_mcp_knowledge_extension::{
+use veoveo_mcp_ext_knowledge::{
     AccessModel, CollectionId, EntityKind, Freshness, IndexingMode, Revision, SearchHit,
 };
 use veoveo_types::{LocalToolName, ResourceTemplateUri};

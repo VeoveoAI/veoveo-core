@@ -2,7 +2,7 @@
 use super::native_approval::NativeApproval;
 use super::*;
 use veoveo_knowledge_contract::{CollectionApproval, CollectionRegistration};
-use veoveo_mcp_knowledge_extension::{ChangeSignal, EntityKind};
+use veoveo_mcp_ext_knowledge::{ChangeSignal, EntityKind};
 use veoveo_types::ScopeName;
 
 #[derive(Clone, SurrealValue)]
@@ -31,7 +31,7 @@ impl RegistrationRow {
             id: collection_record(&registration.tenant, registration.descriptor.collection()),
             tenant: registration.tenant.to_string(),
             collection: registration.descriptor.collection().to_string(),
-            enumeration_root: veoveo_mcp_knowledge_extension::enumeration_uri(
+            enumeration_root: veoveo_mcp_ext_knowledge::enumeration_uri(
                 &registration.descriptor,
                 None,
             )

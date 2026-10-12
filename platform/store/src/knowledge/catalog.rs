@@ -106,7 +106,7 @@ impl PlatformStore {
         if rows.next().is_some()
             || registration.tenant != *tenant
             || registration.validate().is_err()
-            || veoveo_mcp_knowledge_extension::enumeration_uri(&registration.descriptor, None)
+            || veoveo_mcp_ext_knowledge::enumeration_uri(&registration.descriptor, None)
                 .ok()
                 .as_ref()
                 != Some(root)

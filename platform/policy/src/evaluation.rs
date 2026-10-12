@@ -6,7 +6,7 @@ use veoveo_mcp_contract::{
     GatewayProfile, GatewayProfileId, McpMethodName, PolicyDecision, PolicyEffect,
     PolicyReasonCode, PolicyRule, PolicyRuleId, PolicyTarget, Principal, TraceId,
 };
-use veoveo_mcp_registration_extension::RequirementTarget;
+use veoveo_mcp_ext_registration::RequirementTarget;
 use veoveo_types::{PermissionName, PolicyVersion, ResourceScheme, ScopeName};
 
 use crate::PolicyCatalogView;

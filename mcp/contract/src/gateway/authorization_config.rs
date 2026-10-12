@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use veoveo_gateway_contract::SecretReferenceId;
-use veoveo_mcp_registration_extension::{Access, Risk};
+use veoveo_mcp_ext_registration::{Access, Risk};
 use veoveo_types::{GroupId, PermissionName, PrincipalId, RoleId, TenantId};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

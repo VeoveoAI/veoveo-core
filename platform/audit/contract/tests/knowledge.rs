@@ -1,5 +1,5 @@
 use veoveo_audit_contract::*;
-use veoveo_mcp_knowledge_extension::{Observation, Revision, content_digest, docs};
+use veoveo_mcp_ext_knowledge::{Observation, Revision, content_digest, docs};
 use veoveo_types::{ResourceScheme, ResourceUri, ServerSlug};
 
 fn draft() -> AuditDraft {
@@ -12,7 +12,7 @@ fn draft() -> AuditDraft {
         content_digest("body"),
         chrono::Utc::now(),
     )
-    .external(veoveo_mcp_knowledge_extension::ExternalRecord {
+    .external(veoveo_mcp_ext_knowledge::ExternalRecord {
         system: "fixture".parse().unwrap(),
         native_id: "record-1".parse().unwrap(),
         url: Some(
@@ -129,7 +129,7 @@ fn absent_and_null_knowledge_access_match_emitted_bytes_and_schema() {
 
 #[test]
 fn knowledge_policy_cut_preserves_frozen_audit_access_bytes() {
-    use veoveo_mcp_knowledge_extension::{AccessDescriptor, ReadPolicy};
+    use veoveo_mcp_ext_knowledge::{AccessDescriptor, ReadPolicy};
     let policies = [
         (ReadPolicy::Tenant {}, "tenant", "tenant"),
         (ReadPolicy::Subjects {}, "subjects", "subjects"),

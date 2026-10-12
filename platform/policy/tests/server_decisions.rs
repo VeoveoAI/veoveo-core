@@ -11,7 +11,7 @@ use veoveo_gateway_contract::{
     PolicyAction, ProtectedResourceId,
 };
 use veoveo_mcp_contract::*;
-use veoveo_mcp_registration_extension::{
+use veoveo_mcp_ext_registration::{
     Access, AuthorizationBuilder, AuthorizationDeclaration, PermissionDefinition, Risk,
 };
 use veoveo_policy::{PolicyCatalogView, PolicyRequest, decide};

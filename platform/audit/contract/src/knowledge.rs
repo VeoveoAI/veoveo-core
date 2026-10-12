@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use veoveo_mcp_knowledge_extension::{
+use veoveo_mcp_ext_knowledge::{
     AccessDescriptor, CollectionId, ExternalRecordId, ExternalSystemId, ModifiedBy, Observation,
     Revision,
 };

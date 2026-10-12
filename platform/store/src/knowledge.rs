@@ -32,7 +32,7 @@ use serde::{Serialize, de::DeserializeOwned};
 pub use statistics::CollectionStatisticsSnapshot;
 use surrealdb::types::{Array, Error, Kind, RecordId, SurrealValue, Uuid, Value};
 use veoveo_knowledge_contract::GenerationId;
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::TenantId;
 
 fn generation_record(id: GenerationId) -> RecordId {

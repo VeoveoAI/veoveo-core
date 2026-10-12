@@ -2,7 +2,7 @@
 use super::{codec::Document, *};
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
-use veoveo_mcp_knowledge_extension::CollectionId;
+use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::Sha256Digest;
 
 const DOMAIN: &str = "veoveo.ai/audit-indexing-members/v1";
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn indexing_row_keeps_absent_member_native_receipt_and_dates() {
-        let descriptor = veoveo_mcp_knowledge_extension::docs::collection(
+        let descriptor = veoveo_mcp_ext_knowledge::docs::collection(
             &"knowledge".parse().unwrap(),
             &"knowledge".parse().unwrap(),
         );

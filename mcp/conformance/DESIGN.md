@@ -16,7 +16,7 @@
 | `veoveo.ai/mcp-conformance-report/v1` | machine-readable implementation identity, capabilities, requirement results, and evidence |
 | `veoveo.ai/hosted-mcp/v4` | Veoveo hosted-server contract revision for MCP `2026-07-28` |
 | `ai.veoveo/gateway-discovery-degradation` | typed server/surface/failure-code catalog metadata; full-catalog rejection and selected-source coverage admission |
-| `ai.veoveo/knowledge-source` | typed collection declarations, enumeration, observations and conditional member reads; [extension rules](../knowledge-extension/DESIGN.md#server-rules) |
+| `ai.veoveo/knowledge-source` | typed collection declarations, enumeration, observations and conditional member reads; [extension rules](../ext-knowledge/DESIGN.md#server-rules) |
 | `veoveo.ai/live-view/v4` | optional provider-neutral authoritative cameras, typed camera regions in shared encoded products, actor/browser authorization, Annex B H.264 WebSocket fanout, and redaction profile layered on a domain-owned simulation server |
 
 ## Naming Inspection
