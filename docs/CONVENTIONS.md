@@ -102,7 +102,7 @@ of the risks `sensitive`, `destructive`, `billed`, `physical` and `administer`.
 
 ## Tokens And Keys
 
-An access token's `iss` is the Gateway's https issuer URL and its `aud` is the target
+An access token's `iss` is the Gateway's issuer URL and its `aud` is the target
 server's resource URL. `client_id` names the caller's OAuth client, and an `act` claim
 names the Gateway when it acts for a caller. Every key identifier is the key's RFC 7638
 thumbprint. Veoveo uses no unregistered URN namespace.
@@ -119,6 +119,13 @@ written `sha256:<lowercase hex>`.
 Health endpoints are `/livez` and `/readyz`. Well-known URIs follow RFC 8615 and the
 registrations of RFC 8414 and RFC 9728. Administrative routes live under one `/admin/`
 prefix.
+
+Issuers, endpoints and resource URLs use `https`. A local installation, whose traffic
+never leaves one host, may use plain `http` for loopback names (`localhost` and
+`*.localhost`, per RFC 6761), loopback addresses and OpenShell's host alias
+`host.openshell.internal`, which reaches the host's loopback interface. MCP's
+authorization specification makes the same exception for localhost. Every other host
+requires `https`.
 
 ## Environment Variables And Flags
 

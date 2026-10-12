@@ -283,7 +283,7 @@ fn client(endpoint: &url::Url, key: ServerKeyPair, secret: &str) -> Registration
             slug: ServerSlug::parse("clock").unwrap(),
             uri_scheme: ResourceScheme::parse("clock").unwrap(),
             version: ServerVersion::new("0.1.0").unwrap(),
-            endpoint: ServerEndpoint::new(url::Url::parse("http://clock:8800/mcp").unwrap())
+            endpoint: ServerEndpoint::new(url::Url::parse("https://clock.example/mcp").unwrap())
                 .unwrap(),
         },
         AuthorizationDeclaration {

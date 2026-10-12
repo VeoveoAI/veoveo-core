@@ -343,13 +343,11 @@ impl AccessTokenTrust {
     }
 }
 
-/// An RFC 8414 issuer: an HTTPS URL without credentials, query or fragment.
+/// An RFC 8414 issuer: an HTTPS URL, or an HTTP URL on a local host, without
+/// credentials, query or fragment.
 pub fn issuer_url(issuer: &TokenIssuer) -> Result<(), DeclarationError> {
     let url = url::Url::parse(issuer.as_str())
         .map_err(|_| DeclarationError::invalid("issuer", "must be a URL"))?;
-    if url.scheme() != "https" {
-        return Err(DeclarationError::invalid("issuer", "must use https"));
-    }
     http_url(&url, "issuer")
 }
 

@@ -214,7 +214,7 @@ mod tests {
                 slug: ServerSlug::parse("time").unwrap(),
                 uri_scheme: ResourceScheme::parse("time").unwrap(),
                 version: ServerVersion::new("0.1.0").unwrap(),
-                endpoint: ServerEndpoint::new(url::Url::parse("http://time:8800/mcp").unwrap())
+                endpoint: ServerEndpoint::new(url::Url::parse("https://time.example/mcp").unwrap())
                     .unwrap(),
             },
             AuthorizationDeclaration {

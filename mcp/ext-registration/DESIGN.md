@@ -65,8 +65,9 @@ its MCP endpoint as `veoveo_mcp_endpoint`. MCP Discover advertises the same valu
 ```
 
 The version holds 1 to 64 ASCII letters, digits, dots, underscores, plus signs or
-hyphens. The endpoint uses `http` or `https`, names a host and carries no credentials,
-query or fragment.
+hyphens. The endpoint uses `https`, or `http` on a local host as the
+[conventions](../../docs/CONVENTIONS.md#http-paths) allow, names a host and carries no
+credentials, query or fragment.
 
 ### Authorization
 
@@ -235,9 +236,9 @@ rejects a response that differs from what it sent. `veoveo_database` appears whe
 server registered a module and the Gateway issued its user. The user has database-wide
 access and never administrator rights. `veoveo_access_tokens` names the issuer, keys
 and audience of the access tokens the Gateway forwards to this server. The issuer is
-the Gateway's HTTPS issuer URL, the value its RFC 8414 metadata announces, and the
-audience is the registered MCP endpoint. `registration_client_uri` uses `http` or
-`https`.
+the Gateway's issuer URL, the value its RFC 8414 metadata announces, and the
+audience is the registered MCP endpoint. Every URL here uses `https`, or `http` on a
+local host.
 
 ### Software Statement
 

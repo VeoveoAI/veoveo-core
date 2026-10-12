@@ -231,7 +231,7 @@ fn registration() -> RegistrationDeclaration {
         slug: slug(),
         uri_scheme: scheme(),
         version: ServerVersion::new("0.1.0").unwrap(),
-        endpoint: ServerEndpoint::new(url::Url::parse("http://clock:8800/clock/mcp").unwrap())
+        endpoint: ServerEndpoint::new(url::Url::parse("https://clock.example/clock/mcp").unwrap())
             .unwrap(),
     }
 }
@@ -245,7 +245,7 @@ fn registration_declaration_wire_format() {
             "slug": "clock",
             "uriScheme": "clock",
             "version": "0.1.0",
-            "endpoint": "http://clock:8800/clock/mcp"
+            "endpoint": "https://clock.example/clock/mcp"
         })
     );
     assert_eq!(
@@ -259,8 +259,9 @@ fn registration_values_are_admitted_once() {
     let mut wire = serde_json::to_value(registration()).unwrap();
     for (field, value) in [
         ("endpoint", json!("ftp://clock/mcp")),
-        ("endpoint", json!("http://user:secret@clock/mcp")),
-        ("endpoint", json!("http://clock/mcp?token=x")),
+        ("endpoint", json!("https://user:secret@clock.example/mcp")),
+        ("endpoint", json!("http://clock.example/mcp")),
+        ("endpoint", json!("https://clock.example/mcp?token=x")),
         ("version", json!("")),
         ("version", json!("1 0")),
         ("slug", json!("Clock")),
@@ -385,7 +386,10 @@ fn registration_requests_are_rfc7591_client_metadata() {
     assert_eq!(wire["software_id"], "clock");
     assert_eq!(wire["software_version"], "0.1.0");
     assert_eq!(wire["veoveo_uri_scheme"], "clock");
-    assert_eq!(wire["veoveo_mcp_endpoint"], "http://clock:8800/clock/mcp");
+    assert_eq!(
+        wire["veoveo_mcp_endpoint"],
+        "https://clock.example/clock/mcp"
+    );
     // OAuth documents spell members in snake_case; MCP keeps camelCase.
     let mut snake = serde_json::to_value(authorization()).unwrap();
     let templates = snake["requirements"]
@@ -483,7 +487,7 @@ fn information() -> serde_json::Value {
         ("registration_access_token", json!("rat-secret")),
         (
             "registration_client_uri",
-            json!("http://gateway:8080/oauth/register/clock-0b6f"),
+            json!("https://gateway.example/oauth/register/clock-0b6f"),
         ),
         (
             "veoveo_lease",
@@ -497,7 +501,7 @@ fn information() -> serde_json::Value {
                     "kty": "OKP", "crv": "Ed25519", "x": RFC8037_X,
                     "kid": RFC8037_THUMBPRINT, "alg": "EdDSA", "use": "sig"
                 }]},
-                "resource": "http://clock:8800/clock/mcp"
+                "resource": "https://clock.example/clock/mcp"
             }),
         ),
         (
@@ -739,4 +743,37 @@ fn tool_annotations_must_agree_with_permissions() {
         ),
         Err(DeclarationError::DestructiveToolWithoutRisk { .. })
     ));
+}
+
+#[test]
+fn plain_http_is_allowed_only_for_local_hosts() {
+    for local in [
+        "http://localhost:8800/mcp",
+        "http://time.localhost:8800/mcp",
+        "http://127.0.0.1:8800/mcp",
+        "http://[::1]:8800/mcp",
+        "http://host.openshell.internal:8800/mcp",
+    ] {
+        assert!(
+            ServerEndpoint::new(url::Url::parse(local).unwrap()).is_ok(),
+            "{local}"
+        );
+        assert!(ResourceIndicator::parse(local).is_ok(), "{local}");
+    }
+    for remote in [
+        "http://time.example/mcp",
+        "http://10.0.0.5:8800/mcp",
+        "ftp://localhost/mcp",
+    ] {
+        assert!(
+            ServerEndpoint::new(url::Url::parse(remote).unwrap()).is_err(),
+            "{remote}"
+        );
+        assert!(ResourceIndicator::parse(remote).is_err(), "{remote}");
+    }
+    let local_issuer =
+        veoveo_types::TokenIssuer::parse("http://host.openshell.internal:8080").unwrap();
+    assert!(veoveo_mcp_ext_registration::oauth::issuer_url(&local_issuer).is_ok());
+    let remote_issuer = veoveo_types::TokenIssuer::parse("http://gateway.example").unwrap();
+    assert!(veoveo_mcp_ext_registration::oauth::issuer_url(&remote_issuer).is_err());
 }
