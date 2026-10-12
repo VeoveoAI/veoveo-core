@@ -108,12 +108,13 @@ pub use host::{
 };
 #[cfg(feature = "runtime")]
 pub use internal_auth::{
-    DEFAULT_GATEWAY_INTERNAL_SIGNING_KEY_ID, GATEWAY_INTERNAL_TOKEN_ISSUER,
-    GATEWAY_ROUTING_REQUIRED, GatewayInternalIdentity, GatewayInternalResourceIdentity,
-    GatewayInternalResourceTokenVerifier, GatewayInternalSigningKey, GatewayInternalTokenIssuer,
-    GatewayInternalTokenVerifier, GatewayInternalTrustBundle, GatewayRequestContext,
-    GatewayRequestContextFormat, InternalTokenError, IssuedGatewayInternalResourceToken,
-    IssuedGatewayInternalToken, VerifiedArtifactUploadIdentity,
+    ACCESS_TOKEN_TYPE, ARTIFACT_UPLOAD_CLAIM, DEFAULT_GATEWAY_INTERNAL_SIGNING_KEY_ID,
+    GATEWAY_CLIENT_ID, GATEWAY_INTERNAL_TOKEN_ISSUER, GATEWAY_ROUTING_REQUIRED,
+    GatewayInternalIdentity, GatewayInternalResourceIdentity, GatewayInternalResourceTokenVerifier,
+    GatewayInternalSigningKey, GatewayInternalTokenIssuer, GatewayInternalTokenVerifier,
+    GatewayInternalTrustBundle, GatewayRequestContext, INVOCATION_CLAIM, InternalTokenError,
+    IssuedGatewayInternalResourceToken, IssuedGatewayInternalToken, RESOURCE_INVOCATION_CLAIM,
+    VerifiedArtifactUploadIdentity,
 };
 #[cfg(feature = "runtime")]
 pub use pagination::{Page, PaginationError, paginate};

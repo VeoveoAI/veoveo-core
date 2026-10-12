@@ -9,10 +9,14 @@ pub struct VerifiedArtifactUploadIdentity {
     pub authorization: ArtifactUploadAuthority,
 }
 
+/// Private claim binding an upload token to the Gateway's checked configuration.
+pub const ARTIFACT_UPLOAD_CLAIM: &str = "ai.veoveo/artifact-upload";
+
 #[derive(Serialize, Deserialize)]
 struct UploadClaims {
     #[serde(flatten)]
-    identity: GatewayInternalJwtClaims,
+    identity: AccessTokenClaims,
+    #[serde(rename = "ai.veoveo/artifact-upload")]
     upload_authorization: ArtifactUploadAuthority,
 }
 
@@ -31,22 +35,14 @@ impl GatewayInternalTokenIssuer {
             ServerSlug::parse(ARTIFACT_UPLOAD_AUDIENCE).map_err(InternalTokenError::Identifier)?,
             actor,
             authority,
+            BTreeSet::new(),
             Some(request_context),
             expires_at,
         )?;
-        let claims = UploadClaims {
-            identity: GatewayInternalJwtClaims::from_identity(&identity),
+        self.sign(&UploadClaims {
+            identity: AccessTokenClaims::from_identity(&identity)?,
             upload_authorization: authorization,
-        };
-        let mut header = Header::new(Algorithm::EdDSA);
-        header.typ = Some("JWT".into());
-        header.kid = Some(self.signing_key.key_id.clone());
-        encode(
-            &header,
-            &claims,
-            &EncodingKey::from_ed_der(&self.signing_key.private_key_der),
-        )
-        .map_err(InternalTokenError::Jwt)
+        })
     }
 }
 
@@ -58,11 +54,9 @@ impl GatewayInternalTokenVerifier {
         let claims = self.decode_claims::<UploadClaims>(token)?;
         let expected =
             ServerSlug::parse(ARTIFACT_UPLOAD_AUDIENCE).map_err(InternalTokenError::Identifier)?;
-        if claims.identity.server != expected {
-            return Err(InternalTokenError::AudienceMismatch {
-                expected,
-                actual: claims.identity.server,
-            });
+        let actual = claims.identity.standard.audience()?;
+        if actual != expected {
+            return Err(InternalTokenError::AudienceMismatch { expected, actual });
         }
         let identity = self.identity_from_claims(claims.identity)?;
         identity.audit_context()?;

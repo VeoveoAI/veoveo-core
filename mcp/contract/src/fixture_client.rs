@@ -63,7 +63,6 @@ pub fn issue_internal_fixture_token(
     let now = Utc::now();
     let expires_at = now + TimeDelta::minutes(30);
     let request_context = GatewayRequestContext {
-        format: crate::GatewayRequestContextFormat::V2,
         audit: crate::audit::AuditRequest::background(),
         access_token: AccessTokenSubject {
             managed_execution: None,

@@ -84,8 +84,7 @@
         "trace_id": "00000000000000000000000000000001",
         "span_id": "0000000000000001",
         "source_ip": "192.0.2.1"
-      },
-      "format": "veoveo.ai/gateway-request-context/v2"
+      }
     }
   },
   {
@@ -168,8 +167,7 @@
         "trace_id": "00000000000000000000000000000002",
         "span_id": "0000000000000002",
         "source_ip": "2001:db8::1"
-      },
-      "format": "veoveo.ai/gateway-request-context/v2"
+      }
     }
   },
   {
@@ -254,8 +252,7 @@
         "trace_id": "00000000000000000000000000000003",
         "span_id": "0000000000000003",
         "source_ip": null
-      },
-      "format": "veoveo.ai/gateway-request-context/v2"
+      }
     }
   }
 ]

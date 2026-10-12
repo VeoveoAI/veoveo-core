@@ -78,9 +78,10 @@ fn source_expiry_caps_assertions_and_cannot_be_extended_by_a_signed_context() {
         fixture.request_context.access_token.expires_at
     );
     verifier.verify(&issued.bearer_token).unwrap();
-    let mut claims = GatewayInternalJwtClaims::from_identity(&issued.identity);
-    claims.exp += 1;
+    let mut claims = AccessTokenClaims::from_identity(&issued.identity).unwrap();
+    claims.standard.exp += 1;
     let mut header = Header::new(Algorithm::EdDSA);
+    header.typ = Some(ACCESS_TOKEN_TYPE.into());
     header.kid = Some("key-1".into());
     let forged = encode(
         &header,
@@ -150,7 +151,7 @@ fn signed_context_rejects_mismatched_actor_tenant_scope_and_provenance() {
 }
 
 #[test]
-fn assertion_profiles_reject_mixed_versions_and_invalid_execution_attribution() {
+fn forwarded_tokens_reject_other_types_and_invalid_execution_attribution() {
     let fixture = fixtures()
         .into_iter()
         .find(|fixture| {
@@ -181,51 +182,63 @@ fn assertion_profiles_reject_mixed_versions_and_invalid_execution_attribution() 
             Utc::now() + TimeDelta::seconds(60),
         )
         .unwrap();
-    let original: serde_json::Value = serde_json::from_slice(
-        &URL_SAFE_NO_PAD
-            .decode(issued.bearer_token.split('.').nth(1).unwrap())
-            .unwrap(),
-    )
-    .unwrap();
+    let mut segments = issued.bearer_token.split('.');
+    let issued_header: serde_json::Value =
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(segments.next().unwrap()).unwrap()).unwrap();
+    assert_eq!(issued_header["typ"], ACCESS_TOKEN_TYPE);
+    let original: serde_json::Value =
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(segments.next().unwrap()).unwrap()).unwrap();
+    let sign = |header: &Header, claims: &serde_json::Value| {
+        encode(
+            header,
+            claims,
+            &EncodingKey::from_ed_der(&key.private_key_der),
+        )
+        .unwrap()
+    };
     let mut header = Header::new(Algorithm::EdDSA);
+    header.typ = Some(ACCESS_TOKEN_TYPE.into());
     header.kid = Some("key-1".into());
+    verifier.verify(&sign(&header, &original)).unwrap();
+    // RFC 9068 §4: tokens of any other type are refused.
+    for typ in [Some("JWT"), None] {
+        let mut other = header.clone();
+        other.typ = typ.map(str::to_owned);
+        assert!(matches!(
+            verifier.verify(&sign(&other, &original)),
+            Err(InternalTokenError::UnsupportedTokenType)
+        ));
+    }
     for variant in 0..7 {
         let mut claims = original.clone();
+        let invocation = INVOCATION_CLAIM;
         match variant {
             0 => {
-                claims.as_object_mut().unwrap().remove("format");
+                claims.as_object_mut().unwrap().remove("client_id");
             }
-            1 => claims["format"] = serde_json::json!("veoveo.ai/gateway-internal-assertion/v1"),
-            2 => {
-                claims["request_context"]
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("format");
-            }
+            1 => claims["client_id"] = serde_json::json!("console"),
+            2 => claims["groups"] = serde_json::json!(["foreign"]),
             3 => {
-                claims["request_context"]["format"] =
-                    serde_json::json!("veoveo.ai/gateway-request-context/v1")
+                claims[invocation]["request_context"]["format"] =
+                    serde_json::json!("veoveo.ai/gateway-request-context/v2")
             }
             4 => {
-                claims["request_context"]["access_token"]["managed_execution"]["generation"] =
+                claims[invocation]["request_context"]["access_token"]["managed_execution"]["generation"] =
                     serde_json::json!(0)
             }
             5 => {
-                claims["request_context"]["access_token"]["managed_execution"]["dispatch_epoch"] =
+                claims[invocation]["request_context"]["access_token"]["managed_execution"]["dispatch_epoch"] =
                     serde_json::json!(-1)
             }
             _ => {
-                claims["request_context"]["access_token"]["managed_agent"] =
+                claims[invocation]["request_context"]["access_token"]["managed_agent"] =
                     serde_json::json!({"instance":"fixture-agent","generation":1,"epoch":2});
             }
         }
-        let token = encode(
-            &header,
-            &claims,
-            &EncodingKey::from_ed_der(&key.private_key_der),
-        )
-        .unwrap();
-        assert!(verifier.verify(&token).is_err(), "{variant}");
+        assert!(
+            verifier.verify(&sign(&header, &claims)).is_err(),
+            "{variant}"
+        );
     }
     let mut value = serde_json::to_value(&fixture.request_context).unwrap();
     value["access_token"]["session_family"] =

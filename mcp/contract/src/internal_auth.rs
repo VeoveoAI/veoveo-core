@@ -1,13 +1,17 @@
 use veoveo_gateway_contract::ProtectedResourceId;
 mod request;
 mod upload;
-pub use request::{GatewayRequestContext, GatewayRequestContextFormat};
+pub use request::GatewayRequestContext;
 #[cfg(test)]
 #[path = "internal_auth/request_tests.rs"]
 mod request_tests;
 pub use upload::*;
 
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    sync::Arc,
+};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
@@ -21,11 +25,21 @@ use jsonwebtoken::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{GatewayProfileId, JwtId, Principal, ServerSlug, TokenIssuer};
-use veoveo_types::InvocationAuthority;
-use veoveo_types::{IdentifierError, PrincipalId};
+use crate::{GatewayProfileId, JwtId, OAuthClientId, Principal, ServerSlug, TokenIssuer};
+use veoveo_mcp_registration_extension::{Ed25519JwkSet, PermissionsDetail};
+use veoveo_types::{
+    GroupId, IdentifierError, InvocationAuthority, PermissionName, PrincipalId, RoleId,
+};
 
-pub const GATEWAY_INTERNAL_ASSERTION_FORMAT: &str = "veoveo.ai/gateway-internal-assertion/v2";
+/// The JOSE `typ` of every token the Gateway forwards: an RFC 9068 JWT access token.
+pub const ACCESS_TOKEN_TYPE: &str = "at+jwt";
+/// The RFC 9068 `client_id` of forwarded tokens: the Gateway acts as the OAuth client
+/// that presents them to the server.
+pub const GATEWAY_CLIENT_ID: &str = "veoveo-gateway";
+/// Private claim carrying profile, actor, authority and request context.
+pub const INVOCATION_CLAIM: &str = "ai.veoveo/invocation";
+/// Private claim of HTTP resource tokens.
+pub const RESOURCE_INVOCATION_CLAIM: &str = "ai.veoveo/resource-invocation";
 
 pub const GATEWAY_INTERNAL_TOKEN_ISSUER: &str = "veoveo-internal";
 pub const DEFAULT_GATEWAY_INTERNAL_SIGNING_KEY_ID: &str = "veoveo-internal-1";
@@ -113,6 +127,14 @@ impl GatewayInternalTrustBundle {
         Self::new(jwks)
     }
 
+    /// The keys a registration response names in `ai.veoveo/access-tokens`.
+    pub fn from_key_set(keys: &Ed25519JwkSet) -> Result<Self, InternalTokenError> {
+        let jwks = serde_json::to_value(keys)
+            .and_then(serde_json::from_value)
+            .map_err(InternalTokenError::TrustBundleJson)?;
+        Self::new(jwks)
+    }
+
     pub fn key_ids(&self) -> impl Iterator<Item = &str> {
         self.keys.keys().map(String::as_str)
     }
@@ -173,6 +195,10 @@ pub struct GatewayInternalIdentity {
     pub server: ServerSlug,
     pub actor: Principal,
     pub authority: InvocationAuthority,
+    /// The permissions the caller holds in this server's namespace, as the Gateway
+    /// granted them for this request. The server checks them again.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub permissions: BTreeSet<PermissionName>,
     /// Required by consumers that admit renewable grants or recheck accepted work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_context: Option<GatewayRequestContext>,
@@ -180,6 +206,13 @@ pub struct GatewayInternalIdentity {
     pub issued_at: DateTime<Utc>,
     pub not_before: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+}
+
+impl GatewayInternalIdentity {
+    /// Whether the Gateway granted `permission` for this request.
+    pub fn grants(&self, permission: &PermissionName) -> bool {
+        self.permissions.contains(permission)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -211,6 +244,7 @@ impl GatewayInternalTokenIssuer {
         }
     }
 
+    /// Issue an identity that carries no server permissions, for Gateway-internal paths.
     pub fn issue(
         &self,
         profile: GatewayProfileId,
@@ -220,36 +254,72 @@ impl GatewayInternalTokenIssuer {
         request_context: Option<GatewayRequestContext>,
         expires_at: DateTime<Utc>,
     ) -> Result<IssuedGatewayInternalToken, InternalTokenError> {
+        self.issue_granted(
+            profile,
+            server,
+            actor,
+            authority,
+            BTreeSet::new(),
+            request_context,
+            expires_at,
+        )
+    }
+
+    /// Issue an identity carrying the permissions the Gateway granted in `server`'s
+    /// namespace. Every permission must belong to that namespace.
+    #[allow(clippy::too_many_arguments)]
+    pub fn issue_granted(
+        &self,
+        profile: GatewayProfileId,
+        server: ServerSlug,
+        actor: Principal,
+        authority: InvocationAuthority,
+        permissions: BTreeSet<PermissionName>,
+        request_context: Option<GatewayRequestContext>,
+        expires_at: DateTime<Utc>,
+    ) -> Result<IssuedGatewayInternalToken, InternalTokenError> {
+        if let Some(foreign) = permissions.iter().find(|p| !p.is_owned_by(&server)) {
+            return Err(InternalTokenError::PermissionOutsideAudience(
+                foreign.clone(),
+            ));
+        }
         let identity = self.create_identity(
             profile,
             server,
             actor,
             authority,
+            permissions,
             request_context,
             expires_at,
         )?;
-        let claims = GatewayInternalJwtClaims::from_identity(&identity);
-        let mut header = Header::new(Algorithm::EdDSA);
-        header.typ = Some("JWT".to_string());
-        header.kid = Some(self.signing_key.key_id.clone());
-        let bearer_token = encode(
-            &header,
-            &claims,
-            &EncodingKey::from_ed_der(&self.signing_key.private_key_der),
-        )
-        .map_err(InternalTokenError::Jwt)?;
+        let bearer_token = self.sign(&AccessTokenClaims::from_identity(&identity)?)?;
         Ok(IssuedGatewayInternalToken {
             bearer_token,
             identity,
         })
     }
 
+    /// Sign claims as an RFC 9068 access token.
+    fn sign(&self, claims: &impl Serialize) -> Result<String, InternalTokenError> {
+        let mut header = Header::new(Algorithm::EdDSA);
+        header.typ = Some(ACCESS_TOKEN_TYPE.to_owned());
+        header.kid = Some(self.signing_key.key_id.clone());
+        encode(
+            &header,
+            claims,
+            &EncodingKey::from_ed_der(&self.signing_key.private_key_der),
+        )
+        .map_err(InternalTokenError::Jwt)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn create_identity(
         &self,
         profile: GatewayProfileId,
         server: ServerSlug,
         actor: Principal,
         authority: InvocationAuthority,
+        permissions: BTreeSet<PermissionName>,
         request_context: Option<GatewayRequestContext>,
         expires_at: DateTime<Utc>,
     ) -> Result<GatewayInternalIdentity, InternalTokenError> {
@@ -272,6 +342,7 @@ impl GatewayInternalTokenIssuer {
             server,
             actor,
             authority,
+            permissions,
             request_context,
             jwt_id,
             issued_at: now,
@@ -306,16 +377,7 @@ impl GatewayInternalTokenIssuer {
             not_before: now,
             expires_at,
         };
-        let claims = GatewayInternalResourceJwtClaims::from_identity(&identity);
-        let mut header = Header::new(Algorithm::EdDSA);
-        header.typ = Some("JWT".to_owned());
-        header.kid = Some(self.signing_key.key_id.clone());
-        let bearer_token = encode(
-            &header,
-            &claims,
-            &EncodingKey::from_ed_der(&self.signing_key.private_key_der),
-        )
-        .map_err(InternalTokenError::Jwt)?;
+        let bearer_token = self.sign(&ResourceAccessTokenClaims::from_identity(&identity)?)?;
         Ok(IssuedGatewayInternalResourceToken {
             bearer_token,
             identity,
@@ -376,84 +438,32 @@ impl GatewayInternalResourceTokenVerifier {
         &self,
         bearer_token: &str,
     ) -> Result<GatewayInternalResourceIdentity, InternalTokenError> {
-        ensure_jwt_crypto_provider();
-        let header = decode_header(bearer_token).map_err(InternalTokenError::Jwt)?;
-        if header.alg != Algorithm::EdDSA {
-            return Err(InternalTokenError::UnsupportedTokenAlgorithm(header.alg));
-        }
-        let key_id = header.kid.ok_or(InternalTokenError::MissingKeyId)?;
-        let jwk = self
-            .trust_bundle
-            .keys
-            .get(&key_id)
-            .ok_or_else(|| InternalTokenError::UnknownKeyId(key_id.clone()))?;
-        let decoding_key = DecodingKey::from_jwk(jwk).map_err(InternalTokenError::Jwt)?;
-        let mut validation = Validation::new(Algorithm::EdDSA);
-        validation.algorithms = vec![Algorithm::EdDSA];
-        validation.validate_nbf = true;
-        validation.leeway = 0;
-        validation.set_issuer(&[self.issuer.as_str()]);
-        validation.set_audience(&[self.audience.as_str()]);
-        validation.set_required_spec_claims(&["exp", "iss", "aud", "sub", "iat", "nbf", "jti"]);
-        let claims =
-            decode::<GatewayInternalResourceJwtClaims>(bearer_token, &decoding_key, &validation)
-                .map_err(InternalTokenError::Jwt)?
-                .claims;
-        if claims.server != self.audience {
+        let claims: ResourceAccessTokenClaims = decode_access_token(
+            bearer_token,
+            &self.issuer,
+            std::slice::from_ref(&self.audience),
+            &self.trust_bundle,
+        )?;
+        let server = claims.standard.audience()?;
+        if server != self.audience {
             return Err(InternalTokenError::AudienceMismatch {
                 expected: self.audience.clone(),
-                actual: claims.server,
+                actual: server,
             });
         }
-        if PrincipalId::parse(claims.sub.clone()).map_err(InternalTokenError::Identifier)?
-            != claims.actor.id
-        {
-            return Err(InternalTokenError::SubjectPrincipalMismatch);
-        }
+        let invocation = claims.invocation;
+        claims.standard.check_actor(&invocation.actor)?;
         Ok(GatewayInternalResourceIdentity {
-            issuer: claims.iss,
-            protected_resource: claims.protected_resource,
-            server: claims.server,
-            actor: claims.actor,
-            authority: claims.authority,
-            jwt_id: claims.jti,
-            issued_at: timestamp_to_datetime(claims.iat, "iat")?,
-            not_before: timestamp_to_datetime(claims.nbf, "nbf")?,
-            expires_at: timestamp_to_datetime(claims.exp, "exp")?,
+            issuer: claims.standard.iss,
+            protected_resource: invocation.protected_resource,
+            server,
+            actor: invocation.actor,
+            authority: invocation.authority,
+            jwt_id: claims.standard.jti,
+            issued_at: timestamp_to_datetime(claims.standard.iat, "iat")?,
+            not_before: timestamp_to_datetime(claims.standard.nbf, "nbf")?,
+            expires_at: timestamp_to_datetime(claims.standard.exp, "exp")?,
         })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct GatewayInternalResourceJwtClaims {
-    iss: TokenIssuer,
-    sub: String,
-    aud: String,
-    exp: i64,
-    nbf: i64,
-    iat: i64,
-    jti: JwtId,
-    protected_resource: ProtectedResourceId,
-    server: ServerSlug,
-    actor: Principal,
-    authority: InvocationAuthority,
-}
-
-impl GatewayInternalResourceJwtClaims {
-    fn from_identity(identity: &GatewayInternalResourceIdentity) -> Self {
-        Self {
-            iss: identity.issuer.clone(),
-            sub: identity.actor.id.as_str().to_owned(),
-            aud: identity.server.as_str().to_owned(),
-            exp: identity.expires_at.timestamp(),
-            nbf: identity.not_before.timestamp(),
-            iat: identity.issued_at.timestamp(),
-            jti: identity.jwt_id.clone(),
-            protected_resource: identity.protected_resource.clone(),
-            server: identity.server.clone(),
-            actor: identity.actor.clone(),
-            authority: identity.authority.clone(),
-        }
     }
 }
 
@@ -501,10 +511,7 @@ impl GatewayInternalTokenVerifier {
         &self,
         bearer_token: &str,
     ) -> Result<GatewayInternalIdentity, InternalTokenError> {
-        let claims = self.decode_claims::<GatewayInternalJwtClaims>(bearer_token)?;
-        if claims.format.as_deref() != Some(GATEWAY_INTERNAL_ASSERTION_FORMAT) {
-            return Err(InternalTokenError::UnsupportedAssertionFormat);
-        }
+        let claims = self.decode_claims::<AccessTokenClaims>(bearer_token)?;
         self.identity_from_claims(claims)
     }
 
@@ -512,111 +519,279 @@ impl GatewayInternalTokenVerifier {
         &self,
         bearer_token: &str,
     ) -> Result<T, InternalTokenError> {
-        ensure_jwt_crypto_provider();
-        let header = decode_header(bearer_token).map_err(InternalTokenError::Jwt)?;
-        if header.alg != Algorithm::EdDSA {
-            return Err(InternalTokenError::UnsupportedTokenAlgorithm(header.alg));
-        }
-        let key_id = header.kid.ok_or(InternalTokenError::MissingKeyId)?;
-        let jwk = self
-            .trust_bundle
-            .keys
-            .get(&key_id)
-            .ok_or_else(|| InternalTokenError::UnknownKeyId(key_id.clone()))?;
-        let decoding_key = DecodingKey::from_jwk(jwk).map_err(InternalTokenError::Jwt)?;
-        let mut validation = Validation::new(Algorithm::EdDSA);
-        validation.algorithms = vec![Algorithm::EdDSA];
-        validation.validate_nbf = true;
-        validation.leeway = 0;
-        validation.set_issuer(&[self.issuer.as_str()]);
-        let audience_strs: Vec<&str> = self.audiences.iter().map(ServerSlug::as_str).collect();
-        validation.set_audience(&audience_strs);
-        validation.set_required_spec_claims(&["exp", "iss", "aud", "sub", "iat", "nbf", "jti"]);
-        let token = decode::<T>(bearer_token, &decoding_key, &validation)
-            .map_err(InternalTokenError::Jwt)?;
-        Ok(token.claims)
+        decode_access_token(
+            bearer_token,
+            &self.issuer,
+            &self.audiences,
+            &self.trust_bundle,
+        )
     }
 
     fn identity_from_claims(
         &self,
-        claims: GatewayInternalJwtClaims,
+        claims: AccessTokenClaims,
     ) -> Result<GatewayInternalIdentity, InternalTokenError> {
-        if !self.audiences.contains(&claims.server) {
+        let server = claims.standard.audience()?;
+        if !self.audiences.contains(&server) {
             return Err(InternalTokenError::AudienceMismatch {
                 expected: self
                     .audiences
                     .first()
                     .cloned()
-                    .unwrap_or_else(|| claims.server.clone()),
-                actual: claims.server,
+                    .unwrap_or_else(|| server.clone()),
+                actual: server,
             });
         }
-        if PrincipalId::parse(claims.sub.clone()).map_err(InternalTokenError::Identifier)?
-            != claims.actor.id
-        {
-            return Err(InternalTokenError::SubjectPrincipalMismatch);
-        }
-        if let Some(context) = &claims.request_context {
-            context.validate_for(&claims.actor, &claims.authority)?;
-            if claims.exp > context.access_token.expires_at.timestamp() {
+        let invocation = claims.invocation;
+        claims.standard.check_actor(&invocation.actor)?;
+        let permissions = match claims.authorization_details.as_slice() {
+            [] => BTreeSet::new(),
+            [detail] => {
+                if let Some(foreign) = detail
+                    .actions
+                    .iter()
+                    .find(|permission| !permission.is_owned_by(&server))
+                {
+                    return Err(InternalTokenError::PermissionOutsideAudience(
+                        foreign.clone(),
+                    ));
+                }
+                detail.actions.clone()
+            }
+            _ => return Err(InternalTokenError::InconsistentClaims),
+        };
+        if let Some(context) = &invocation.request_context {
+            context.validate_for(&invocation.actor, &invocation.authority)?;
+            if claims.standard.exp > context.access_token.expires_at.timestamp() {
                 return Err(InternalTokenError::InvalidRequestContext);
             }
         }
         Ok(GatewayInternalIdentity {
-            issuer: claims.iss,
-            profile: claims.profile,
-            server: claims.server,
-            actor: claims.actor,
-            authority: claims.authority,
-            request_context: claims.request_context,
-            jwt_id: claims.jti,
-            issued_at: timestamp_to_datetime(claims.iat, "iat")?,
-            not_before: timestamp_to_datetime(claims.nbf, "nbf")?,
-            expires_at: timestamp_to_datetime(claims.exp, "exp")?,
+            issuer: claims.standard.iss,
+            profile: invocation.profile,
+            server,
+            actor: invocation.actor,
+            authority: invocation.authority,
+            permissions,
+            request_context: invocation.request_context,
+            jwt_id: claims.standard.jti,
+            issued_at: timestamp_to_datetime(claims.standard.iat, "iat")?,
+            not_before: timestamp_to_datetime(claims.standard.nbf, "nbf")?,
+            expires_at: timestamp_to_datetime(claims.standard.exp, "exp")?,
         })
     }
+}
+
+/// Verify an RFC 9068 access token's header, signature and registered claims.
+fn decode_access_token<T: serde::de::DeserializeOwned>(
+    bearer_token: &str,
+    issuer: &TokenIssuer,
+    audiences: &[ServerSlug],
+    trust_bundle: &GatewayInternalTrustBundle,
+) -> Result<T, InternalTokenError> {
+    ensure_jwt_crypto_provider();
+    let header = decode_header(bearer_token).map_err(InternalTokenError::Jwt)?;
+    if header.alg != Algorithm::EdDSA {
+        return Err(InternalTokenError::UnsupportedTokenAlgorithm(header.alg));
+    }
+    // RFC 9068 §4: reject any type other than `at+jwt` or `application/at+jwt`.
+    if !header.typ.as_deref().is_some_and(|typ| {
+        typ.eq_ignore_ascii_case(ACCESS_TOKEN_TYPE)
+            || typ.eq_ignore_ascii_case("application/at+jwt")
+    }) {
+        return Err(InternalTokenError::UnsupportedTokenType);
+    }
+    let key_id = header.kid.ok_or(InternalTokenError::MissingKeyId)?;
+    let jwk = trust_bundle
+        .keys
+        .get(&key_id)
+        .ok_or_else(|| InternalTokenError::UnknownKeyId(key_id.clone()))?;
+    let decoding_key = DecodingKey::from_jwk(jwk).map_err(InternalTokenError::Jwt)?;
+    let mut validation = Validation::new(Algorithm::EdDSA);
+    validation.algorithms = vec![Algorithm::EdDSA];
+    validation.validate_nbf = true;
+    validation.leeway = 0;
+    validation.set_issuer(&[issuer.as_str()]);
+    let audiences: Vec<&str> = audiences.iter().map(ServerSlug::as_str).collect();
+    validation.set_audience(&audiences);
+    validation.set_required_spec_claims(&["exp", "iss", "aud", "sub", "nbf"]);
+    Ok(decode::<T>(bearer_token, &decoding_key, &validation)
+        .map_err(InternalTokenError::Jwt)?
+        .claims)
 }
 
 fn ensure_jwt_crypto_provider() {
     let _ = jsonwebtoken::crypto::aws_lc::DEFAULT_PROVIDER.install_default();
 }
 
+/// RFC 9068 §2.2 claims of every token the Gateway forwards. `sub`, `groups`, `roles`
+/// and `scope` restate the embedded actor for standard resource-server libraries; a
+/// verifier rejects a token in which they disagree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct GatewayInternalJwtClaims {
-    #[serde(default)]
-    format: Option<String>,
+struct StandardClaims {
     iss: TokenIssuer,
     sub: String,
     aud: String,
+    client_id: OAuthClientId,
     exp: i64,
     nbf: i64,
     iat: i64,
     jti: JwtId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scope: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    groups: BTreeSet<GroupId>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    roles: BTreeSet<RoleId>,
+}
+
+impl StandardClaims {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        issuer: &TokenIssuer,
+        actor: &Principal,
+        audience: &ServerSlug,
+        jwt_id: &JwtId,
+        issued_at: DateTime<Utc>,
+        not_before: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+    ) -> Result<Self, InternalTokenError> {
+        Ok(Self {
+            iss: issuer.clone(),
+            sub: actor.id.as_str().to_owned(),
+            aud: audience.as_str().to_owned(),
+            client_id: gateway_client_id()?,
+            exp: expires_at.timestamp(),
+            nbf: not_before.timestamp(),
+            iat: issued_at.timestamp(),
+            jti: jwt_id.clone(),
+            scope: scope_claim(actor),
+            groups: actor.groups.clone(),
+            roles: actor.roles.clone(),
+        })
+    }
+
+    fn audience(&self) -> Result<ServerSlug, InternalTokenError> {
+        ServerSlug::parse(self.aud.clone()).map_err(InternalTokenError::Identifier)
+    }
+
+    fn check_actor(&self, actor: &Principal) -> Result<(), InternalTokenError> {
+        if PrincipalId::parse(self.sub.clone()).map_err(InternalTokenError::Identifier)? != actor.id
+        {
+            return Err(InternalTokenError::SubjectPrincipalMismatch);
+        }
+        if self.client_id != gateway_client_id()?
+            || self.groups != actor.groups
+            || self.roles != actor.roles
+            || self.scope != scope_claim(actor)
+        {
+            return Err(InternalTokenError::InconsistentClaims);
+        }
+        Ok(())
+    }
+}
+
+fn gateway_client_id() -> Result<OAuthClientId, InternalTokenError> {
+    OAuthClientId::parse(GATEWAY_CLIENT_ID).map_err(InternalTokenError::Identifier)
+}
+
+/// RFC 9068 `scope`: the actor's scopes, space-delimited, or absent when it has none.
+fn scope_claim(actor: &Principal) -> Option<String> {
+    (!actor.scopes.is_empty()).then(|| {
+        actor
+            .scopes
+            .iter()
+            .map(|scope| scope.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct AccessTokenClaims {
+    #[serde(flatten)]
+    standard: StandardClaims,
+    /// RFC 9396: at most one [`PermissionsDetail`], absent when nothing is granted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    authorization_details: Vec<PermissionsDetail>,
+    #[serde(rename = "ai.veoveo/invocation")]
+    invocation: Invocation,
+}
+
+/// The `ai.veoveo/invocation` claim: who acts, under which authority and request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Invocation {
     profile: GatewayProfileId,
-    server: ServerSlug,
     actor: Principal,
     authority: InvocationAuthority,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     request_context: Option<GatewayRequestContext>,
 }
 
-impl GatewayInternalJwtClaims {
-    fn from_identity(identity: &GatewayInternalIdentity) -> Self {
-        Self {
-            format: Some(GATEWAY_INTERNAL_ASSERTION_FORMAT.to_owned()),
-            iss: identity.issuer.clone(),
-            sub: identity.actor.id.as_str().to_string(),
-            aud: identity.server.as_str().to_string(),
-            exp: identity.expires_at.timestamp(),
-            nbf: identity.not_before.timestamp(),
-            iat: identity.issued_at.timestamp(),
-            jti: identity.jwt_id.clone(),
-            profile: identity.profile.clone(),
-            server: identity.server.clone(),
-            actor: identity.actor.clone(),
-            authority: identity.authority.clone(),
-            request_context: identity.request_context.clone(),
-        }
+impl AccessTokenClaims {
+    fn from_identity(identity: &GatewayInternalIdentity) -> Result<Self, InternalTokenError> {
+        Ok(Self {
+            standard: StandardClaims::new(
+                &identity.issuer,
+                &identity.actor,
+                &identity.server,
+                &identity.jwt_id,
+                identity.issued_at,
+                identity.not_before,
+                identity.expires_at,
+            )?,
+            authorization_details: (!identity.permissions.is_empty())
+                .then(|| PermissionsDetail::new(identity.permissions.clone()))
+                .into_iter()
+                .collect(),
+            invocation: Invocation {
+                profile: identity.profile.clone(),
+                actor: identity.actor.clone(),
+                authority: identity.authority.clone(),
+                request_context: identity.request_context.clone(),
+            },
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ResourceAccessTokenClaims {
+    #[serde(flatten)]
+    standard: StandardClaims,
+    #[serde(rename = "ai.veoveo/resource-invocation")]
+    invocation: ResourceInvocation,
+}
+
+/// The `ai.veoveo/resource-invocation` claim of an HTTP resource token.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResourceInvocation {
+    protected_resource: ProtectedResourceId,
+    actor: Principal,
+    authority: InvocationAuthority,
+}
+
+impl ResourceAccessTokenClaims {
+    fn from_identity(
+        identity: &GatewayInternalResourceIdentity,
+    ) -> Result<Self, InternalTokenError> {
+        Ok(Self {
+            standard: StandardClaims::new(
+                &identity.issuer,
+                &identity.actor,
+                &identity.server,
+                &identity.jwt_id,
+                identity.issued_at,
+                identity.not_before,
+                identity.expires_at,
+            )?,
+            invocation: ResourceInvocation {
+                protected_resource: identity.protected_resource.clone(),
+                actor: identity.actor.clone(),
+                authority: identity.authority.clone(),
+            },
+        })
     }
 }
 
@@ -630,13 +805,19 @@ pub enum InternalTokenError {
     UnknownKeyId(String),
     UnsupportedTrustKey,
     UnsupportedTokenAlgorithm(Algorithm),
+    /// The JOSE header `typ` is not `at+jwt` (RFC 9068 §4).
+    UnsupportedTokenType,
     ExpiredDelegation,
     AudienceMismatch {
         expected: ServerSlug,
         actual: ServerSlug,
     },
     SubjectPrincipalMismatch,
-    UnsupportedAssertionFormat,
+    /// Standard claims disagree with the embedded actor, or the token carries more
+    /// than one permissions detail.
+    InconsistentClaims,
+    /// A granted permission names another server's namespace.
+    PermissionOutsideAudience(PermissionName),
     InvalidRequestContext,
     InvalidTimestamp {
         claim: &'static str,
@@ -666,6 +847,9 @@ impl fmt::Display for InternalTokenError {
             Self::UnsupportedTokenAlgorithm(algorithm) => {
                 write!(f, "internal token algorithm `{algorithm:?}` is not EdDSA")
             }
+            Self::UnsupportedTokenType => {
+                f.write_str("forwarded token type must be at+jwt (RFC 9068)")
+            }
             Self::ExpiredDelegation => {
                 f.write_str("internal token expiration is not in the future")
             }
@@ -673,10 +857,16 @@ impl fmt::Display for InternalTokenError {
                 f,
                 "internal token audience mismatch: expected `{expected}`, got `{actual}`"
             ),
+            Self::PermissionOutsideAudience(permission) => write!(
+                f,
+                "internal token grants `{permission}` outside its audience server"
+            ),
             Self::SubjectPrincipalMismatch => {
                 f.write_str("internal token subject does not match embedded principal")
             }
-            Self::UnsupportedAssertionFormat=>f.write_str("unsupported internal assertion format; drain and upgrade gateway and receivers together"),
+            Self::InconsistentClaims => {
+                f.write_str("internal token standard claims disagree with its invocation or grants")
+            }
             Self::InvalidRequestContext => {
                 f.write_str("internal token request context does not match its actor and authority")
             }
@@ -732,7 +922,6 @@ pub(crate) mod tests {
         let invocation = authority();
         let now = Utc::now();
         let request_context = GatewayRequestContext {
-            format: crate::GatewayRequestContextFormat::V2,
             audit: crate::audit::AuditRequest::background(),
             principal: actor.clone(),
             access_token: crate::AccessTokenSubject {
@@ -794,13 +983,115 @@ pub(crate) mod tests {
         let mut segments: Vec<String> = token.split('.').map(str::to_owned).collect();
         let mut claims: serde_json::Value =
             serde_json::from_slice(&URL_SAFE_NO_PAD.decode(&segments[1]).unwrap()).unwrap();
-        claims["upload_authorization"]["context_digest"] = serde_json::json!("c".repeat(64));
+        claims[ARTIFACT_UPLOAD_CLAIM]["context_digest"] = serde_json::json!("c".repeat(64));
         segments[1] = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
         assert!(
             verifier
                 .verify_artifact_upload(&segments.join("."))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn identities_carry_only_the_audience_servers_granted_permissions() {
+        let issuer = GatewayInternalTokenIssuer::new(
+            TokenIssuer::parse("veoveo-internal").unwrap(),
+            signing_key("key-1"),
+        );
+        let verifier = GatewayInternalTokenVerifier::new(
+            TokenIssuer::parse("veoveo-internal").unwrap(),
+            ServerSlug::parse("time").unwrap(),
+            trust_bundle("key-1"),
+        );
+        let time = ServerSlug::parse("time").unwrap();
+        let read = PermissionName::parse("time.read").unwrap();
+        let expires = Utc::now() + TimeDelta::minutes(1);
+        let issued = issuer
+            .issue_granted(
+                GatewayProfileId::parse("default").unwrap(),
+                time.clone(),
+                principal(),
+                authority(),
+                std::collections::BTreeSet::from([read.clone()]),
+                None,
+                expires,
+            )
+            .unwrap();
+        let identity = verifier.verify(&issued.bearer_token).unwrap();
+        assert!(identity.grants(&read));
+        assert!(!identity.grants(&PermissionName::parse("time.admin").unwrap()));
+
+        let foreign =
+            std::collections::BTreeSet::from([PermissionName::parse("map.read").unwrap()]);
+        assert!(matches!(
+            issuer.issue_granted(
+                GatewayProfileId::parse("default").unwrap(),
+                time.clone(),
+                principal(),
+                authority(),
+                foreign.clone(),
+                None,
+                expires,
+            ),
+            Err(InternalTokenError::PermissionOutsideAudience(_))
+        ));
+
+        // A correctly signed token that grants another server's permission is refused.
+        let identity = issuer
+            .create_identity(
+                GatewayProfileId::parse("default").unwrap(),
+                time,
+                principal(),
+                authority(),
+                foreign,
+                None,
+                expires,
+            )
+            .unwrap();
+        let mut header = Header::new(Algorithm::EdDSA);
+        header.typ = Some(ACCESS_TOKEN_TYPE.to_owned());
+        header.kid = Some("key-1".to_owned());
+        let sign = |claims: &serde_json::Value| {
+            encode(
+                &header,
+                claims,
+                &EncodingKey::from_ed_der(&signing_key("key-1").private_key_der),
+            )
+            .unwrap()
+        };
+        let forged =
+            serde_json::to_value(AccessTokenClaims::from_identity(&identity).unwrap()).unwrap();
+        assert!(matches!(
+            verifier.verify(&sign(&forged)),
+            Err(InternalTokenError::PermissionOutsideAudience(_))
+        ));
+
+        // The grant travels as one RFC 9396 detail; a second detail is refused.
+        let granted: serde_json::Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(issued.bearer_token.split('.').nth(1).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            granted["authorization_details"],
+            serde_json::json!([{
+                "type": veoveo_mcp_registration_extension::PERMISSIONS_DETAIL_TYPE,
+                "actions": ["time.read"]
+            }])
+        );
+        assert_eq!(granted["aud"], "time");
+        assert_eq!(granted["client_id"], GATEWAY_CLIENT_ID);
+        let mut doubled = granted.clone();
+        let detail = doubled["authorization_details"][0].clone();
+        doubled["authorization_details"]
+            .as_array_mut()
+            .unwrap()
+            .push(detail);
+        assert!(matches!(
+            verifier.verify(&sign(&doubled)),
+            Err(InternalTokenError::InconsistentClaims)
+        ));
     }
 
     #[test]
@@ -942,6 +1233,35 @@ pub(crate) mod tests {
         .unwrap();
 
         assert_eq!(bundle.key_ids().collect::<Vec<_>>(), vec!["key-1", "key-2"]);
+    }
+
+    #[test]
+    fn registration_key_sets_become_trust_bundles() {
+        let keys: Ed25519JwkSet = serde_json::from_value(serde_json::json!({"keys": [
+            {"kty": "OKP", "crv": "Ed25519", "x": PUBLIC_KEY_X, "alg": "EdDSA", "use": "sig", "kid": "key-1"}
+        ]}))
+        .unwrap();
+        let bundle = GatewayInternalTrustBundle::from_key_set(&keys).unwrap();
+        let issued = GatewayInternalTokenIssuer::new(
+            TokenIssuer::parse("veoveo-internal").unwrap(),
+            signing_key("key-1"),
+        )
+        .issue(
+            GatewayProfileId::parse("default").unwrap(),
+            ServerSlug::parse("time").unwrap(),
+            principal(),
+            authority(),
+            None,
+            Utc::now() + TimeDelta::minutes(1),
+        )
+        .unwrap();
+        GatewayInternalTokenVerifier::new(
+            TokenIssuer::parse("veoveo-internal").unwrap(),
+            ServerSlug::parse("time").unwrap(),
+            bundle,
+        )
+        .verify(&issued.bearer_token)
+        .unwrap();
     }
 
     #[test]

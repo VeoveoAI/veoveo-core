@@ -6,7 +6,6 @@ use veoveo_types::{InvocationMode, InvocationProvenance};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GatewayRequestContext {
-    pub format: GatewayRequestContextFormat,
     /// Gateway-established HTTP correlation, authenticated by the internal assertion.
     pub audit: veoveo_audit_contract::AuditRequest,
     pub access_token: AccessTokenSubject,
@@ -125,11 +124,4 @@ impl GatewayInternalIdentity {
             .ok_or(InternalTokenError::InvalidRequestContext)?
             .audit_context(&self.actor, &self.authority, &self.profile)
     }
-}
-
-/// The gateway and receiver require a coordinated drain when this signed shape changes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum GatewayRequestContextFormat {
-    #[serde(rename = "veoveo.ai/gateway-request-context/v2")]
-    V2,
 }
