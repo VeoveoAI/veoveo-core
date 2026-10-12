@@ -289,18 +289,73 @@ impl UploadErrorCode {
     }
 }
 
+impl UploadErrorCode {
+    /// The RFC 9457 problem type URI for this error.
+    pub fn problem_type(self) -> String {
+        format!(
+            "https://veoveo.ai/problems/{}",
+            self.as_str().replace('_', "-")
+        )
+    }
+
+    /// The RFC 9457 title: a short summary that does not change between occurrences.
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::Malformed => "Malformed upload request",
+            Self::Unauthenticated => "Authentication required",
+            Self::Denied => "Upload denied",
+            Self::NotFound => "Upload not found",
+            Self::Conflict => "Upload conflict",
+            Self::Expired => "Upload expired",
+            Self::TooLarge => "Upload too large",
+            Self::UnsupportedType => "Unsupported media type",
+            Self::Integrity => "Upload integrity check failed",
+            Self::QuotaExceeded => "Upload quota exceeded",
+            Self::Busy => "Upload service busy",
+            Self::Unavailable => "Upload service unavailable",
+        }
+    }
+}
+
+/// An RFC 9457 problem details body, served as `application/problem+json`. The upload
+/// members are RFC 9457 extension members.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactUploadError {
-    pub code: UploadErrorCode,
+    /// `https://veoveo.ai/problems/<code>`, from [`UploadErrorCode::problem_type`].
+    #[serde(rename = "type")]
+    pub problem_type: String,
+    pub title: String,
+    pub status: u16,
     /// Safe, bounded operator-independent copy; never a backend error string.
-    pub message: String,
+    pub detail: String,
     pub request_id: ArtifactUploadRequestId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub required_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_bytes: Option<u64>,
 }
+
+impl ArtifactUploadError {
+    pub fn new(
+        code: UploadErrorCode,
+        detail: impl Into<String>,
+        request_id: ArtifactUploadRequestId,
+    ) -> Self {
+        Self {
+            problem_type: code.problem_type(),
+            title: code.title().to_owned(),
+            status: code.http_status(),
+            detail: detail.into(),
+            request_id,
+            required_bytes: None,
+            available_bytes: None,
+        }
+    }
+}
+
+/// The media type of RFC 9457 problem details.
+pub const PROBLEM_JSON: &str = "application/problem+json";
 
 /// Source-owner Artifact transfer and access contracts consumed by browser clients.
 #[derive(JsonSchema)]
@@ -366,5 +421,25 @@ mod notification_tests {
         ] {
             assert!(serde_json::from_value::<ArtifactUploadNotification>(wire).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod problem_tests {
+    use super::*;
+
+    #[test]
+    fn upload_errors_are_rfc_9457_problems_with_veoveo_types() {
+        let problem = ArtifactUploadError::new(
+            UploadErrorCode::TooLarge,
+            "the upload exceeds the profile limit",
+            ArtifactUploadRequestId::new(),
+        );
+        let wire = serde_json::to_value(&problem).unwrap();
+        assert_eq!(wire["type"], "https://veoveo.ai/problems/too-large");
+        assert_eq!(wire["status"], 413);
+        assert_eq!(wire["title"], "Upload too large");
+        assert_eq!(wire["detail"], "the upload exceeds the profile limit");
+        assert!(wire.get("code").is_none() && wire.get("message").is_none());
     }
 }

@@ -46,7 +46,9 @@ The MCP adapter owns verified callers, read authority and its full gateway ident
 facts, the asynchronous plane interface and transport/policy errors. Scalar admission
 returns an input-safe `ArtifactWireError`: Serde reports its `invalid request: `
 prefix, while adapter conversion receives the bare detail. Secret formatting and
-admission errors never include bearer values.
+admission errors never include bearer values. Upload failures are RFC 9457 problem
+details, `ArtifactUploadError`, served as `application/problem+json` with the type
+`https://veoveo.ai/problems/<code>` and the upload request ID as an extension member.
 This library neither authenticates metadata nor authorizes a read or mutation.
 Artifact service continues to enforce current tenant, context, clearance, and grants.
 `Grant` implements the foundational `AccessGrant` trait for the shared evaluator;
