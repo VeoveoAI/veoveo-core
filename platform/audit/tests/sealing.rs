@@ -20,11 +20,12 @@ fn installation() -> (AuditReadScope, AuditPartition) {
     )
 }
 
-fn members(block: &AuditBlock) -> Vec<(AuditRecordId, u64)> {
-    block
-        .head
-        .members
+/// Every sealed member in chain order. Another database's open transaction on the same
+/// cluster can split a pass, so tests compare positions rather than block boundaries.
+fn positions(archived: &[(AuditBlock, Vec<AuditRecord>)]) -> Vec<(AuditRecordId, u64)> {
+    archived
         .iter()
+        .flat_map(|(block, _)| &block.head.members)
         .map(|member| (member.id, member.position.get()))
         .collect()
 }
@@ -64,9 +65,10 @@ async fn an_open_transaction_holds_back_records_that_commit_after_it() {
         );
         open.commit().await.unwrap();
         assert_eq!(seal_all(&sealer).await, 2);
-        let blocks = audit.b.blocks(&scope, &partition, None, 10).await.unwrap();
-        assert_eq!(blocks.len(), 1);
-        assert_eq!(members(&blocks[0]), [(earlier.id(), 1), (later.id(), 2)]);
+        assert_eq!(
+            positions(&archive(&audit.b, &scope, &partition).await),
+            [(earlier.id(), 1), (later.id(), 2)]
+        );
         audit
             .b
             .wait_sealed(&scope, &partition, later.id())
@@ -114,13 +116,13 @@ async fn positions_follow_transaction_order_without_gaps_across_blocks() {
         }
         assert_eq!(seal_all(&sealer).await, 3);
         let archived = archive(&audit.b, &scope, &partition).await;
-        assert_eq!(archived.len(), 2);
-        assert_eq!(members(&archived[0].0), [(first.id(), 1), (second.id(), 2)]);
+        assert!(archived.len() >= 2, "each pass seals its own block");
         assert_eq!(
-            members(&archived[1].0),
-            rest.iter()
-                .zip(3..)
-                .map(|(record, position)| (record.id(), position))
+            positions(&archived),
+            [first.id(), second.id()]
+                .into_iter()
+                .chain(rest.iter().map(AuditDraft::id))
+                .zip(1..)
                 .collect::<Vec<_>>()
         );
         let checkpoint = audit
@@ -129,7 +131,7 @@ async fn positions_follow_transaction_order_without_gaps_across_blocks() {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(checkpoint, archived[1].0.checkpoint());
+        assert_eq!(checkpoint, archived.last().unwrap().0.checkpoint());
         assert_eq!(checkpoint.last_position.get(), 5);
         let mut keys = AuditKeyRing::default();
         keys.insert(key.public_key()).unwrap();
