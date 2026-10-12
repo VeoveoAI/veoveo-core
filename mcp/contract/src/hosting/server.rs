@@ -16,7 +16,7 @@
 //!
 //! | Route | Authentication | Purpose |
 //! |---|---|---|
-//! | `{mount}/healthz` | none | liveness, from a check when one is configured |
+//! | `{mount}/livez` | none | liveness, from a check when one is configured |
 //! | `{mount}/readyz` | none | readiness, when a check is configured |
 //! | `{mount}/admin/docs/llms.txt`, `{mount}/admin/docs/{doc_id}` | gateway | embedded documents (C20, C21) |
 //! | `{mount}/mcp` | gateway | stateless Streamable HTTP with the 8 MiB response budget |
@@ -375,9 +375,9 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         self
     }
 
-    /// Makes `{mount}/healthz` report `check`: 200 while it reports alive, 503
+    /// Makes `{mount}/livez` report `check`: 200 while it reports alive, 503
     /// otherwise. Use it only for a failure a restart repairs, such as a dead
-    /// worker process; without a check, `healthz` reports the process alive.
+    /// worker process; without a check, `livez` reports the process alive.
     pub fn liveness<F, Fut>(mut self, check: F) -> Self
     where
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -492,7 +492,7 @@ where
         let authenticated = authenticate(options.authenticated_routes);
 
         let mut server = Router::new()
-            .route("/healthz", get(probe(options.liveness, "ok", "not alive")))
+            .route("/livez", get(probe(options.liveness, "ok", "not alive")))
             .nest("/admin", admin)
             .nest("/mcp", mcp)
             .merge(authenticated)

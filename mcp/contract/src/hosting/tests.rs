@@ -303,7 +303,7 @@ fn test_gateway_tokens_carry_the_permissions_it_grants() {
 async fn health_and_readiness_need_no_authentication() {
     let gateway = gateway();
     let (status, body) = gateway
-        .send(gateway.request("/healthz").body(Body::empty()).unwrap())
+        .send(gateway.request("/livez").body(Body::empty()).unwrap())
         .await;
     assert_eq!((status, body.as_str()), (StatusCode::OK, "ok"));
     let (status, _) = gateway
@@ -321,7 +321,7 @@ async fn liveness_and_readiness_report_their_checks() {
             .readiness(|| async { false })
             .build(),
     );
-    for (path, body) in [("/healthz", "not alive"), ("/readyz", "not ready")] {
+    for (path, body) in [("/livez", "not alive"), ("/readyz", "not ready")] {
         let (status, text) = gateway
             .send(gateway.request(path).body(Body::empty()).unwrap())
             .await;
@@ -342,7 +342,7 @@ async fn internal_root_servers_route_from_the_listener_root() {
     let (status, _) = gateway
         .send(
             Request::builder()
-                .uri("/healthz")
+                .uri("/livez")
                 .header("host", testing::TEST_HOST)
                 .body(Body::empty())
                 .unwrap(),
@@ -361,7 +361,7 @@ async fn internal_servers_mount_at_their_slug_for_internal_hosts() {
             .build(),
     );
     let (status, _) = gateway
-        .send(gateway.request("/healthz").body(Body::empty()).unwrap())
+        .send(gateway.request("/livez").body(Body::empty()).unwrap())
         .await;
     assert_eq!(status, StatusCode::OK);
     let body = gateway.rpc("tools/list", serde_json::json!({})).await;
@@ -369,7 +369,7 @@ async fn internal_servers_mount_at_their_slug_for_internal_hosts() {
     let (status, _) = gateway
         .send(
             Request::builder()
-                .uri("/fixture/healthz")
+                .uri("/fixture/livez")
                 .header("host", "fixture.example")
                 .body(Body::empty())
                 .unwrap(),
@@ -422,7 +422,7 @@ async fn hosts_are_validated_before_routing() {
     let (status, _) = gateway
         .send(
             Request::builder()
-                .uri("/fixture/healthz")
+                .uri("/fixture/livez")
                 .header("host", "attacker.example")
                 .body(Body::empty())
                 .unwrap(),
@@ -432,7 +432,7 @@ async fn hosts_are_validated_before_routing() {
     let (status, _) = gateway
         .send(
             Request::builder()
-                .uri("/fixture/healthz")
+                .uri("/fixture/livez")
                 .body(Body::empty())
                 .unwrap(),
         )
