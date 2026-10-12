@@ -7,14 +7,3 @@ slow-timeout = { period = "60s", terminate-after = 5 }
 
 [profile.ci.junit]
 path = "junit.xml"
-
-# The bulk Knowledge test writes 256 chunks of 8192-dimension vectors under a 30-second
-# coordinator lease. With every core busy running other tests it cannot renew in time,
-# so it runs with the whole machine to itself.
-[[profile.default.overrides]]
-filter = 'package(veoveo-platform-store) & test(/^bulk::maximum_member_vectors_fit_the_wire/)'
-threads-required = "num-test-threads"
-
-[[profile.ci.overrides]]
-filter = 'package(veoveo-platform-store) & test(/^bulk::maximum_member_vectors_fit_the_wire/)'
-threads-required = "num-test-threads"

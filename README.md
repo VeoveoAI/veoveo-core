@@ -47,14 +47,23 @@ Every name and format in Veoveo repositories follows a published standard or
 docker build --target check .
 ```
 
-The check stage runs `cargo fmt`, `cargo clippy`, `cargo deny`, `cargo hack` and
-`cargo nextest`. The same commands run inside the development environment.
+The check stage first applies the kernel migrations to a scratch PostgreSQL database
+and runs `cargo sqlx prepare --workspace --check`, so query metadata in `.sqlx` that no
+longer matches the queries fails the gate. It then runs `cargo fmt`, `cargo clippy`,
+`cargo deny`, `cargo hack` and `cargo nextest`. The same commands run inside the
+development environment.
+
+Tests that need a database start a private PostgreSQL cluster per test process from
+the PostgreSQL 18 programs on `PATH`. The `dev` image installs the PGDG
+`postgresql-18` 18.6 packages and `sqlx-cli` 0.9.0; on macOS, Homebrew's
+`postgresql@18` provides the same programs.
 
 ## Dependency Policy
 
 `deny.toml` allows Git dependencies only from the `VeoveoAI` organization. `rmcp` comes
 from `VeoveoAI/rust-sdk`, a fork of the MCP Rust SDK pinned to one revision. JWT
-signatures use the AWS-LC provider.
+signatures use the AWS-LC provider. sqlx 0.9.0 connects to PostgreSQL over Rustls on
+the ring provider and trusts the platform's root certificates.
 
 ## Development Environment
 

@@ -3,17 +3,26 @@
 # ships crates, not a service, so it has no build or runtime stage.
 
 FROM rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS dev
+# PostgreSQL 18.6 from the PGDG repository, whose signing key Debian's postgresql-common
+# ships. Tests start their own clusters, so the packages create none.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates clang cmake git pkg-config procps \
+    && apt-get install -y --no-install-recommends ca-certificates clang cmake git pkg-config procps postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && mkdir -p /etc/postgresql-common/createcluster.d \
+    && printf 'create_main_cluster = false\n' > /etc/postgresql-common/createcluster.d/veoveo.conf \
+    && apt-get install -y --no-install-recommends \
+        postgresql-18=18.6-1.pgdg13+2 postgresql-client-18=18.6-1.pgdg13+2 libpq5=18.6-1.pgdg13+2 \
     && rm -rf /var/lib/apt/lists/* /var/log/apt /var/log/dpkg.log \
     && rustup component add clippy rustfmt
+ENV PATH=/usr/lib/postgresql/18/bin:${PATH}
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo install --locked \
         cargo-nextest@0.9.148 \
         cargo-deny@0.20.2 \
         cargo-hack@0.6.45 \
         cargo-semver-checks@0.51.0 \
-        cargo-insta@1.49.0
+        cargo-insta@1.49.0 \
+    && cargo install --locked sqlx-cli@0.9.0 --no-default-features --features postgres,rustls,sqlx-toml
 COPY env/profile.d/rust.sh /etc/profile.d/rust.sh
 # A development environment installs toolchains, components and crates, so the sandbox user owns them.
 RUN useradd --create-home --uid 1000 --shell /bin/bash sandbox \
@@ -28,6 +37,17 @@ WORKDIR /home/sandbox/src
 COPY --chown=sandbox:sandbox . .
 
 FROM source AS check
+# The committed .sqlx query metadata must match the queries and the kernel migrations.
+RUN initdb --pgdata /tmp/sqlx/data --username postgres --auth=trust --no-instructions --no-sync \
+    && pg_ctl start --pgdata /tmp/sqlx/data --wait --silent \
+        --options "-c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp/sqlx -c fsync=off" \
+    && createdb --host 127.0.0.1 --username postgres veoveo \
+    && DATABASE_URL=postgres://postgres@127.0.0.1/veoveo cargo sqlx migrate run \
+        --source platform/store/migrations --config platform/store/sqlx.toml \
+    && DATABASE_URL=postgres://postgres@127.0.0.1/veoveo cargo sqlx prepare --workspace --check \
+        -- --all-targets --all-features \
+    && pg_ctl stop --pgdata /tmp/sqlx/data --mode fast --wait --silent \
+    && rm -rf /tmp/sqlx
 RUN cargo fmt --check \
     && cargo clippy --locked --all-targets --all-features -- -D warnings \
     && cargo deny --locked check \
