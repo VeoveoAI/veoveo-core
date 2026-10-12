@@ -796,7 +796,7 @@ fn runtime_prerequisites_match_only_the_required_compiled_closure() {
         crate::runner::RuntimePrerequisites::new(&catalog, &kernels, &[name("feature")]).is_err()
     );
     let mut document = serde_json::to_value(&selected).unwrap();
-    document["lanes"][0]["laneSha256"] = serde_json::json!(format!("sha256:{}", "b".repeat(64)));
+    document["lanes"][0]["laneDigest"] = serde_json::json!(format!("sha256:{}", "b".repeat(64)));
     let drift = serde_json::from_value(document).unwrap();
     assert!(
         crate::runner::RuntimePrerequisites::new(&catalog, &drift, &[name("feature")]).is_err()

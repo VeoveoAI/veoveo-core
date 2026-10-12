@@ -54,7 +54,7 @@ pub struct EvaluationMemberId {
 pub struct EvaluationMember {
     pub member: EvaluationMemberId,
     pub revision: Revision,
-    pub content_sha256: Sha256Digest,
+    pub content_digest: Sha256Digest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

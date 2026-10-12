@@ -93,7 +93,7 @@ pub fn member_result(
     request_meta: Option<&RequestMetaObject>,
 ) -> Result<ReadResourceResult, KnowledgeError> {
     observation.validate_collection(collection)?;
-    if observation.not_modified() || observation.content_sha256() != &content_digest(&text) {
+    if observation.not_modified() || observation.content_digest() != &content_digest(&text) {
         return Err(KnowledgeError("member bytes disagree with observation"));
     }
     let negotiated = requested(request_meta)?;

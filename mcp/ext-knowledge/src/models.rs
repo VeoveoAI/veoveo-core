@@ -281,7 +281,7 @@ struct ObservationWire {
     revision: Revision,
     #[serde(with = "veoveo_types::sha256_hex")]
     #[schemars(schema_with = "hex_schema")]
-    content_sha256: Sha256Digest,
+    content_digest: Sha256Digest,
     observed_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     modified_at: Option<DateTime<Utc>>,
@@ -302,13 +302,13 @@ impl Observation {
     pub fn builder(
         collection: CollectionId,
         revision: Revision,
-        content_sha256: Sha256Digest,
+        content_digest: Sha256Digest,
         observed_at: DateTime<Utc>,
     ) -> ObservationBuilder {
         ObservationBuilder(ObservationWire {
             collection,
             revision,
-            content_sha256,
+            content_digest,
             observed_at,
             modified_at: None,
             modified_by: None,
@@ -323,8 +323,8 @@ impl Observation {
     pub fn revision(&self) -> &Revision {
         &self.0.revision
     }
-    pub fn content_sha256(&self) -> &Sha256Digest {
-        &self.0.content_sha256
+    pub fn content_digest(&self) -> &Sha256Digest {
+        &self.0.content_digest
     }
     pub fn observed_at(&self) -> DateTime<Utc> {
         self.0.observed_at
@@ -364,8 +364,8 @@ impl Observation {
             Some("conditional observation changed collection")
         } else if self.revision() != previous.revision() {
             Some("conditional observation changed revision")
-        } else if self.content_sha256() != previous.content_sha256() {
-            Some("conditional observation changed contentSha256")
+        } else if self.content_digest() != previous.content_digest() {
+            Some("conditional observation changed contentDigest")
         } else if self.modified_at() != previous.modified_at() {
             Some("conditional observation changed modifiedAt")
         } else if self.modified_by() != previous.modified_by() {

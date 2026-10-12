@@ -14,7 +14,7 @@ fn member(n: usize) -> EvaluationMember {
                 .unwrap(),
         },
         revision: veoveo_mcp_ext_knowledge::Revision::parse("r1").unwrap(),
-        content_sha256: Sha256Digest::from_bytes([1; 32]),
+        content_digest: Sha256Digest::from_bytes([1; 32]),
     }
 }
 fn case(id: &str, relevant: &[usize]) -> RetrievalCase {

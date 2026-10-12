@@ -55,7 +55,7 @@ compilation and emits `include_str!` to track the document as a build input.
 | [RFC 9111](https://www.rfc-editor.org/rfc/rfc9111.html) HTTP caching | Freshness lifetime semantics for `maxAgeSeconds` |
 | [RFC 8246](https://www.rfc-editor.org/rfc/rfc8246.html) immutable responses | Semantics of `immutable` freshness |
 | [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339.html) | `observedAt`, `modifiedAt`, and `annotations.lastModified` timestamps |
-| SHA-256, FIPS 180-4 | `contentSha256` over the exact UTF-8 bytes of each returned text item |
+| SHA-256, FIPS 180-4 | `contentDigest` over the exact UTF-8 bytes of each returned text item |
 | [W3C DCAT 3](https://www.w3.org/TR/vocab-dcat-3/) | Collection descriptors map to `dcat:Dataset`; this extension uses DCAT terms for alignment and does not serialize RDF |
 | [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/) | Closed schemas generated from the crate's Rust types for every descriptor and observation |
 | Veoveo Work Context | Access descriptors use the tenant, Work Context, grant, and data-label model in [Work Context governance](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/WORK_CONTEXT_GOVERNANCE.md#output-ownership-and-access) |
@@ -179,7 +179,7 @@ has no annotations field; read-time modification metadata belongs in the observa
     "ai.veoveo/knowledge-observation": {
       "collection": "time.events",
       "revision": "7",
-      "contentSha256": "4b1f…e09c",
+      "contentDigest": "4b1f…e09c",
       "observedAt": "2026-09-26T21:40:03Z",
       "modifiedAt": "2026-09-25T14:02:11Z",
       "modifiedBy": { "kind": "principal", "id": "0199…" },
@@ -199,7 +199,7 @@ has no annotations field; read-time modification metadata belongs in the observa
 |---|---|---|
 | `collection` | yes | The declaring collection |
 | `revision` | yes | Opaque strong validator. It changes whenever the returned text, access descriptor or modification/external metadata changes. Immutable members with no separate metadata may use their content digest |
-| `contentSha256` | yes | Lowercase hex SHA-256 of the exact UTF-8 bytes of the returned text |
+| `contentDigest` | yes | Lowercase hex SHA-256 of the exact UTF-8 bytes of the returned text |
 | `observedAt` | yes | Server time when the domain produced this read |
 | `modifiedAt` | when recorded | Stored modification time of the returned content; an access-only revision need not change this timestamp |
 | `modifiedBy` | when recorded | Principal ID that produced the current revision, in the platform's shared human and service principal namespace |

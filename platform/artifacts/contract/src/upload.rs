@@ -239,7 +239,7 @@ pub struct ArtifactUploadSession {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactUploadAuthority {
-    pub control_plane_sha256: UploadSha256,
+    pub control_plane_digest: UploadSha256,
     pub context_digest: UploadSha256,
 }
 

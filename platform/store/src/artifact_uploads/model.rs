@@ -32,7 +32,7 @@ impl SurrealValue for ArtifactUploadProfile {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, SurrealValue)]
 pub struct ArtifactUploadAuthorityVersion {
-    pub control_plane_sha256: String,
+    pub control_plane_digest: String,
     pub policy_revision: String,
     pub context_digest: String,
     pub profile_policy_digest: Option<String>,

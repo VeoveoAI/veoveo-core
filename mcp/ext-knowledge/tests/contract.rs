@@ -80,12 +80,12 @@ fn access_descriptor_is_required_by_collection_and_cannot_cross_owners() {
         .unwrap();
     assert!(observed.validate_collection(&docs_collection()).is_err());
     let wire = serde_json::to_value(&observed).unwrap();
-    assert_eq!(wire["contentSha256"].as_str().unwrap().len(), 64);
-    assert!(!wire["contentSha256"].as_str().unwrap().contains(':'));
+    assert_eq!(wire["contentDigest"].as_str().unwrap().len(), 64);
+    assert!(!wire["contentDigest"].as_str().unwrap().contains(':'));
     let schema = serde_json::to_value(schemars::schema_for!(Observation)).unwrap();
     jsonschema::validate(&schema, &wire).unwrap();
     let mut malformed = wire;
-    malformed["contentSha256"] = json!("sha256:wrong");
+    malformed["contentDigest"] = json!("sha256:wrong");
     assert!(jsonschema::validate(&schema, &malformed).is_err());
     assert!(serde_json::from_value::<Observation>(malformed).is_err());
 }
@@ -237,7 +237,7 @@ fn conditional_revalidation_requires_unchanged_content_access_and_provenance() {
     assert!(conditional.revalidated(&conditional).is_err());
     for (field, value) in [
         ("revision", json!("changed")),
-        ("contentSha256", json!("00".repeat(32))),
+        ("contentDigest", json!("00".repeat(32))),
         ("collection", json!("independent.other")),
         (
             "observedAt",

@@ -1044,7 +1044,7 @@ pub(crate) mod tests {
         let upload = veoveo_artifact_contract::ARTIFACT_UPLOAD_AUDIENCE;
         let verifier = verifier(upload);
         let binding = veoveo_artifact_contract::ArtifactUploadAuthority {
-            control_plane_sha256: veoveo_artifact_contract::UploadSha256::parse("a".repeat(64))
+            control_plane_digest: veoveo_artifact_contract::UploadSha256::parse("a".repeat(64))
                 .unwrap(),
             context_digest: veoveo_artifact_contract::UploadSha256::parse("b".repeat(64)).unwrap(),
         };

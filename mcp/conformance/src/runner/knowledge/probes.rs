@@ -228,7 +228,7 @@ fn require_changed(before: &Observation, after: &Observation) -> Result<()> {
         "mutation did not change the revision"
     );
     ensure!(
-        before.content_sha256() != after.content_sha256() || before.access() != after.access(),
+        before.content_digest() != after.content_digest() || before.access() != after.access(),
         "mutation did not change text or access"
     );
     Ok(())
@@ -237,7 +237,7 @@ fn require_changed(before: &Observation, after: &Observation) -> Result<()> {
 fn require_same(before: &Observation, after: &Observation) -> Result<()> {
     ensure!(
         before.revision() == after.revision()
-            && before.content_sha256() == after.content_sha256()
+            && before.content_digest() == after.content_digest()
             && before.access() == after.access(),
         "restart lost committed member state"
     );

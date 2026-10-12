@@ -356,7 +356,7 @@ async fn check_members(
         );
         unchanged.validate_collection(descriptor)?;
         ensure!(
-            unchanged.content_sha256() == observation.content_sha256(),
+            unchanged.content_digest() == observation.content_digest(),
             "unchanged revision changed its digest"
         );
         let mut meta = rmcp::model::RequestMetaObject::default();

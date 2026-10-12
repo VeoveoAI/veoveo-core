@@ -120,7 +120,7 @@ pub fn validate_read(
                 "knowledge member requires exactly one text item",
             ));
         };
-        if item_uri != uri.as_str() || content_digest(text) != *observation.content_sha256() {
+        if item_uri != uri.as_str() || content_digest(text) != *observation.content_digest() {
             return Err(KnowledgeError(
                 "knowledge observation does not match returned content",
             ));

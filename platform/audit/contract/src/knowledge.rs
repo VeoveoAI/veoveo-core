@@ -25,7 +25,7 @@ pub struct KnowledgeExternalIdentity {
 pub struct KnowledgeReadObservation {
     pub collection: CollectionId,
     pub revision: Revision,
-    pub content_sha256: Sha256Digest,
+    pub content_digest: Sha256Digest,
     pub observed_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<DateTime<Utc>>,
@@ -45,7 +45,7 @@ impl From<&Observation> for KnowledgeReadObservation {
         Self {
             collection: observation.collection().clone(),
             revision: observation.revision().clone(),
-            content_sha256: observation.content_sha256().clone(),
+            content_digest: observation.content_digest().clone(),
             observed_at: observation.observed_at(),
             modified_at: observation.modified_at(),
             modified_by: observation.modified_by().cloned(),

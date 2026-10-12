@@ -71,7 +71,7 @@ pub struct LaneDescriptor {
     pub image: ExecutionImage,
     pub command: ExecutionCommand,
     pub latest: Option<MigrationVersion>,
-    pub lane_sha256: LaneIdentity,
+    pub lane_digest: LaneIdentity,
 }
 /// Host predicate: every present key must be enabled. Separate rows express alternatives. Lane selection
 /// never enables a host and does not require any host to exist.
@@ -233,7 +233,7 @@ impl ModulePlanDocument {
                     image: module.execution().image().clone(),
                     command: module.execution().command().clone(),
                     latest: module.lane().latest(),
-                    lane_sha256: lane_identity(module)?,
+                    lane_digest: lane_identity(module)?,
                 })
             })
             .collect::<Result<Vec<_>, DeclarationError>>()?;
