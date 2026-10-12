@@ -1,7 +1,7 @@
 -- $1–$8 select the caller's Tasks as in `get.sql`. $9 and $10 are the creation time and
 -- ID of the previous page's last Task, and $11 limits the page.
 SELECT
-    id AS "id: TaskId",
+    id,
     server,
     tenant,
     owner_tenant,
@@ -27,7 +27,7 @@ SELECT
     error_code,
     error_message,
     error_details,
-    owner_instance,
+    owner_instance AS "owner_instance: InstanceId",
     revision,
     retention_pins,
     created_at,

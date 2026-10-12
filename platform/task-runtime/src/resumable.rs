@@ -1,9 +1,10 @@
-//! Task settlement for the existing Resume execution profile.
-use crate::{RecoveryClass, TaskError, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition};
+//! Settlement of `resume` Tasks by their owning worker.
 use tokio_util::sync::CancellationToken;
 use veoveo_types::TaskId;
 
-/// The Resume owner's treatment of a genuine failure concurrent with cancellation.
+use crate::{RecoveryClass, TaskError, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition};
+
+/// How a genuine failure concurrent with a cancellation request settles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, veoveo_types::Vocabulary)]
 pub enum ResumeCancellationPolicy {
     CancellationWins,
@@ -11,9 +12,12 @@ pub enum ResumeCancellationPolicy {
 }
 
 impl TaskRuntime {
-    /// Settle Resume work under this worker's live execution lease.
-    /// A stopped success returns unchanged nonterminal state unless cancellation is durable.
-    /// Once a transition is entered, local stop cannot undo its database outcome.
+    /// Settle a `resume` Task this instance owns from its current revision.
+    ///
+    /// A pending cancellation request turns the outcome into `Cancelled`, except that
+    /// `PreserveFailure` keeps a genuine failure. With `stop` cancelled, a success is
+    /// not published: the call returns the unchanged Task, unless cancellation is
+    /// pending, which it settles. A settled Task is returned as it is.
     pub async fn transition_resumable(
         &self,
         id: TaskId,
@@ -26,8 +30,9 @@ impl TaskRuntime {
             .await
     }
 
-    /// As `transition_resumable`, with a caller-selected CAS snapshot. Immutable
-    /// identity is admitted against current durable state before any dispatch.
+    /// As `transition_resumable`, applied only while `current` is the Task's latest
+    /// revision. A newer revision fails with `Conflict` unless it is a cancellation
+    /// request, which settles the Task.
     pub async fn transition_resumable_if_current(
         &self,
         current: &TaskSnapshot,
@@ -41,9 +46,7 @@ impl TaskRuntime {
     }
 
     async fn resume_snapshot(&self, id: TaskId) -> Result<TaskSnapshot, TaskError> {
-        self.get(id)
-            .await?
-            .ok_or_else(|| TaskError::NotFound(id.to_string()))
+        self.get(id).await?.ok_or(TaskError::NotFound(id))
     }
 
     async fn resume_settle(
@@ -54,16 +57,11 @@ impl TaskRuntime {
         policy: ResumeCancellationPolicy,
         stop: Option<&CancellationToken>,
     ) -> Result<TaskSnapshot, TaskError> {
-        if matches!(transition, TaskTransition::CancelRequested) {
-            return Err(TaskError::InvalidRecord(
-                "Resume execution cannot request cancellation".into(),
-            ));
-        }
         self.resume_identity(selected, admitted)?;
         if admitted.is_terminal() {
             return Ok(admitted.clone());
         }
-        self.resume_execution_owner(admitted)?;
+        self.ensure_owner(admitted)?;
         match self
             .resume_dispatch(selected, admitted, transition.clone(), policy, stop)
             .await
@@ -75,10 +73,8 @@ impl TaskRuntime {
                 if observed.is_terminal() {
                     return Ok(observed);
                 }
-                self.resume_execution_owner(&observed)?;
+                self.ensure_owner(&observed)?;
                 if observed.status != TaskStatus::CancelRequested {
-                    // Shutdown-only suppression is an unchanged snapshot, never
-                    // an applied success; unrelated progress conflicts propagate.
                     return Err(error);
                 }
                 self.resume_dispatch(&observed, &observed, transition, policy, stop)
@@ -88,7 +84,7 @@ impl TaskRuntime {
         }
     }
 
-    async fn resume_dispatch(
+    pub(crate) async fn resume_dispatch(
         &self,
         current: &TaskSnapshot,
         admitted: &TaskSnapshot,
@@ -96,7 +92,7 @@ impl TaskRuntime {
         policy: ResumeCancellationPolicy,
         stop: Option<&CancellationToken>,
     ) -> Result<TaskSnapshot, TaskError> {
-        self.resume_execution_owner(current)?;
+        self.ensure_owner(current)?;
         let transition = if current.status == TaskStatus::CancelRequested
             && !(policy == ResumeCancellationPolicy::PreserveFailure
                 && matches!(transition, TaskTransition::Failed(_)))
@@ -105,10 +101,12 @@ impl TaskRuntime {
         } else {
             transition
         };
-        if stopped_success(&transition, stop) {
-            // Use the admitted read even if stop arrived after that await and
-            // the caller's selected version predates durable cancellation.
-            self.resume_execution_owner(admitted)?;
+        if matches!(transition, TaskTransition::Succeeded { .. })
+            && stop.is_some_and(CancellationToken::is_cancelled)
+        {
+            // The admitted read is newer than the caller's selection, so a stop that
+            // arrived after admission still settles a pending cancellation.
+            self.ensure_owner(admitted)?;
             if admitted.status == TaskStatus::CancelRequested {
                 return self
                     .transition_if_current(admitted, TaskTransition::Cancelled)
@@ -124,48 +122,26 @@ impl TaskRuntime {
         selected: &TaskSnapshot,
         current: &TaskSnapshot,
     ) -> Result<(), TaskError> {
-        if current.server != self.server() {
-            return Err(TaskError::WrongServer(current.task_id.to_string()));
+        if current.server != *self.server() {
+            return Err(TaskError::WrongServer(current.server.to_string()));
         }
         if selected.recovery_class != RecoveryClass::Resume
             || current.recovery_class != RecoveryClass::Resume
         {
-            return Err(TaskError::InvalidRecord(
-                "Resume execution requires the Resume recovery class".into(),
+            return Err(TaskError::invalid_record(
+                "Resume settlement requires the resume recovery class",
             ));
         }
         if selected.task_id != current.task_id
             || selected.owner != current.owner
             || selected.request != current.request
-            || selected.server != current.server
             || selected.task_type != current.task_type
             || selected.created_at != current.created_at
             || selected.ttl_ms != current.ttl_ms
             || selected.poll_interval_ms != current.poll_interval_ms
-            || selected.recovery_class != current.recovery_class
         {
-            return Err(TaskError::Conflict(selected.task_id.to_string()));
-        }
-        Ok(())
-    }
-
-    fn resume_execution_owner(&self, current: &TaskSnapshot) -> Result<(), TaskError> {
-        if current.lease_owner.as_deref() != Some(self.worker_id())
-            || current
-                .lease_expires_at
-                .is_none_or(|expiry| expiry <= chrono::Utc::now())
-        {
-            return Err(TaskError::LeaseHeld(current.task_id.to_string()));
+            return Err(TaskError::Conflict(selected.task_id));
         }
         Ok(())
     }
 }
-
-fn stopped_success(transition: &TaskTransition, stop: Option<&CancellationToken>) -> bool {
-    matches!(transition, TaskTransition::Succeeded { .. })
-        && stop.is_some_and(CancellationToken::is_cancelled)
-}
-
-#[cfg(test)]
-#[path = "resumable/tests.rs"]
-mod tests;

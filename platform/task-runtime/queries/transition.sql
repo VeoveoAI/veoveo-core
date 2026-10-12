@@ -16,7 +16,7 @@ SET status = $5,
     END
 WHERE id = $1 AND server = $2 AND owner_instance = $3 AND revision = $4
 RETURNING
-    id AS "id: TaskId",
+    id,
     server,
     tenant,
     owner_tenant,
@@ -42,7 +42,7 @@ RETURNING
     error_code,
     error_message,
     error_details,
-    owner_instance,
+    owner_instance AS "owner_instance: InstanceId",
     revision,
     retention_pins,
     created_at,

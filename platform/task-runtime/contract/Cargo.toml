@@ -1,7 +1,5 @@
 [package]
 name = "veoveo-task-contract"
-# The enclosing `platform/task-runtime` package is outside the workspace.
-workspace = "../../.."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

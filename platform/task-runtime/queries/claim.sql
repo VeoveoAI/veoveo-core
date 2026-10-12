@@ -8,7 +8,7 @@ FROM (
 ) AS claimable
 WHERE task.id = claimable.id
 RETURNING
-    task.id AS "id: TaskId",
+    task.id,
     task.server,
     task.tenant,
     task.owner_tenant,
@@ -34,7 +34,7 @@ RETURNING
     task.error_code,
     task.error_message,
     task.error_details,
-    task.owner_instance,
+    task.owner_instance AS "owner_instance: InstanceId",
     task.revision,
     task.retention_pins,
     task.created_at,

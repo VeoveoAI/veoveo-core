@@ -1,7 +1,7 @@
 -- $1–$8 select the caller's Tasks: server, tenant, principal, profile, explicit tenant
 -- claim, held data labels, and the optional operation and Work Context selections.
 SELECT
-    id AS "id: TaskId",
+    id,
     server,
     tenant,
     owner_tenant,
@@ -27,7 +27,7 @@ SELECT
     error_code,
     error_message,
     error_details,
-    owner_instance,
+    owner_instance AS "owner_instance: InstanceId",
     revision,
     retention_pins,
     created_at,

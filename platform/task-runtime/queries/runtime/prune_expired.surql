@@ -1,1 +1,0 @@
-DELETE task WHERE retention_expires_at != NONE AND retention_expires_at <= $now AND array::len(retention_pins) = 0 AND status IN ['succeeded', 'failed', 'cancelled'] RETURN BEFORE;

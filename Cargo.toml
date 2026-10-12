@@ -17,6 +17,7 @@ members = [
     "platform/policy",
     "platform/runtimes/embedding/contract",
     "platform/store",
+    "platform/task-runtime",
     "platform/task-runtime/contract",
     "platform/types",
     "testing/fixtures/library",

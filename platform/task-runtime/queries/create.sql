@@ -1,18 +1,18 @@
 INSERT INTO tasks.task (
-    id, server, tenant, owner_tenant, owner_principal, owner_kind, owner_issuer,
-    owner_subject, profile, data_labels, work_context, authority, task_type, recovery_class,
-    input, idempotency_key, ttl_ms, poll_interval_ms, retention_pins, status_message,
-    retention_expires_at
+    id, server, tenant, tenant_id, owner_tenant, owner_principal, principal_id, owner_kind,
+    owner_issuer, owner_subject, profile, data_labels, work_context, authority, task_type,
+    recovery_class, input, idempotency_key, ttl_ms, poll_interval_ms, retention_pins,
+    status_message, retention_expires_at
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-    'Queued', now() + $20::bigint * interval '1 millisecond'
+    $20, $21, 'Queued', now() + $22::bigint * interval '1 millisecond'
 )
 ON CONFLICT (server, tenant, owner_principal, profile, idempotency_key)
 WHERE idempotency_key IS NOT NULL
 DO NOTHING
 RETURNING
-    id AS "id: TaskId",
+    id,
     server,
     tenant,
     owner_tenant,
@@ -38,7 +38,7 @@ RETURNING
     error_code,
     error_message,
     error_details,
-    owner_instance,
+    owner_instance AS "owner_instance: InstanceId",
     revision,
     retention_pins,
     created_at,

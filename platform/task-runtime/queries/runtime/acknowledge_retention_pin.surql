@@ -1,1 +1,0 @@
-UPDATE ONLY $task SET retention_pins -= $pin WHERE server = $server AND retention_pins CONTAINS $pin RETURN AFTER;

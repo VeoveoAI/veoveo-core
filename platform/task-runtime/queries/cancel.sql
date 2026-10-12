@@ -7,7 +7,7 @@ SET status = CASE WHEN owner_instance IS NULL THEN 'cancelled' ELSE 'cancel_requ
     completed_at = CASE WHEN owner_instance IS NULL THEN now() END
 WHERE id = $1 AND server = $2 AND status IN ('queued', 'running', 'waiting')
 RETURNING
-    id AS "id: TaskId",
+    id,
     server,
     tenant,
     owner_tenant,
@@ -33,7 +33,7 @@ RETURNING
     error_code,
     error_message,
     error_details,
-    owner_instance,
+    owner_instance AS "owner_instance: InstanceId",
     revision,
     retention_pins,
     created_at,

@@ -1,1 +1,0 @@
-SELECT VALUE status FROM ONLY $id;

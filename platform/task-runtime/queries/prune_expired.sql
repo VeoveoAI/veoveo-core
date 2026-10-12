@@ -5,4 +5,4 @@ WHERE server = $1
     AND status IN ('succeeded', 'failed', 'cancelled')
     AND retention_pins = '{}'
     AND retention_expires_at <= now()
-RETURNING id AS "id: TaskId"
+RETURNING id

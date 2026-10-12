@@ -1,1 +1,0 @@
-UPDATE ONLY $task CONTENT $content RETURN NONE;

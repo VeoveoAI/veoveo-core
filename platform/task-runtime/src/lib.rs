@@ -1,40 +1,40 @@
-//! Durable execution state for Veoveo MCP tasks.
+//! Durable MCP Tasks in the installation's PostgreSQL database.
 //!
-//! SurrealDB is the sole task authority. In-process notifications and LIVE
-//! queries may reduce latency, but every read and transition is checked
-//! against durable state. Native changefeeds record committed Task transitions.
+//! Every Task is a row of `tasks.task`. A process instance owns the Tasks it claims,
+//! worker writes compare that ownership, and the database moves a dead instance's Tasks
+//! to their recovery state. Callers reach their own Tasks through
+//! `TaskRuntime::for_owner`, and the `tasks` notification channel wakes workers and
+//! subscribers.
 
-mod admission;
-mod associations;
-mod contributions;
-pub use associations::{DispatchPreparation, TaskAssociation, TaskDispatch};
+mod claims;
+mod config;
+mod create;
+mod error;
 pub mod hosting;
-mod leases;
+mod inputs;
 mod mcp;
-mod provider_resume;
-mod provider_transaction;
-mod recovery;
-pub use recovery::{TaskRecoveryObserver, TaskRecoveryStream};
+mod owner;
+mod owner_query;
 mod resumable;
-pub use resumable::ResumeCancellationPolicy;
-mod resource_subscriptions;
+mod row;
 mod runtime;
 mod service;
-mod types;
+mod signals;
+mod snapshot;
+mod subscriptions;
+mod transition;
+mod work;
 
-pub use contributions::{
-    OwnedTaskTable, TaskContribution, TaskContributions, TaskCreation, TaskSettlement,
-};
+pub use config::TaskRuntimeConfig;
+pub use create::{CreateTask, CreateTaskResult};
+pub use error::TaskError;
 pub use hosting::{DurableListener, DurableTasks, TasksOnly, WithResources};
+pub use inputs::{TaskInputExchange, TaskInputRequest, TaskInputSubmission};
 pub use mcp::{mcp_task_completion, project_snapshot, task_seed};
-pub use provider_transaction::ProviderCommit;
-pub use resource_subscriptions::{
-    TaskResourceSubscriptions, TaskResourceUpdate, TaskResourceUpdateStream,
-};
-pub use runtime::{
-    AuthenticatedWebhookReceipt, OwnerTaskQuery, OwnerTaskSubscription, TaskRuntime,
-    TaskUpdateStream, TaskUsageAccess, TaskUsagePage, WebhookJournal, WebhookTerminal,
-};
+pub use owner::TaskOwner;
+pub use owner_query::OwnerTaskQuery;
+pub use resumable::ResumeCancellationPolicy;
+pub use runtime::TaskRuntime;
 pub use service::{
     DurableTaskService, DurableTaskSubscription, DurableTaskUpdateStream,
     TASK_RETENTION_PIN_META_KEY, authorized_snapshot, cancel_durable_task, durable_input_responses,
@@ -42,10 +42,12 @@ pub use service::{
     start_durable_tool_task, subscribe_authorized_snapshots, subscribe_durable_tasks,
     update_durable_task,
 };
-pub use types::{
-    ClaimedTask, CreateTask, CreateTaskResult, RecoveryClass, RecoveryReport, TaskError,
-    TaskFailure, TaskInputExchange, TaskInputRequest, TaskInputSubmission, TaskOwner, TaskPage,
-    TaskPageCursor, TaskPayloadState, TaskRetentionPin, TaskRetentionPinError, TaskRuntimeConfig,
-    TaskSnapshot, TaskTransition, TaskUpdate, TaskUpdateCursor,
+pub use snapshot::{
+    TaskFailure, TaskPage, TaskPageCursor, TaskPayloadState, TaskRetentionPin,
+    TaskRetentionPinError, TaskSnapshot,
 };
-pub use veoveo_platform_store::{PrincipalKind, StoreAuthLevel, StoreCredentials, TaskStatus};
+pub use subscriptions::{OwnerTaskSubscription, TaskUpdateStream};
+pub use transition::TaskTransition;
+pub use veoveo_platform_store::{Instance, InstanceId, PrincipalKind};
+pub use veoveo_task_contract::{RecoveryClass, TaskStatus};
+pub use work::TaskWork;

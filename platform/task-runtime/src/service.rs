@@ -160,7 +160,7 @@ pub async fn authorized_snapshot(
     query: &crate::OwnerTaskQuery,
     task_id: &str,
 ) -> Result<TaskSnapshot, McpError> {
-    let task_id = crate::types::parse_task_id(task_id)
+    let task_id = crate::runtime::parse_task_id(task_id)
         .map_err(|_| McpError::invalid_params("unknown task id", None))?;
     query
         .get(task_id)
@@ -194,7 +194,7 @@ pub async fn update_durable_task(
 }
 
 pub async fn cancel_durable_task(query: &OwnerTaskQuery, task_id: String) -> Result<(), McpError> {
-    let task_id = crate::types::parse_task_id(&task_id)
+    let task_id = crate::runtime::parse_task_id(&task_id)
         .map_err(|_| McpError::invalid_params("unknown task id", None))?;
     query.cancel(task_id).await.map_err(task_error)?;
     Ok(())
@@ -209,7 +209,7 @@ pub async fn subscribe_durable_tasks(
     let stream = subscription.updates.then(move |update| {
         let runtime = runtime.clone();
         async move {
-            project_snapshot(&runtime, update.map_err(task_error)?.snapshot)
+            project_snapshot(&runtime, update.map_err(task_error)?)
                 .await
                 .map_err(task_error)
         }
@@ -239,7 +239,7 @@ pub async fn subscribe_authorized_snapshots(
     }
     let ids = task_ids
         .iter()
-        .filter_map(|id| crate::types::parse_task_id(id).ok())
+        .filter_map(|id| crate::runtime::parse_task_id(id).ok())
         .collect::<Vec<_>>();
     query.subscribe(&ids).await.map_err(task_error)
 }
