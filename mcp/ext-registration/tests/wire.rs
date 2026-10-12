@@ -525,7 +525,7 @@ fn database_grants_name_one_postgres_database_and_role() {
     assert_eq!(database.username.as_str(), "clock_0b6f");
     assert_eq!(database.url.as_url().path(), "/veoveo");
     for (member, value) in [
-        ("url", json!("ws://surrealdb:8000/")),
+        ("url", json!("mysql://database.internal:3306/veoveo")),
         ("url", json!("postgres://postgres.internal:5432/")),
         ("url", json!("postgres://postgres.internal/veoveo/extra")),
         (

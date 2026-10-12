@@ -2,8 +2,8 @@
 
 These rules apply to veoveo-core.
 
-- Use upstream runtimes such as OpenShell unmodified. Adapt through supported
-  configuration.
+- Use upstream runtimes such as OpenShell and PostgreSQL unmodified. Adapt through
+  supported configuration.
 - Every name, identifier, format, wire field and protocol element follows a published
   standard or [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md). A name that fits neither is a
   defect. Extend a standard only through its own extension mechanism.
@@ -20,5 +20,11 @@ These rules apply to veoveo-core.
 - Fixtures shared with other repositories live in `testing/fixtures` and are exported by
   `veoveo-test-fixtures`. Core's own tests include the same files, so each fixture has
   one source.
+- The database follows [`docs/DATABASE.md`](docs/DATABASE.md). Every static query is a
+  `.sql` file run through sqlx's `query_file!` macros. After changing a query or a
+  migration, regenerate `.sqlx` with `cargo sqlx prepare --workspace -- --all-targets
+  --all-features` against a migrated database.
+- Tests that need PostgreSQL use the store fixture, which runs a private `postgres` from
+  the PostgreSQL 18 programs on `PATH`.
 - Run `docker build --target check .` on macOS and on Linux before pushing.
 - Commit small, coherent changes. Commits carry no AI or tool attribution.

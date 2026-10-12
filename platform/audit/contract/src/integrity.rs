@@ -1,5 +1,5 @@
 //! Signed block identities. Counters are decimal strings on the wire so JCS never
-//! rounds a SurrealDB versionstamp through an IEEE-754 JSON number.
+//! rounds a 64-bit counter through an IEEE-754 JSON number.
 use crate::{AuditPartition, AuditRecordId};
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;

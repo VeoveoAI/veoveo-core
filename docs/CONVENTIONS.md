@@ -28,7 +28,7 @@ it extends. A name or format that fits neither is a defect.
 |---|---|
 | MCP messages, Veoveo HTTP API bodies, configuration files and Veoveo formats | `camelCase` |
 | OAuth, OpenID Connect and JWT documents, including objects nested in a Veoveo claim | `snake_case`, as their specifications use |
-| SurrealDB records, and formats whose canonical bytes are a stored record, such as Audit records and blocks | `snake_case`, the database's naming |
+| PostgreSQL rows and columns, and formats whose canonical bytes are a stored record, such as Audit records and blocks | `snake_case`, the database's naming |
 
 Enum values are `snake_case` in every family. One JSON object uses one casing; an
 extension nested inside another family's document follows that document's casing. A
@@ -76,8 +76,8 @@ A concept has one noun across every surface, and each surface spells it in its o
 | Resource type | `<slug>.<singular>` | `time.event` |
 | Permission | `<slug>.<plural>.<verb>` | `time.events.write` |
 | Knowledge collection | `<slug>.<plural>` | `time.events` |
-| Table | `<slug>_<singular>` | `time_event` |
-| Database function | `fn::<slug>::<name>` | `fn::time::due_events` |
+| Table | `<schema>.<singular>` | `time.event` |
+| Database function | `<schema>.<name>()` | `time.due_events()` |
 
 A server's URI scheme equals its slug. RFC 7595 §3.8 recommends reverse-domain names
 for private schemes; Veoveo uses the shorter slug because the Gateway pins each scheme
@@ -137,18 +137,21 @@ such as `_B64`, and durations in their unit, such as `_SECONDS`.
 
 ## Database Names
 
-Kernel tables are reserved and unprefixed. Kernel SQL APIs that other modules call live
-under `fn::kernel::<module>::`, and a kernel module's private functions under
-`fn::<module>::`. Kernel module names are reserved, and no server may register one as its
-slug. Every other module prefixes its tables with `<slug>_` and its functions with
-`fn::<slug>::`.
+The kernel owns the schemas `kernel`, `identity`, `gateway`, `tasks` and `audit`, and no
+server may register one of them, `public`, `information-schema` or a slug starting with
+`pg-` as its slug. A registered server owns the schema named after its slug with each
+`-` written as `_`, such as `time_zones` for `time-zones`. Its tables are
+`<schema>.<singular>` and its functions `<schema>.<name>()`. Its group role is
+`server_<schema>` and the login of each registration `<schema>_<suffix>`. Each schema
+notifies changes on the channel named after it, and its migrations record their history
+in `<schema>._sqlx_migrations`. Columns, constraints and indexes are `snake_case`.
 
 ## Runtime And Repository Names
 
 | Thing | Form |
 |---|---|
 | Repository, crate, binary, image name | `veoveo-<kind>-<name>` |
-| OpenShell sandbox and provider, Compose project, service and container | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-surrealdb`; at most 19 characters |
+| OpenShell sandbox and provider, Compose project, service and container | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-postgres`; at most 19 characters |
 | Throwaway test sandbox | `vv-qual-<run>-<role>` |
 | Environment image tag | `:dev` |
 | OpenTelemetry `service.name` | the repository name |

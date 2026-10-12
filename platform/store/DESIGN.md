@@ -27,9 +27,9 @@ the crate implements.
 | `listen`, `ChangeSignal` | Wake signals, with `Reconcile` at start and after every reconnection |
 | `ensure_identity`, `work_context_by_key` | Identity records for the Gateway and registered servers |
 
-Migration versions are grouped by owner schema: `0100` kernel, `0200` identity,
-`0300` gateway, `0400` tasks and `0500` audit. Each owner adds versions within its
-range.
+Migration versions are grouped by owner schema in hundreds: `01xx` kernel, `02xx`
+identity, `03xx` gateway, `04xx` tasks and `05xx` audit. Each owner adds versions within
+its range.
 
 Every static statement is a `.sql` file beside the module that runs it. The query
 metadata lives in the workspace's `.sqlx` directory, and builds set `SQLX_OFFLINE=true`.
