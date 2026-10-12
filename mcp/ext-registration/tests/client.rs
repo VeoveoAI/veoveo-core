@@ -15,7 +15,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use chrono::{TimeDelta, Utc};
+use chrono::Utc;
 use secrecy::SecretString;
 use serde_json::json;
 use veoveo_mcp_ext_registration::{
@@ -33,7 +33,7 @@ struct Gateway {
     pinned: HashMap<ServerSlug, ServerPublicKey>,
     clients: HashMap<String, (String, ClientMetadata)>,
     issued: usize,
-    renewals: usize,
+    updates: usize,
 }
 
 type Shared = Arc<Mutex<Gateway>>;
@@ -130,10 +130,6 @@ fn information(
         },
         metadata,
         software_statement: statement,
-        lease: RegistrationLease {
-            expires_at: Utc::now() + TimeDelta::seconds(3),
-            renew_every_seconds: 1,
-        },
     }
 }
 
@@ -218,15 +214,15 @@ async fn update(
     ) {
         return response;
     }
-    gateway.renewals += 1;
-    let renewed = information(
+    gateway.updates += 1;
+    let updated = information(
         &mut gateway,
         &id,
         request.metadata,
         request.software_statement,
         false,
     );
-    axum::Json(renewed).into_response()
+    axum::Json(updated).into_response()
 }
 
 async fn delete(
@@ -315,7 +311,7 @@ fn server_keys_persist_privately_in_their_directory() {
 }
 
 #[tokio::test]
-async fn registers_reads_renews_and_deregisters() {
+async fn registers_reads_updates_and_deregisters() {
     let (shared, endpoint) = gateway().await;
     let client = client(&endpoint, ServerKeyPair::generate().unwrap(), SECRET);
     let mut registration = client.register().await.unwrap();
@@ -335,8 +331,8 @@ async fn registers_reads_renews_and_deregisters() {
         .expose_secret()
         .to_owned();
 
-    client.renew(&mut registration).await.unwrap();
-    assert_eq!(shared.lock().unwrap().renewals, 1);
+    client.update(&mut registration).await.unwrap();
+    assert_eq!(shared.lock().unwrap().updates, 1);
     assert_ne!(
         registration
             .information()
@@ -347,7 +343,7 @@ async fn registers_reads_renews_and_deregisters() {
     );
     assert!(
         registration.database().is_some(),
-        "the database user survives renewals"
+        "the database login survives updates"
     );
 
     let read = client.read(&registration).await.unwrap();
@@ -366,15 +362,18 @@ async fn registers_reads_renews_and_deregisters() {
 }
 
 #[tokio::test]
-async fn an_expired_registration_registers_again() {
+async fn an_update_of_a_removed_registration_is_refused() {
     let (shared, endpoint) = gateway().await;
     let client = client(&endpoint, ServerKeyPair::generate().unwrap(), SECRET);
     let mut registration = client.register().await.unwrap();
-    let expired = registration.client_id().clone();
     shared.lock().unwrap().clients.clear();
-    client.renew(&mut registration).await.unwrap();
-    assert_ne!(registration.client_id(), &expired);
-    assert_eq!(shared.lock().unwrap().clients.len(), 1);
+    assert!(matches!(
+        client.update(&mut registration).await,
+        Err(ClientError::Rejected {
+            status: reqwest::StatusCode::UNAUTHORIZED,
+            ..
+        })
+    ));
 }
 
 #[tokio::test]
@@ -413,25 +412,32 @@ async fn registration_requires_the_initial_access_token() {
 }
 
 #[tokio::test]
-async fn maintain_renews_until_shutdown_then_deregisters() {
+async fn maintain_keeps_the_registration_until_shutdown_then_deregisters() {
     let (shared, endpoint) = gateway().await;
     let client = client(&endpoint, ServerKeyPair::generate().unwrap(), SECRET);
     let registration = client.register().await.unwrap();
-    let watched = shared.clone();
-    let shutdown = async move {
-        while watched.lock().unwrap().renewals < 2 {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    };
-    tokio::time::timeout(
-        Duration::from_secs(10),
-        client.maintain(registration, shutdown),
-    )
-    .await
-    .expect("maintain finishes after shutdown")
-    .unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let maintained = tokio::spawn(async move {
+        client
+            .maintain(registration, async {
+                let _ = stopped.await;
+            })
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        shared.lock().unwrap().clients.len(),
+        1,
+        "the registration stays until shutdown"
+    );
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), maintained)
+        .await
+        .expect("maintain finishes after shutdown")
+        .unwrap()
+        .unwrap();
     let gateway = shared.lock().unwrap();
-    assert!(gateway.renewals >= 2);
+    assert_eq!(gateway.updates, 0, "maintaining sends no updates");
     assert!(
         gateway.clients.is_empty(),
         "shutdown removes the registration"

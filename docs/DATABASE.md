@@ -44,7 +44,8 @@ three roles:
   member of `veoveo_server`, the kernel's group role for every server.
 - `<server>_<suffix>` is a login role created for one registration, a member of
   `server_<server>` with `SET` and `INHERIT`. The registration grant carries its name and a
-  random password. Deregistration drops it.
+  random password. Deregistration drops it, and so does the Gateway when the login has
+  held no live process instance for the installation's grace period.
 - `veoveo_server` holds the kernel grants that every server needs. The kernel migrations
   define it.
 

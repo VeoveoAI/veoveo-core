@@ -567,14 +567,6 @@ impl GatewayControlPlane {
                     registration.secret.clone(),
                 ));
             }
-            let lease = registration.lease;
-            if lease.renew_every_seconds == 0
-                || lease.expires_after_seconds <= lease.renew_every_seconds
-            {
-                return Err(GatewayControlPlaneError::InvalidRegistrationSettings(
-                    "a lease must expire after more than one renewal interval",
-                ));
-            }
         }
 
         Ok(sections)

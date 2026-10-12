@@ -2,8 +2,8 @@
 
 This document is the normative protocol between an MCP server and the Veoveo Gateway.
 A server registers itself, declares what it owns and which permission each of its
-targets requires, and renews its registration while it can serve traffic. The Gateway
-forwards each admitted request with the caller's granted permissions, and the server
+targets requires, and keeps its registration while its process holds a live kernel
+instance on the database login the registration grants. The Gateway forwards each admitted request with the caller's granted permissions, and the server
 checks them again. Neither the Gateway nor the installation configuration names a
 server, so every server enters the catalog through this protocol.
 
@@ -17,7 +17,7 @@ verified by `veoveo-mcp-contract`, described under [Forwarded Identity](#forward
 | Standard | Profile |
 |---|---|
 | OAuth 2.0 Dynamic Client Registration, RFC 7591 | Registration request and response. The installation's registration secret is the initial access token. A server registers `jwks`, `token_endpoint_auth_method` `private_key_jwt`, empty `grant_types` and `response_types`, its slug as `software_id`, its build as `software_version`, a `software_statement` it signs itself, and Veoveo members for its declarations. Errors use the §3.2.2 codes. |
-| OAuth 2.0 Dynamic Client Registration Management, RFC 7592 | Read (`GET`), update (`PUT`) and delete (`DELETE`) at `registration_client_uri` with the registration access token. Renewing a lease is an ordinary update. |
+| OAuth 2.0 Dynamic Client Registration Management, RFC 7592 | Read (`GET`), update (`PUT`) and delete (`DELETE`) at `registration_client_uri` with the registration access token. An update replaces the registered metadata. |
 | OAuth 2.0, RFC 6749 §8.2 | Registration members without a standard equivalent take the `veoveo_` vendor prefix in snake_case. |
 | Bearer tokens, RFC 6750 | Initial access token, registration access token and forwarded access token travel in `Authorization: Bearer`. Every 401 carries `WWW-Authenticate: Bearer`, with `error="invalid_token"` once a token was sent. |
 | JWT, RFC 7519, with JWS, RFC 7515, and EdDSA over Ed25519, RFC 8037 | Software statements and forwarded access tokens. `alg` is `EdDSA`; no other algorithm verifies. Times in OAuth documents are NumericDate seconds. |
@@ -37,7 +37,7 @@ Every Veoveo addition uses the extension point of the standard it extends:
 | Extension point | Names |
 |---|---|
 | RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization` |
-| RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_lease`, `veoveo_access_tokens`, `veoveo_database` |
+| RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_access_tokens`, `veoveo_database` |
 | RFC 9396 authorization details type | `https://veoveo.ai/oauth/permissions` |
 | JWT public claims, RFC 7519 §4.2 collision-resistant names | `https://veoveo.ai/claims/invocation`, `https://veoveo.ai/claims/resource-invocation`, `https://veoveo.ai/claims/artifact-upload` |
 | MCP `capabilities.extensions` | `ai.veoveo/registration`, `ai.veoveo/authorization` |
@@ -185,7 +185,6 @@ group role and schema, creates a login for this registration with
   "veoveo_mcp_endpoint": "https://time.internal.example/mcp",
   "veoveo_authorization": { "...": "..." },
   "software_statement": "<as sent>",
-  "veoveo_lease": { "expires_at": 1791763230, "renew_every_seconds": 10 },
   "veoveo_access_tokens": {
     "issuer": "https://gateway.example",
     "jwks": { "keys": [{ "kty": "OKP", "crv": "Ed25519", "x": "...", "kid": "<thumbprint>", "alg": "EdDSA", "use": "sig" }] },
@@ -233,11 +232,9 @@ equal the request's. It tolerates 5 seconds of clock difference at either end of
 lifetime. A failure is `invalid_software_statement`, except a foreign key for a pinned
 namespace, which is `unapproved_software_statement`.
 
-## Lease Renewal
+## Update
 
-A registration is a lease. `veoveo_lease` gives the expiry as NumericDate seconds and
-the interval at which the server renews. The server renews with an RFC 7592 update
-that repeats its metadata:
+An RFC 7592 update replaces the registered metadata:
 
 ```http
 PUT /oauth/register/time-0b6f HTTP/1.1
@@ -249,22 +246,24 @@ Content-Type: application/json
 
 The Gateway admits an update with the same steps as a registration, using the
 registration access token in place of the initial access token, and answers HTTP 200
-with the client information and a new expiry. It may rotate the registration access
-token, and the client adopts the returned one. An update with changed declarations
-takes the full admission of a new registration under the pinned key. The installation
-sets the lease timings in its `registration.lease` section: renewal every 10 seconds
-and expiry after 30 by default, and expiry must exceed the renewal interval.
+with the client information. An update with changed declarations takes the full
+admission of a new registration under the pinned key; an update that repeats the
+registered metadata changes nothing. The Gateway may rotate the registration access
+token, and the client adopts the returned one. An update never extends a registration.
 
-When a lease expires, the Gateway removes the server from routing and answers its
-registration access token with HTTP 401. The registration client then registers again
-with the initial access token.
+## Liveness And Removal
 
-## Read And Removal
+A registration lasts until the server deletes it or its process ends. The server
+connects with the login its registration granted and holds a kernel instance on that
+login while it serves, as the [database design](../../docs/DATABASE.md#process-instances)
+describes. The Gateway removes a registration whose login has held no live instance for
+the installation's grace period, 60 seconds by default, and drops the login. It then
+answers the registration access token with HTTP 401.
 
 `GET` at `registration_client_uri` returns the current client information with HTTP
-200. `DELETE` removes the registration and answers HTTP 204. A server deletes its
-registration when it shuts down, and the registration client treats HTTP 401 on delete
-as already removed.
+200. `DELETE` removes the registration, drops its login and answers HTTP 204. A server
+deletes its registration when it shuts down, and the registration client treats HTTP
+401 on delete as already removed.
 
 ## Errors
 
@@ -378,10 +377,9 @@ tokio::spawn(async move { client.maintain(registration, shutdown_signal()).await
 
 `KeyDirectory` generates the Ed25519 key on first start and stores it as PKCS#8 in
 `server-key.p8`, readable only by its owner and written atomically. Restarts reuse the
-key, so the server keeps its namespace. `RegistrationClient::maintain` renews at the
-lease interval until the shutdown future completes, then deletes the registration. A
-transport failure or HTTP 5xx is retried at the next interval, and any other failure
-ends the loop with its error. The caller supplies the `reqwest::Client` and installs a
+key, so the server keeps its namespace. `RegistrationClient::maintain` waits for the
+shutdown future and then deletes the registration; `update` sends an RFC 7592 update
+with the client's metadata. The caller supplies the `reqwest::Client` and installs a
 rustls crypto provider before reaching the Gateway over HTTPS.
 
 ## Crate Features
@@ -390,7 +388,7 @@ rustls crypto provider before reaching the Gateway over HTTPS.
 |---|---|
 | none (`contract`) | Declarations, the OAuth request and response types, `PermissionsDetail`, JWK types and their schemas |
 | `signing` | `ServerKeyPair` and the software statement, on AWS-LC |
-| `client` | `KeyDirectory` and `RegistrationClient`, on reqwest and Tokio |
+| `client` | `KeyDirectory` and `RegistrationClient`, on reqwest |
 | `mcp` | Advertising and reading the declarations in MCP capabilities, and the tool annotation check |
 
 Defaults select `mcp`, `signing` and `client`. The workspace depends on the crate with
@@ -402,8 +400,8 @@ default features disabled, and each consumer selects what it uses.
 authorization detail, and validates the examples against the generated JSON Schemas.
 It checks the RFC 7638 thumbprint against RFC 8037 Appendix A. `tests/client.rs` runs
 the registration client against an in-process endpoint that applies the admission
-steps above: registration, read, renewal with token rotation, re-registration after
-expiry, removal, the pinned key and the initial access token. The software statement
+steps above: registration, read, update with token rotation, an update of a removed
+registration, removal at shutdown, the pinned key and the initial access token. The software statement
 tests cover the pinned key, metadata, audience and lifetime. The forwarded token
 tests in `veoveo-mcp-contract` cover the token type, issuer, audience, actor, `jti`,
 the single authorization detail, the namespace of granted permissions and agreement

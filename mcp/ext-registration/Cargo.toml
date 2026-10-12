@@ -11,8 +11,8 @@ default = ["mcp", "signing", "client"]
 contract = []
 # Server keys and the signed software statement.
 signing = ["dep:aws-lc-rs", "dep:jsonwebtoken", "dep:uuid"]
-# The registration client a server runs: key storage, registration, renewal and removal.
-client = ["signing", "dep:reqwest", "dep:tokio", "dep:tracing"]
+# The registration client a server runs: key storage, registration, update and removal.
+client = ["signing", "dep:reqwest"]
 mcp = ["dep:rmcp"]
 
 [dependencies]
@@ -31,8 +31,6 @@ jsonwebtoken = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 rmcp = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true, features = ["rustls-no-provider"] }
-tokio = { workspace = true, optional = true, features = ["time", "macros"] }
-tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 axum.workspace = true

@@ -449,10 +449,6 @@ fn information() -> serde_json::Value {
             json!("https://gateway.example/oauth/register/clock-0b6f"),
         ),
         (
-            "veoveo_lease",
-            json!({"expires_at": 1_791_763_230, "renew_every_seconds": 10}),
-        ),
-        (
             "veoveo_access_tokens",
             json!({
                 "issuer": "https://gateway.example",
@@ -478,11 +474,10 @@ fn information() -> serde_json::Value {
 }
 
 #[test]
-fn client_information_carries_lease_keys_and_database_user() {
+fn client_information_carries_token_trust_and_database_login() {
     let received: ClientInformation = serde_json::from_value(information()).unwrap();
     received.check().unwrap();
     assert_eq!(received.client_id.as_str(), "clock-0b6f");
-    assert_eq!(received.lease.renew_every_seconds, 10);
     assert_eq!(
         received.access_tokens.issuer.as_str(),
         "https://gateway.example"

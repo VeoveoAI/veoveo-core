@@ -451,7 +451,6 @@ fn control_plane_validates_cross_references() {
         authorization: default_authorization(),
         registration: Some(RegistrationSettings {
             secret: SecretReferenceId::parse("registration_secret").unwrap(),
-            lease: LeaseTimings::default(),
         }),
         profiles: vec![default_profile()],
         extensions: Default::default(),
@@ -1440,7 +1439,6 @@ fn registering_control_plane() -> GatewayControlPlane {
     control_plane.authorization = default_authorization();
     control_plane.registration = Some(RegistrationSettings {
         secret: SecretReferenceId::parse("registration_secret").unwrap(),
-        lease: LeaseTimings::default(),
     });
     control_plane
 }
@@ -1452,7 +1450,10 @@ fn a_control_plane_names_no_server() {
         .unwrap();
     let mut wire = serde_json::to_value(registering_control_plane()).unwrap();
     assert!(wire.get("servers").is_none());
-    assert_eq!(wire["registration"]["lease"]["renewEverySeconds"], 10);
+    assert_eq!(
+        wire["registration"],
+        serde_json::json!({ "secret": "registration_secret" })
+    );
     assert_eq!(
         wire["authorization"]["grants"][0]["subject"]["group"],
         "tenant-members"
@@ -1520,16 +1521,6 @@ fn registration_settings_require_a_gateway_registration_secret() {
     assert!(matches!(
         config.validate(&registry),
         Err(GatewayControlPlaneError::RegistrationSecretMismatch(_))
-    ));
-
-    let mut config = registering_control_plane();
-    config.registration.as_mut().unwrap().lease = LeaseTimings {
-        renew_every_seconds: 30,
-        expires_after_seconds: 30,
-    };
-    assert!(matches!(
-        config.validate(&registry),
-        Err(GatewayControlPlaneError::InvalidRegistrationSettings(_))
     ));
 }
 

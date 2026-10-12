@@ -25,7 +25,7 @@ in its crate documents and in its contract resource.
 | RFC 6570 URI Templates | Checked MCP setup uses the foundational ASCII-template profile and iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses. Gateway policy selectors retain their documented restricted matching language. |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
 | OAuth 2.0, RFC 8414, RFC 9207, RFC 8707, RFC 9728, and OpenID Connect Discovery 1.0 | private-installation profile with installation or governed managed-client registrations, exact issuer and resource binding, step-up scopes, and `private_key_jwt`; end-user clients do not use Dynamic Client Registration |
-| OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, renew and remove themselves through the profile in [the server registration protocol](../ext-registration/DESIGN.md) |
+| OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, update and remove themselves through the profile in [the server registration protocol](../ext-registration/DESIGN.md) |
 | Veoveo resumable artifact HTTP upload | repository-owned JSON admission/completion and raw part PUT contract, UUIDv7 idempotency, SHA-256 integrity, and bounded browser-safe 64-bit counters; independent of MCP methods |
 | JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `iss` is the Gateway's HTTPS issuer URL, `aud` the server's resource URL (RFC 8707), `client_id` the caller's OAuth client and `jti` a UUIDv7, with the Gateway in the RFC 8693 `act` claim, granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail, and the actor, authority and request context in the `https://veoveo.ai/claims/invocation` claim; specified in [the server registration protocol](../ext-registration/DESIGN.md#forwarded-identity) |
 | Veoveo upload token | the same access token addressed to the upload service's resource URL, naming the `artifact-upload` server and carrying signed control-plane and context digests in the `https://veoveo.ai/claims/artifact-upload` claim; restricted to the HTTP upload service |
@@ -33,9 +33,10 @@ in its crate documents and in its contract resource.
 | Veoveo `request_context` | Signed source principal, verified access-token metadata and required audit request correlation; includes OAuth client, optional session family and managed-agent execution metadata; contains no bearer value and grants no independent renewal permission |
 | `ai.veoveo/knowledge-source` | Veoveo extension that declares resource collections as knowledge, with typed read observations and conditional reads; specified in [the knowledge source extension](../ext-knowledge/DESIGN.md) |
 
-A hosted server declares its MCP endpoint when it registers with the Gateway and
-renews its registration lease while it can serve traffic. The Gateway never uses an
-MCP request, an authentication failure, or a method rejection as a health signal.
+A hosted server declares its MCP endpoint when it registers with the Gateway and keeps
+its registration while its process holds a live kernel instance on the login the
+registration grants. The Gateway never uses an MCP request, an authentication failure,
+or a method rejection as a health signal.
 
 ## Domain Contract Ownership
 
@@ -562,15 +563,16 @@ RFC 7591 and RFC 7592 profile. Its client metadata carries two declarations:
 `ai.veoveo/authorization` lists the server's permissions and the permission every
 tool, resource template and prompt requires. The registration response grants the
 server a PostgreSQL login for its own schema, where the server applies its own
-migrations. The server renews the registration as a lease and removes it on shutdown.
+migrations. The server holds a kernel instance on that login while it serves and
+removes the registration on shutdown; the Gateway removes the registration of a process
+that ended without removing it.
 
 The installation configuration names no server. Its `authorization` section declares
 roles, grants and overrides. A role selects declared permissions by access kind and
 risk, a grant gives a role to a group or principal, optionally within one tenant, and
 an override adds risks to a named permission or denies it. Its `registration` section
-names the Gateway-owned registration secret reference and the lease timings, which
-default to renewal every 10 seconds and expiry after 30. A configuration without
-roles, grants or registered servers validates.
+names the Gateway-owned registration secret reference. A configuration without roles,
+grants or registered servers validates.
 
 ```json
 {
@@ -586,8 +588,7 @@ roles, grants or registered servers validates.
     "overrides": [{ "kind": "deny", "permission": "time.admin" }]
   },
   "registration": {
-    "secret": "registration-secret",
-    "lease": { "renewEverySeconds": 10, "expiresAfterSeconds": 30 }
+    "secret": "registration-secret"
   }
 }
 ```

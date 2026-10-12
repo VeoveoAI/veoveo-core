@@ -11,7 +11,6 @@ pub enum GatewayControlPlaneError {
         tenant: TenantId,
     },
     ConflictingPermissionOverride(veoveo_types::PermissionName),
-    InvalidRegistrationSettings(&'static str),
     UnknownRegistrationSecret(SecretReferenceId),
     RegistrationSecretMismatch(SecretReferenceId),
     PolicyRuleServerAction {
@@ -272,9 +271,6 @@ impl fmt::Display for GatewayControlPlaneError {
             }
             Self::ConflictingPermissionOverride(permission) => {
                 write!(f, "permission `{permission}` has conflicting overrides")
-            }
-            Self::InvalidRegistrationSettings(reason) => {
-                write!(f, "invalid registration settings: {reason}")
             }
             Self::UnknownRegistrationSecret(secret) => {
                 write!(f, "registration secret `{secret}` is not declared")

@@ -218,8 +218,8 @@ pub struct ClientRegistrationRequest {
     pub software_statement: SoftwareStatement,
 }
 
-/// RFC 7592 §2.2: `PUT` to the client configuration endpoint. Renewing a lease is an
-/// ordinary update that repeats the registered metadata.
+/// RFC 7592 §2.2: `PUT` to the client configuration endpoint. It replaces the registered
+/// metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ClientUpdateRequest {
     pub client_id: OAuthClientId,
@@ -242,8 +242,6 @@ pub struct ClientInformation {
     #[serde(flatten)]
     pub metadata: ClientMetadata,
     pub software_statement: SoftwareStatement,
-    #[serde(rename = "veoveo_lease")]
-    pub lease: RegistrationLease,
     #[serde(rename = "veoveo_access_tokens")]
     pub access_tokens: AccessTokenTrust,
     /// The server's own PostgreSQL login, present when the installation grants one.
@@ -298,18 +296,6 @@ impl fmt::Debug for RegistrationAccessToken {
 
 fn expose<S: serde::Serializer>(secret: &SecretString, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(secret.expose_secret())
-}
-
-/// `veoveo_lease`: when the registration expires unless the server updates it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RegistrationLease {
-    /// NumericDate seconds.
-    #[serde(with = "chrono::serde::ts_seconds")]
-    #[schemars(with = "i64")]
-    pub expires_at: DateTime<Utc>,
-    /// Send an RFC 7592 update at this interval.
-    pub renew_every_seconds: u32,
 }
 
 /// `veoveo_access_tokens`: the issuer, keys and audience of the RFC 9068 access tokens

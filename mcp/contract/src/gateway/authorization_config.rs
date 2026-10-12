@@ -84,24 +84,6 @@ impl PermissionOverride {
 pub struct RegistrationSettings {
     /// A Gateway-owned secret with the `registration_secret` purpose.
     pub secret: SecretReferenceId,
-    #[serde(default)]
-    pub lease: LeaseTimings,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LeaseTimings {
-    pub renew_every_seconds: u32,
-    pub expires_after_seconds: u32,
-}
-
-impl Default for LeaseTimings {
-    fn default() -> Self {
-        Self {
-            renew_every_seconds: 10,
-            expires_after_seconds: 30,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -131,14 +113,16 @@ mod tests {
             authorization.overrides[0].permission().as_str(),
             "time.admin"
         );
-        let registration: RegistrationSettings = serde_json::from_value(serde_json::json!({
-            "secret": "registration-secret",
-            "lease": { "renewEverySeconds": 10, "expiresAfterSeconds": 30 }
-        }))
-        .unwrap();
-        assert_eq!(registration.lease, LeaseTimings::default());
-        let defaulted: RegistrationSettings =
+        let registration: RegistrationSettings =
             serde_json::from_value(serde_json::json!({ "secret": "registration-secret" })).unwrap();
-        assert_eq!(defaulted.lease, LeaseTimings::default());
+        assert_eq!(registration.secret.as_str(), "registration-secret");
+        assert!(
+            serde_json::from_value::<RegistrationSettings>(serde_json::json!({
+                "secret": "registration-secret",
+                "lease": { "renewEverySeconds": 10, "expiresAfterSeconds": 30 }
+            }))
+            .is_err(),
+            "registrations have no lease"
+        );
     }
 }

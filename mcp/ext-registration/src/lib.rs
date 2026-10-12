@@ -35,7 +35,7 @@ pub use oauth::{
     AccessTokenTrust, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
     ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DatabaseIdentifier, DatabaseUrl,
     GrantType, RegistrationAccessToken, RegistrationErrorCode, RegistrationErrorResponse,
-    RegistrationLease, ResponseType, SoftwareStatement, TokenEndpointAuthMethod, issuer_url,
+    ResponseType, SoftwareStatement, TokenEndpointAuthMethod, issuer_url,
 };
 pub use registration::{RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerVersion};
 

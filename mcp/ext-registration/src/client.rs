@@ -1,6 +1,6 @@
 //! The registration client a server runs. It keeps the server's key in a directory,
-//! registers with the installation's initial access token (RFC 7591), renews the lease
-//! with RFC 7592 updates and removes the registration on shutdown.
+//! registers with the installation's initial access token (RFC 7591), and removes the
+//! registration on shutdown (RFC 7592).
 //!
 //! The caller supplies the `reqwest::Client`. A client that reaches the Gateway over
 //! HTTPS needs a process-wide rustls crypto provider installed first.
@@ -22,7 +22,7 @@ use veoveo_types::OAuthClientId;
 use crate::{
     AccessTokenTrust, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
     ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DeclarationError,
-    RegistrationErrorResponse, RegistrationLease,
+    RegistrationErrorResponse,
     statement::{ServerKeyPair, StatementError},
 };
 
@@ -158,9 +158,6 @@ pub struct Registration {
 impl Registration {
     pub fn client_id(&self) -> &OAuthClientId {
         &self.information.client_id
-    }
-    pub fn lease(&self) -> &RegistrationLease {
-        &self.information.lease
     }
     /// The issuer and keys that verify the access tokens the Gateway forwards.
     pub fn access_tokens(&self) -> &AccessTokenTrust {
@@ -303,16 +300,15 @@ impl RegistrationClient {
         self.admit(information, registration.database.clone())
     }
 
-    /// Renew the lease with an RFC 7592 update. When the Gateway no longer knows the
-    /// registration (HTTP 401), the client registers again.
-    pub async fn renew(&self, registration: &mut Registration) -> Result<(), ClientError> {
+    /// RFC 7592 update: replace the registered metadata with this client's.
+    pub async fn update(&self, registration: &mut Registration) -> Result<(), ClientError> {
         let uri = registration.information.registration_client_uri.clone();
         let request = ClientUpdateRequest {
             client_id: registration.information.client_id.clone(),
             metadata: self.metadata.clone(),
             software_statement: self.key.sign_statement(&self.metadata, &uri, Utc::now())?,
         };
-        let renewed = self
+        let information = self
             .exchange(
                 Method::PUT,
                 &uri,
@@ -323,21 +319,8 @@ impl RegistrationClient {
                 Some(serde_json::to_vec(&request).expect("request serializes")),
                 StatusCode::OK,
             )
-            .await;
-        *registration = match renewed {
-            Ok(information) => self.admit(information, registration.database.clone())?,
-            Err(ClientError::Rejected {
-                status: StatusCode::UNAUTHORIZED,
-                ..
-            }) => {
-                tracing::warn!(
-                    server = %self.metadata.slug(),
-                    "registration expired at the Gateway; registering again"
-                );
-                self.register().await?
-            }
-            Err(error) => return Err(error),
-        };
+            .await?;
+        *registration = self.admit(information, registration.database.clone())?;
         Ok(())
     }
 
@@ -360,33 +343,16 @@ impl RegistrationClient {
         }
     }
 
-    /// Renew at the interval the lease names until `shutdown` completes, then remove
-    /// the registration. A transient failure is retried at the next interval; any other
-    /// failure ends the loop.
+    /// Keep the registration until `shutdown` completes, then remove it. Between the
+    /// two the Gateway keeps the registration while the server's login holds a live
+    /// kernel instance.
     pub async fn maintain(
         &self,
-        mut registration: Registration,
+        registration: Registration,
         shutdown: impl Future<Output = ()>,
     ) -> Result<(), ClientError> {
-        tokio::pin!(shutdown);
-        loop {
-            let wait = Duration::from_secs(registration.lease().renew_every_seconds.into());
-            tokio::select! {
-                () = &mut shutdown => return self.deregister(registration).await,
-                () = tokio::time::sleep(wait) => {
-                    if let Err(error) = self.renew(&mut registration).await {
-                        if !error.is_transient() {
-                            return Err(error);
-                        }
-                        tracing::warn!(
-                            server = %self.metadata.slug(),
-                            %error,
-                            "registration renewal failed; retrying at the next interval"
-                        );
-                    }
-                }
-            }
-        }
+        shutdown.await;
+        self.deregister(registration).await
     }
 
     async fn exchange(
