@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- The session that holds an instance's lock.\nSELECT pid AS \"pid!\"\nFROM pg_locks\nWHERE locktype = 'advisory'\n    AND classid = 1987471726::oid\n    AND objid = ($1::integer)::oid\n    AND objsubid = 2\n    AND granted\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pid!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "pg_locks",
+            "name": "pid"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "7af7ea206bdfb4b60c5dbd5ba8908173da8de009d162ccb364611e50e619d951"
+}
