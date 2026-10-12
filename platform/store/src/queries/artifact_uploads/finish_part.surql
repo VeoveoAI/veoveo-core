@@ -5,7 +5,7 @@ BEGIN TRANSACTION;
     IF $content_id != NONE {
       IF $upload_state.state != 'open' OR $existing.lease_until <= $now { THROW 'artifact_upload_conflict'; };
       IF $upload_state.expires_at <= $now { THROW 'artifact_upload_expired'; };
-      IF $upload_state.policy_digest != $policy_digest OR !fn::artifact_upload_authority_matches($upload_state) { THROW 'artifact_upload_denied'; };
+      IF $upload_state.policy_digest != $policy_digest OR !fn::artifacts::upload_authority_matches($upload_state) { THROW 'artifact_upload_denied'; };
       UPDATE ONLY $part SET state = 'accepted', content_id = $content_id RETURN NONE;
       LET $next_expiry = $now + duration::from_secs($upload_state.inactivity_seconds);
       UPDATE ONLY $upload_state.id SET accepted_bytes += $existing.byte_len, accepted_part_count += 1,

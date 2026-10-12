@@ -21,9 +21,9 @@ its predecessor, and the registry resolves transitive requirements before effect
 | Store | `changefeed_checkpoint`, `platform_module_lane`, `platform_module_migration`, `platform_module_installation` | None |
 | Identity | `tenant`, `enterprise`, `principal`, `principal_group`, `work_context`, `oauth_client` | `fn::kernel::identity::actor_admitted`, `fn::kernel::identity::identity_enabled`, `fn::kernel::identity::principal_summaries`, `fn::kernel::identity::search_enabled_users`, `fn::kernel::identity::enabled_user`, `fn::kernel::identity::identity_labels`, `fn::kernel::identity::tenant_current`, `fn::kernel::identity::principal_current`, `fn::kernel::identity::tenant_matches`, `fn::kernel::identity::oauth_client_exists`, `fn::kernel::identity::service_principal_available`, `fn::kernel::identity::create_service_principal`, `fn::kernel::identity::context_snapshot_matches`, `fn::kernel::identity::tenant_context_keys` |
 | Gateway | `gateway_*`, `policy_revision`, `profile`, `profile_server`, `mcp_server` | `fn::kernel::gateway::task_retention_route`, `fn::kernel::gateway::control_revision_current`, `fn::kernel::gateway::refresh_family_current` |
-| Artifacts | `artifact_*`, `share_link` | `fn::artifact_upload_profile_digest`, `fn::artifact_upload_authority_matches`, `fn::kernel::artifacts::read` |
+| Artifacts | `artifact_*`, `share_link` | `fn::artifacts::upload_profile_digest`, `fn::artifacts::upload_authority_matches`, `fn::kernel::artifacts::read` |
 | Tasks | `task`, `task_input`, `task_idempotency`, `task_produced_artifact`, `task_used_artifact`, `provider_job`, `provider_event`, `domain_usage` | `fn::kernel::tasks::selection`, `fn::kernel::tasks::lifecycle`, `fn::kernel::tasks::input_matches`, `fn::kernel::tasks::exists`, `fn::kernel::tasks::release_retention` |
-| Audit | `audit_*` | `fn::append_audit`, `fn::append_audit_indexing` |
+| Audit | `audit_*` | `fn::audit::append`, `fn::audit::append_indexing` |
 | Knowledge | `knowledge_*` | None |
 
 Store claims the `platform_search` analyzer; Knowledge claims `knowledge_text`.

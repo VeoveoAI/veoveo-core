@@ -1,1 +1,1 @@
-fn::append_audit_indexing($indexing);
+fn::audit::append_indexing($indexing);

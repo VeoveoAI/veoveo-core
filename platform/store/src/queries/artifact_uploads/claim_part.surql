@@ -2,7 +2,7 @@ BEGIN TRANSACTION;
   LET $upload_state = SELECT * FROM ONLY $upload;
   IF $upload_state = NONE OR $upload_state.state != 'open' { THROW 'artifact_upload_conflict'; };
   IF $upload_state.expires_at <= $now { THROW 'artifact_upload_expired'; };
-  IF $upload_state.policy_digest != $policy_digest OR !fn::artifact_upload_authority_matches($upload_state) {
+  IF $upload_state.policy_digest != $policy_digest OR !fn::artifacts::upload_authority_matches($upload_state) {
     THROW 'artifact_upload_denied';
   };
   LET $offset = ($part_number - 1) * $upload_state.layout.part_bytes;

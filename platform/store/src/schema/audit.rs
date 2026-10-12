@@ -12,8 +12,8 @@ pub fn module_setup(execution: LaneExecution) -> Result<ModuleSetup, Declaration
     ModuleSetup::builder(ModuleName::new("audit")?, ModuleLayer::Kernel)
         .ownership(vec![
             OwnershipClaim::TablePrefix(TablePrefix::new("audit_")?),
-            OwnershipClaim::Function(FunctionName::new("fn::append_audit")?),
-            OwnershipClaim::Function(FunctionName::new("fn::append_audit_indexing")?),
+            OwnershipClaim::Function(FunctionName::new("fn::audit::append")?),
+            OwnershipClaim::Function(FunctionName::new("fn::audit::append_indexing")?),
         ])
         .lane(MigrationLane::new(vec![veoveo_modules::Migration::new(
             veoveo_modules::MigrationVersion::new(0),

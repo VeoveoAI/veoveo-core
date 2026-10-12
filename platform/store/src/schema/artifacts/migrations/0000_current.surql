@@ -26,7 +26,7 @@ DEFINE TABLE artifact_write_redemption TYPE NORMAL SCHEMAFULL CHANGEFEED 4w2d PE
 
 DEFINE TABLE share_link TYPE NORMAL SCHEMAFULL CHANGEFEED 4w2d INCLUDE ORIGINAL PERMISSIONS NONE;
 
-DEFINE FUNCTION fn::artifact_upload_authority_matches($upload: object) -> bool {
+DEFINE FUNCTION fn::artifacts::upload_authority_matches($upload: object) -> bool {
     LET $context_id: record<work_context> = $upload.work_context;
     LET $context = (SELECT * FROM ONLY $context_id);
     IF type::is_object($context) THEN {
@@ -34,11 +34,11 @@ DEFINE FUNCTION fn::artifact_upload_authority_matches($upload: object) -> bool {
         RETURN $context.tenant = $upload.tenant
             AND $context.policy_revision = $authority.policy_revision
             AND crypto::sha256(<string> [$context.policy_revision, $context.memberships, $context.output_policy]) = $upload.context_digest
-            AND fn::artifact_upload_profile_digest($upload.profile_key) = $upload.profile_policy_digest;
+            AND fn::artifacts::upload_profile_digest($upload.profile_key) = $upload.profile_policy_digest;
     } ELSE { RETURN false } END;
 } PERMISSIONS FULL;
 
-DEFINE FUNCTION fn::artifact_upload_profile_digest($profile_key: string) -> none | string {
+DEFINE FUNCTION fn::artifacts::upload_profile_digest($profile_key: string) -> none | string {
     LET $active = (SELECT * FROM ONLY gateway_control_active:current);
     IF type::is_object($active) THEN {
         LET $profiles = (SELECT document, profile_policy_version FROM gateway_control_object

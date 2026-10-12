@@ -10,7 +10,7 @@ BEGIN TRANSACTION;
       THROW 'artifact_upload_conflict';
     };
   } ELSE {
-    IF !fn::artifact_upload_authority_matches($content) { THROW 'artifact_upload_denied'; };
+    IF !fn::artifacts::upload_authority_matches($content) { THROW 'artifact_upload_denied'; };
     INSERT IGNORE INTO artifact_storage_usage {
       id: $usage, tenant: $content.tenant, committed_bytes: 0, reserved_bytes: 0,
       cleanup_bytes: 0, active_uploads: 0, inflight_bytes: 0, inflight_parts: 0

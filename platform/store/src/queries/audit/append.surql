@@ -1,1 +1,1 @@
-fn::append_audit($audit_rows);
+fn::audit::append($audit_rows);

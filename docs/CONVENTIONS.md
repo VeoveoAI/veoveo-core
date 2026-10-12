@@ -128,8 +128,11 @@ such as `_B64`, and durations in their unit, such as `_SECONDS`.
 
 ## Database Names
 
-Kernel tables and `fn::kernel::` functions are reserved and unprefixed. Every other
-module prefixes its tables with `<slug>_` and its functions with `fn::<slug>::`.
+Kernel tables are reserved and unprefixed. Kernel SQL APIs that other modules call live
+under `fn::kernel::<module>::`, and a kernel module's private functions under
+`fn::<module>::`. Kernel module names are reserved, and no server may register one as its
+slug. Every other module prefixes its tables with `<slug>_` and its functions with
+`fn::<slug>::`.
 
 ## Runtime And Repository Names
 

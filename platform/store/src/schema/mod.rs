@@ -25,3 +25,27 @@ pub fn kernel_modules(
         knowledge::module_setup(execution("knowledge")?)?,
     ])
 }
+
+#[cfg(test)]
+mod reserved_names {
+    #[test]
+    fn kernel_module_names_are_reserved_slugs() {
+        let execution = |name: &str| {
+            veoveo_modules::LaneExecution::new(
+                veoveo_modules::ExecutionImage::new("gateway")?,
+                veoveo_modules::ExecutionCommand::new(vec![
+                    "migrate".into(),
+                    "--module".into(),
+                    name.into(),
+                ])?,
+            )
+        };
+        for module in super::kernel_modules(execution).unwrap() {
+            assert!(
+                veoveo_types::RESERVED_SERVER_SLUGS.contains(&module.name().as_str()),
+                "{} must be a reserved slug",
+                module.name().as_str()
+            );
+        }
+    }
+}

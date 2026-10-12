@@ -105,6 +105,7 @@ pub use task_type::{TaskTypeDefinition, TaskTypeName};
 
 pub use permission_names::{PermissionName, ResourceTypeName};
 pub use platform_names::{
+    RESERVED_SERVER_SLUGS,
     CanonicalTaskId, GatewayProfileId, GatewayRefreshFamilyId, LocalToolName, OAuthClientId,
     PromptName, ServerSlug,
 };

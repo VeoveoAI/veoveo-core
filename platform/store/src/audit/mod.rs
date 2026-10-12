@@ -170,7 +170,7 @@ impl AuditTransactionWrite {
         query.query(APPEND).bind(("audit_rows", self.rows))
     }
     /// Bind checked records for a domain SQL branch which calls
-    /// `fn::append_audit($audit_rows)` inside its existing transaction.
+    /// `fn::audit::append($audit_rows)` inside its existing transaction.
     pub fn into_binding(self) -> (&'static str, Value) {
         ("audit_rows", self.rows.into_value())
     }

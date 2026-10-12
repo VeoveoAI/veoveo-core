@@ -146,6 +146,18 @@ impl ClientMetadata {
             ));
         }
         let slug = &self.registration.slug;
+        if slug.is_reserved() {
+            return Err(DeclarationError::invalid(
+                "software_id",
+                "the slug is reserved for the platform, a kernel module or a registered URI scheme",
+            ));
+        }
+        if self.registration.uri_scheme.as_ref() != slug.as_ref() {
+            return Err(DeclarationError::invalid(
+                "veoveo_uri_scheme",
+                "a server's URI scheme equals its slug",
+            ));
+        }
         self.authorization
             .check(slug, &self.registration.uri_scheme)?;
         if let Some(module) = &self.module {

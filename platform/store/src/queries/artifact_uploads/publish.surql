@@ -6,7 +6,7 @@ BEGIN TRANSACTION;
     IF $upload_state.state != 'verifying' OR $upload_state.lease_owner != $owner
       OR $upload_state.generation != $generation OR $upload_state.lease_until <= $now { THROW 'artifact_upload_conflict'; };
     IF $upload_state.expires_at <= $now { THROW 'artifact_upload_expired'; };
-    IF !fn::artifact_upload_authority_matches($upload_state) { THROW 'artifact_upload_denied'; };
+    IF !fn::artifacts::upload_authority_matches($upload_state) { THROW 'artifact_upload_denied'; };
     IF $upload_state.manifest.byte_len != $blob_content.byte_len
       OR ($upload_state.manifest.sha256 != NONE AND $upload_state.manifest.sha256 != $blob_content.sha256)
       OR $upload_state.artifact != $artifact OR $upload_state.object_key != $blob_content.object_key
@@ -35,6 +35,6 @@ BEGIN TRANSACTION;
     UPDATE ONLY $upload SET state = 'completed', verified_sha256 = $blob_content.sha256,
       completed_at = $now, updated_at = $now, reserved_bytes = 0,
       cleanup_bytes = $duplicate_bytes, cleanup_pending = $retained.object_key != $upload_state.object_key RETURN NONE;
-    fn::append_audit($audit_rows);
+    fn::audit::append($audit_rows);
   };
 COMMIT TRANSACTION;

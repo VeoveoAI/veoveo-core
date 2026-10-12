@@ -4,6 +4,35 @@ use crate::IdentifierError;
 #[doc = "Canonical hosted MCP server id used in manifests, profiles, and gateway routes."]
 #[veoveo_types::id(text(ServerSlugs))]
 pub struct ServerSlug(String);
+
+/// Names no server may register as its slug or URI scheme: the platform scheme, the
+/// kernel modules and common URI schemes registered with IANA.
+pub const RESERVED_SERVER_SLUGS: &[&str] = &[
+    "veoveo",
+    "artifacts",
+    "audit",
+    "gateway",
+    "identity",
+    "knowledge",
+    "store",
+    "tasks",
+    "data",
+    "file",
+    "ftp",
+    "http",
+    "https",
+    "mailto",
+    "urn",
+    "ws",
+    "wss",
+];
+
+impl ServerSlug {
+    /// Whether the slug is reserved for the platform, a kernel module or a registered scheme.
+    pub fn is_reserved(&self) -> bool {
+        RESERVED_SERVER_SLUGS.contains(&self.as_ref())
+    }
+}
 #[doc = "Veoveo profile id exposed under `/mcp/{profile}`."]
 #[veoveo_types::id(text(crate::identifier_syntax::PathIdProfile))]
 pub struct GatewayProfileId(String);

@@ -315,7 +315,7 @@ impl<'a> Visitor<'a> {
         }
         if name.as_str().starts_with("fn::kernel::") {
             return Err(RunnerError::new(
-                "kernel SQL functions require an explicit versioned API declaration",
+                "kernel SQL functions require an explicit API declaration",
             ));
         }
         self.private_body(&name, statement, true, depth)?;

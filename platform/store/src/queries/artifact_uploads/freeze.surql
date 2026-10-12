@@ -8,7 +8,7 @@ BEGIN TRANSACTION;
     OR $audit.authority.policy_revision != $upload_state.authority.policy_revision {
     THROW 'artifact_upload_denied';
   };
-  IF $upload_state.policy_digest != $policy_digest OR !fn::artifact_upload_authority_matches($upload_state) { THROW 'artifact_upload_denied'; };
+  IF $upload_state.policy_digest != $policy_digest OR !fn::artifacts::upload_authority_matches($upload_state) { THROW 'artifact_upload_denied'; };
   IF $upload_state.state IN ['finalizing', 'verifying', 'completed'] {
     IF $upload_state.manifest.byte_len != $manifest.byte_len OR $upload_state.manifest.part_count != $manifest.part_count
       OR $upload_state.manifest.sha256 != $manifest.sha256 { THROW 'artifact_upload_conflict'; };

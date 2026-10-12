@@ -24,7 +24,7 @@ DEFINE TABLE audit_sealer TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
 
 DEFINE TABLE audit_daily TYPE ANY SCHEMALESS AS SELECT partition, day, class, outcome, count() AS count FROM audit_record GROUP BY partition, day, class, outcome PERMISSIONS NONE;
 
-DEFINE FUNCTION fn::append_audit($audit_rows: array<object>) {
+DEFINE FUNCTION fn::audit::append($audit_rows: array<object>) {
     IF array::len($audit_rows) > 4096 { THROW 'audit_batch_limit'; };
     FOR $audit_write IN $audit_rows {
         LET $audit_row: object = $audit_write.record;
@@ -49,7 +49,7 @@ DEFINE FUNCTION fn::append_audit($audit_rows: array<object>) {
     RETURN NONE;
 } PERMISSIONS NONE;
 
-DEFINE FUNCTION fn::append_audit_indexing($reads: array<object>) {
+DEFINE FUNCTION fn::audit::append_indexing($reads: array<object>) {
     IF array::len($reads) > 64 { THROW 'audit_batch_limit'; };
     LET $now = time::now();
     FOR $read IN $reads {

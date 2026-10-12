@@ -49,8 +49,10 @@ pub fn module_setup(execution: LaneExecution) -> Result<ModuleSetup, Declaration
             OwnershipClaim::Function(FunctionName::new("fn::kernel::artifacts::read")?),
             OwnershipClaim::TablePrefix(TablePrefix::new("artifact_")?),
             OwnershipClaim::Table(TableName::new("share_link")?),
-            OwnershipClaim::Function(FunctionName::new("fn::artifact_upload_profile_digest")?),
-            OwnershipClaim::Function(FunctionName::new("fn::artifact_upload_authority_matches")?),
+            OwnershipClaim::Function(FunctionName::new("fn::artifacts::upload_profile_digest")?),
+            OwnershipClaim::Function(FunctionName::new(
+                "fn::artifacts::upload_authority_matches",
+            )?),
         ])
         .lane(MigrationLane::new(vec![
             veoveo_modules::Migration::new(
