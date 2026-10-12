@@ -125,7 +125,7 @@ the administrative `llms.txt` URL. Unauthenticated Bearer rejection is required 
 the MCP endpoint. C18–C21 cannot be disabled by a profile.
 
 Credentials never enter the profile or report. The CLI receives a bearer through
-`MCP_BEARER_TOKEN`, or uses the existing direct-hosted internal assertion arguments
+`VEOVEO_CONFORMANCE_BEARER_TOKEN`, or uses the existing direct-hosted internal assertion arguments
 for installation-local acceptance. The same credential authenticates the MCP endpoint
 and the administrative docs projection. Profile validation requires both URLs to have
 the same scheme, host, and effective port before any credential can be forwarded.

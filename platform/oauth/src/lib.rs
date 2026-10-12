@@ -107,7 +107,7 @@ impl ClientAssertionSigner {
             now,
             now.checked_add(ASSERTION_LIFETIME_SECONDS)
                 .ok_or(AssertionError::InvalidTime)?,
-            &uuid::Uuid::new_v4().to_string(),
+            &uuid::Uuid::now_v7().to_string(),
         )
     }
     /// Explicit diagnostic claims preserve owner negative probes; callers own their transport admission.

@@ -19,7 +19,7 @@ struct Args {
     #[arg(long, default_value = "conformance-report.json")]
     report: PathBuf,
     /// Bearer presented to the server under test.
-    #[arg(long, env = "MCP_BEARER_TOKEN", hide_env_values = true)]
+    #[arg(long, env = "VEOVEO_CONFORMANCE_BEARER_TOKEN", hide_env_values = true)]
     bearer_token: Option<String>,
 }
 

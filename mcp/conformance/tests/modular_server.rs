@@ -355,7 +355,7 @@ async fn check_source_cli(endpoint: &str) -> anyhow::Result<()> {
                 "--report",
             ])
             .arg(&report.0)
-            .env("MCP_BEARER_TOKEN", "fixture-read")
+            .env("VEOVEO_CONFORMANCE_BEARER_TOKEN", "fixture-read")
             .env_remove("VEOVEO_INTERNAL_SIGNING_KEY_DER_B64")
             .kill_on_drop(true)
             .output()

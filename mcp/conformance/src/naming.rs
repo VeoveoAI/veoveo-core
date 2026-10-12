@@ -147,7 +147,10 @@ impl NamingInspection {
         // The maintained registry owns URI fragments, anchors and JSON pointers.
         // Structural admission above prohibits external references before preparation.
         let registry = jsonschema::Registry::new()
-            .add("urn:veoveo:conformance:schema", schema.as_value())?
+            .add(
+                "https://veoveo.ai/schemas/conformance/inspected",
+                schema.as_value(),
+            )?
             .prepare()?;
         let mut walker = Walker {
             inspection: self,
@@ -289,7 +292,7 @@ fn bind_key_references(node: &mut Value) -> Result<()> {
             .as_str()
             .ok_or_else(|| anyhow!("key reference must be text"))?;
         ensure!(text.starts_with('#'), "external key reference is forbidden");
-        let base = jsonschema::uri::from_str("urn:veoveo:conformance:schema")?;
+        let base = jsonschema::uri::from_str("https://veoveo.ai/schemas/conformance/inspected")?;
         *reference =
             Value::String(jsonschema::uri::resolve_against(&base.borrow(), text)?.to_string());
     }
@@ -366,7 +369,9 @@ impl<'a, 'r> Walker<'a, 'r> {
             );
             let resolved = self
                 .registry
-                .resolver(jsonschema::uri::from_str("urn:veoveo:conformance:schema")?)
+                .resolver(jsonschema::uri::from_str(
+                    "https://veoveo.ai/schemas/conformance/inspected",
+                )?)
                 .lookup(reference)?;
             children.push(resolved.contents());
         }
@@ -440,7 +445,9 @@ impl<'a, 'r> Walker<'a, 'r> {
         if let Some(reference) = node.get("$ref").and_then(Value::as_str) {
             let target = self
                 .registry
-                .resolver(jsonschema::uri::from_str("urn:veoveo:conformance:schema")?)
+                .resolver(jsonschema::uri::from_str(
+                    "https://veoveo.ai/schemas/conformance/inspected",
+                )?)
                 .lookup(reference)?;
             if let Some(key) = self.dictionary_key_node(target.contents(), seen, depth + 1)? {
                 return Ok(Some(key));
@@ -664,7 +671,9 @@ impl<'a, 'r> Walker<'a, 'r> {
             );
             let resolved = self
                 .registry
-                .resolver(jsonschema::uri::from_str("urn:veoveo:conformance:schema")?)
+                .resolver(jsonschema::uri::from_str(
+                    "https://veoveo.ai/schemas/conformance/inspected",
+                )?)
                 .lookup(reference)?;
             self.node(
                 resolved.contents(),

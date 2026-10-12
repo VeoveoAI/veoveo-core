@@ -10,7 +10,12 @@ pub(super) struct Args {
     pub(super) url: String,
     #[arg(long, global = true)]
     pub(super) scheme: Option<String>,
-    #[arg(long, env = "MCP_BEARER_TOKEN", hide_env_values = true, global = true)]
+    #[arg(
+        long,
+        env = "VEOVEO_CONFORMANCE_BEARER_TOKEN",
+        hide_env_values = true,
+        global = true
+    )]
     pub(super) bearer_token: Option<String>,
     #[command(subcommand)]
     pub(super) cmd: Cmd,

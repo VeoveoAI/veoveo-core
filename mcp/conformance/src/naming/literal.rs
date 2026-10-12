@@ -118,7 +118,9 @@ impl<'a, 'r> Walker<'a, 'r> {
         {
             let target = self
                 .registry
-                .resolver(jsonschema::uri::from_str("urn:veoveo:conformance:schema")?)
+                .resolver(jsonschema::uri::from_str(
+                    "https://veoveo.ai/schemas/conformance/inspected",
+                )?)
                 .lookup(reference)?;
             return self.sources(target.contents(), value, depth + 1, seen, sources);
         }
@@ -140,7 +142,9 @@ impl<'a, 'r> Walker<'a, 'r> {
         if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
             let target = self
                 .registry
-                .resolver(jsonschema::uri::from_str("urn:veoveo:conformance:schema")?)
+                .resolver(jsonschema::uri::from_str(
+                    "https://veoveo.ai/schemas/conformance/inspected",
+                )?)
                 .lookup(reference)?;
             self.sources(target.contents(), value, depth + 1, seen, sources)?;
         }
@@ -479,7 +483,10 @@ mod tests {
         .unwrap();
         let value = serde_json::json!({"first":1,"second":2});
         let registry = jsonschema::Registry::new()
-            .add("urn:veoveo:conformance:schema", schema.as_value())
+            .add(
+                "https://veoveo.ai/schemas/conformance/inspected",
+                schema.as_value(),
+            )
             .unwrap()
             .prepare()
             .unwrap();

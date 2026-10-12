@@ -29,7 +29,7 @@ pub const SERVER_BOOTSTRAP_FLAG: &str = "--bootstrap-catalog";
 /// Canonical CLI verb for validating a document without booting.
 pub const SERVER_BOOTSTRAP_VALIDATE_COMMAND: &str = "bootstrap-validate";
 /// Issuer recorded on the identity that applies bootstrap writes.
-pub const SERVER_BOOTSTRAP_ISSUER: &str = "urn:veoveo:installation-bootstrap";
+pub const SERVER_BOOTSTRAP_ISSUER: &str = "https://veoveo.ai/issuers/installation-bootstrap";
 
 /// Principal key recorded on the identity that applies bootstrap writes.
 pub fn server_bootstrap_principal(server: &ServerSlug) -> String {
