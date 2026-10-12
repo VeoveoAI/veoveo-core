@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n    tenant AS \"tenant: TenantId\",\n    principal_key,\n    kind AS \"kind: PrincipalKind\",\n    issuer,\n    subject,\n    display_name\nFROM identity.principal\nWHERE id = $1\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tenant: TenantId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity.principal",
+            "name": "tenant"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "principal_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.principal",
+            "name": "principal_key"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kind: PrincipalKind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.principal",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "issuer",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.principal",
+            "name": "issuer"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "subject",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.principal",
+            "name": "subject"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity.principal",
+            "name": "display_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3dff6dc4c7ac3a785e311b7d28f79e8b749aaaeaa3b442be84192cfcc769c28c"
+}

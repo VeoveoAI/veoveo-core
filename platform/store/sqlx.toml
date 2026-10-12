@@ -1,0 +1,5 @@
+# Read by `sqlx::migrate!()` in this crate and by `cargo sqlx migrate --config`.
+# The kernel migrations record their history in the kernel schema.
+[migrate]
+table-name = "kernel._sqlx_migrations"
+create-schemas = ["kernel"]

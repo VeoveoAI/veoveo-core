@@ -1,6 +1,8 @@
 //! Task lifecycle and recovery vocabularies, independent of storage and execution.
+//! The `postgres` feature binds both vocabularies to PostgreSQL `text` columns.
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
+#[cfg_attr(feature = "postgres", vocabulary(postgres))]
 pub enum TaskStatus {
     #[vocabulary(rename = "queued")]
     Queued,
@@ -18,14 +20,14 @@ pub enum TaskStatus {
     Cancelled,
 }
 
+/// How a Task proceeds after the process that owned it ends.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
+#[cfg_attr(feature = "postgres", vocabulary(postgres))]
 pub enum RecoveryClass {
+    /// Another worker claims the Task and runs it again.
     #[vocabulary(rename = "resume")]
     Resume,
-    #[vocabulary(rename = "webhook_wait")]
-    WebhookWait,
-    #[vocabulary(rename = "provider_wait")]
-    ProviderWait,
+    /// The Task may have had an effect that cannot be repeated; it fails as interrupted.
     #[vocabulary(rename = "interrupted_indeterminate")]
     InterruptedIndeterminate,
 }
@@ -57,13 +59,8 @@ mod tests {
     }
 
     #[test]
-    fn recovery_wire_order_includes_provider_wait() {
-        let expected = [
-            "resume",
-            "webhook_wait",
-            "provider_wait",
-            "interrupted_indeterminate",
-        ];
+    fn recovery_wire_order_and_unknown_rejection() {
+        let expected = ["resume", "interrupted_indeterminate"];
         assert_eq!(RecoveryClass::ALL.len(), expected.len());
         for (class, spelling) in RecoveryClass::ALL.iter().zip(expected) {
             assert_eq!(serde_json::to_value(class).unwrap(), spelling);
@@ -72,6 +69,22 @@ mod tests {
                 *class
             );
         }
-        assert!(serde_json::from_str::<RecoveryClass>("\"unknown\"").is_err());
+        for undeclared in ["\"unknown\"", "\"provider_wait\"", "\"webhook_wait\""] {
+            assert!(serde_json::from_str::<RecoveryClass>(undeclared).is_err());
+        }
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn postgres_binding_is_text() {
+        use sqlx::{Type, postgres::PgHasArrayType};
+        assert_eq!(
+            <TaskStatus as Type<sqlx::Postgres>>::type_info(),
+            <String as Type<sqlx::Postgres>>::type_info()
+        );
+        assert_eq!(
+            <RecoveryClass as PgHasArrayType>::array_type_info(),
+            <String as PgHasArrayType>::array_type_info()
+        );
     }
 }

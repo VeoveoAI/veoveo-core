@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.work_context\n    (id, tenant, context_key, title, policy_revision, owner_kind, owner_key, classification, data_labels)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "49718eb99bd775540ef30d7db2bb8bb5b2125c99ac9eef22abec78ac7dca20bc"
+}

@@ -11,6 +11,7 @@ revision of this repository.
 |---|---|---|
 | `platform/types` | `veoveo-types` | Identifiers, vocabularies, resource addresses and shared scalar types |
 | `platform/macros` | `veoveo-macros` | The `id`, `resource_address`, `Vocabulary` and `embedded_document!` macros |
+| `platform/store` | `veoveo-platform-store` | PostgreSQL access: the connection pool, kernel and identity migrations, process instances, singletons, change notifications and registered servers' roles |
 | `platform/policy` | `veoveo-policy` | The shared policy evaluator and role evaluation over registered servers' permissions |
 | `platform/oauth` | `veoveo-oauth-client` | RS256 client-assertion signing |
 | `platform/http` | `veoveo-http` | Shared HTTP admission |
@@ -27,7 +28,7 @@ revision of this repository.
 | `mcp/ext-registration` | `veoveo-mcp-ext-registration` | The server registration protocol: the `ai.veoveo/registration` and `ai.veoveo/authorization` declarations, RFC 7591 and RFC 7592 registration types, the database grant, granted-permission details and the registration client servers run |
 | `mcp/conformance` | `veoveo-mcp-conformance` | Hosted server conformance checks |
 | `testing/fixtures/modular-mcp` | `veoveo-modular-fixture-mcp` | An independently typed server used as a conformance and Gateway test peer |
-| `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: tool-input cases |
+| `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database and tool-input cases |
 
 Core names no specific server, and neither does an installation's configuration.
 Servers register with the Gateway through the

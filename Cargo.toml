@@ -16,6 +16,7 @@ members = [
     "platform/oauth",
     "platform/policy",
     "platform/runtimes/embedding/contract",
+    "platform/store",
     "platform/task-runtime/contract",
     "platform/types",
     "testing/fixtures/library",
@@ -80,6 +81,9 @@ serde_path_to_error = "=0.1.20"
 serde_json = "=1.0.151"
 secrecy = "0.10.3"
 sha2 = "=0.11.0"
+# PostgreSQL 18 through sqlx with Rustls on ring, consistent with `rustls` above.
+# `sqlx-toml` reads each crate's migration table settings from its `sqlx.toml`.
+sqlx = { version = "=0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring-native-roots", "uuid", "chrono", "json", "migrate", "macros", "sqlx-toml"] }
 syn = "=3.0.6"
 tokio = "1.53.1"
 tokio-util = "0.7.19"
@@ -96,6 +100,7 @@ uuid = { version = "1.24.1", features = ["serde", "v4", "v5", "v7"] }
 zeroize = "=1.9.0"
 veoveo-mcp-contract = { path = "mcp/contract", default-features = false }
 veoveo-types = { path = "platform/types" }
+veoveo-platform-store = { path = "platform/store" }
 veoveo-mcp-ext-registration = { path = "mcp/ext-registration", default-features = false }
 veoveo-gateway-contract = { path = "platform/gateway/contract" }
 veoveo-artifact-client = { path = "platform/artifacts/client" }

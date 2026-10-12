@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identity.tenant (id, enterprise, slug, name) VALUES ($1, $2, $3, $3)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4a99632575fd65ba29602fb64b044aa3aa4c7fb655280a196cccf5bf98f4c885"
+}

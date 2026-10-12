@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- The backend that holds an instance's lock.\nSELECT pid AS \"pid!\"\nFROM pg_locks\nWHERE locktype = 'advisory'\n    AND classid = 1987471726::oid\n    AND objid = ($1::integer)::oid\n    AND objsubid = 2\n    AND granted\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pid!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "pg_locks",
+            "name": "pid"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "7074885e0896ee4c39d20e56412e70a727ffeac14bbee6d34cef2c03b98e28d2"
+}

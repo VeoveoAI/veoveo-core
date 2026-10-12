@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Sessions of this database whose last statement subscribed to a channel.\nSELECT pid AS \"pid!\"\nFROM pg_stat_activity\nWHERE datname = current_database()\n    AND query LIKE 'LISTEN %'\n    AND pid <> pg_backend_pid()\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pid!",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "pg_stat_activity",
+            "name": "pid"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "c46e2ccd70ff8d1423e7e2e55241111cfab2dec9142033dd75b48006ebb66e70"
+}

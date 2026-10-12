@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT $1::text AS \"kind!: PrincipalKind\", ARRAY[$1::text] AS \"kinds!: Vec<PrincipalKind>\"\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind!: PrincipalKind",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "kinds!: Vec<PrincipalKind>",
+        "type_info": "TextArray",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "ce87acf6f7cc05648f4d9f9d5b09140ad4766a7886147cc3515898ff03757b51"
+}

@@ -8,8 +8,26 @@ publish.workspace = true
 description = "Shared test fixtures for repositories that consume veoveo-core"
 
 [features]
+store = [
+    "dep:hex",
+    "dep:secrecy",
+    "dep:sha2",
+    "dep:sqlx",
+    "dep:tokio",
+    "dep:uuid",
+    "dep:veoveo-platform-store",
+    "dep:veoveo-types",
+]
 tool-inputs = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
+hex = { workspace = true, optional = true }
+secrecy = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["fs", "macros", "process", "rt", "sync", "time"], optional = true }
+uuid = { workspace = true, features = ["v4"], optional = true }
+veoveo-platform-store = { workspace = true, optional = true }
+veoveo-types = { workspace = true, optional = true }
