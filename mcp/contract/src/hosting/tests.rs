@@ -281,6 +281,24 @@ fn gateway() -> TestGateway {
     )
 }
 
+#[test]
+fn test_gateway_tokens_carry_the_permissions_it_grants() {
+    let read = veoveo_types::PermissionName::parse("fixture.read").unwrap();
+    let gateway = gateway().granting([read.clone()]);
+    let verifier = crate::GatewayInternalTokenVerifier::from_access_tokens(
+        &testing::access_token_trust(),
+        ServerSlug::parse("fixture").unwrap(),
+    )
+    .unwrap();
+    let identity = verifier.verify(&gateway.token()).unwrap();
+    assert!(identity.grants(&read));
+    assert_eq!(identity.client.as_str(), testing::TEST_CLIENT);
+    assert_eq!(identity.issuer.as_str(), testing::TEST_ISSUER);
+    assert_eq!(identity.audience.as_str(), testing::TEST_RESOURCE);
+    let narrowed = verifier.verify(&gateway.token_granting([])).unwrap();
+    assert!(narrowed.permissions.is_empty());
+}
+
 #[tokio::test]
 async fn health_and_readiness_need_no_authentication() {
     let gateway = gateway();
@@ -420,6 +438,38 @@ async fn hosts_are_validated_before_routing() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn rejected_requests_name_the_bearer_scheme() {
+    let server = testing::for_domain::<FixtureDomain>()
+        .handler(|| Hosted::new(FixtureDomain::new()))
+        .build();
+    let challenge = |bearer: Option<&str>| {
+        let mut request = axum::http::Request::builder()
+            .method("POST")
+            .uri(format!("{}/mcp", server.mount.prefix()))
+            .header("host", testing::TEST_HOST);
+        if let Some(bearer) = bearer {
+            request = request.header("authorization", format!("Bearer {bearer}"));
+        }
+        let router = server.router.clone();
+        async move {
+            let response = tower::ServiceExt::oneshot(router, request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            response.headers()["www-authenticate"]
+                .to_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    assert_eq!(challenge(None).await, "Bearer");
+    assert_eq!(
+        challenge(Some("not-a-token")).await,
+        r#"Bearer error="invalid_token""#
+    );
 }
 
 #[tokio::test]

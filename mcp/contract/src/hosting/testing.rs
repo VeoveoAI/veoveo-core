@@ -18,7 +18,8 @@
 //! ```
 //!
 //! The signing key is a published test key. Production servers trust only the
-//! keys their registration response names, which never contain it.
+//! keys their registration response names, which never contain it. [`TestGateway::granting`]
+//! sets the permissions its tokens carry.
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -32,9 +33,9 @@ use chrono::{TimeDelta, Utc};
 use tower::ServiceExt;
 use veoveo_mcp_ext_registration::{AccessTokenTrust, Ed25519JwkSet, ResourceIndicator};
 use veoveo_types::{
-    AccessSubject, GroupId, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
-    RoleId, ScopeName, TenantId, WorkContextId, WorkContextMembershipLevel,
-    WorkContextOutputPolicy,
+    AccessSubject, GroupId, InvocationAuthority, InvocationProvenance, PermissionName,
+    PolicyVersion, PrincipalId, RoleId, ScopeName, TenantId, WorkContextId,
+    WorkContextMembershipLevel, WorkContextOutputPolicy,
 };
 
 use super::{
@@ -168,6 +169,7 @@ pub struct TestGateway {
     router: Router,
     slug: crate::ServerSlug,
     mount: String,
+    permissions: BTreeSet<PermissionName>,
 }
 
 impl TestGateway {
@@ -176,11 +178,25 @@ impl TestGateway {
             slug: server.slug.clone(),
             mount: server.mount.prefix().to_owned(),
             router: server.router,
+            permissions: BTreeSet::new(),
         }
     }
 
-    /// An access token for the test user, addressed to this server.
+    /// Grants `permissions` in every token this gateway issues, as role evaluation
+    /// would. Each must belong to the server's namespace.
+    pub fn granting(mut self, permissions: impl IntoIterator<Item = PermissionName>) -> Self {
+        self.permissions = permissions.into_iter().collect();
+        self
+    }
+
+    /// An access token for the test user, addressed to this server and carrying the
+    /// permissions set by [`TestGateway::granting`].
     pub fn token(&self) -> String {
+        self.token_granting(self.permissions.iter().cloned())
+    }
+
+    /// An access token for the test user that grants exactly `permissions`.
+    pub fn token_granting(&self, permissions: impl IntoIterator<Item = PermissionName>) -> String {
         GatewayInternalTokenIssuer::new(TokenIssuer::parse(TEST_ISSUER).unwrap(), signing_key())
             .unwrap()
             .issue(ForwardedRequest {
@@ -190,7 +206,7 @@ impl TestGateway {
                 client: OAuthClientId::parse(TEST_CLIENT).unwrap(),
                 actor: principal(),
                 authority: authority(),
-                permissions: BTreeSet::new(),
+                permissions: permissions.into_iter().collect(),
                 request_context: None,
                 expires_at: Utc::now() + TimeDelta::minutes(5),
             })

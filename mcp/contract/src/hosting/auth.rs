@@ -11,7 +11,10 @@ use std::{fmt, sync::Arc};
 
 use axum::{
     extract::{Request, State},
-    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
+    http::{
+        HeaderMap, StatusCode,
+        header::{AUTHORIZATION, WWW_AUTHENTICATE},
+    },
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -64,7 +67,18 @@ pub(super) async fn authenticate(
         Ok(verified) => verified,
         Err(reason) => {
             tracing::warn!(server = auth.slug.as_str(), reason, "rejected MCP request");
-            return (StatusCode::UNAUTHORIZED, "invalid gateway authorization").into_response();
+            // RFC 6750 §3: name the Bearer scheme, and the error once a token was sent.
+            let challenge = if request.headers().contains_key(AUTHORIZATION) {
+                r#"Bearer error="invalid_token""#
+            } else {
+                "Bearer"
+            };
+            return (
+                StatusCode::UNAUTHORIZED,
+                [(WWW_AUTHENTICATE, challenge)],
+                "invalid gateway authorization",
+            )
+                .into_response();
         }
     };
     request.extensions_mut().insert(bearer);
