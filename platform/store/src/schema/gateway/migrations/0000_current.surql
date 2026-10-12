@@ -18,6 +18,10 @@ DEFINE TABLE gateway_refresh_token TYPE NORMAL SCHEMAFULL CHANGEFEED 12w6d PERMI
 
 DEFINE TABLE gateway_replay_id TYPE NORMAL SCHEMAFULL CHANGEFEED 12w6d PERMISSIONS NONE;
 
+DEFINE TABLE gateway_namespace_claim TYPE NORMAL SCHEMAFULL CHANGEFEED 12w6d PERMISSIONS NONE;
+
+DEFINE TABLE gateway_registration TYPE NORMAL SCHEMAFULL CHANGEFEED 4w2d PERMISSIONS NONE;
+
 DEFINE TABLE gateway_resource_subscription TYPE NORMAL SCHEMAFULL CHANGEFEED 12w6d PERMISSIONS NONE;
 
 DEFINE TABLE gateway_task_route TYPE NORMAL SCHEMAFULL CHANGEFEED 4w2d PERMISSIONS NONE;
@@ -262,6 +266,38 @@ DEFINE INDEX gateway_refresh_token_expiry ON gateway_refresh_token FIELDS expire
 DEFINE INDEX gateway_refresh_token_family_generation_unique ON gateway_refresh_token FIELDS family, generation UNIQUE;
 
 DEFINE INDEX gateway_refresh_token_hash_unique ON gateway_refresh_token FIELDS token_hash UNIQUE;
+
+DEFINE FIELD OVERWRITE claimed_at ON gateway_namespace_claim TYPE datetime PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE id ON gateway_namespace_claim TYPE string PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE key_thumbprint ON gateway_namespace_claim TYPE string PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE module ON gateway_namespace_claim TYPE option<object> FLEXIBLE PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE updated_at ON gateway_namespace_claim TYPE datetime PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE database_username ON gateway_registration TYPE option<string> PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE id ON gateway_registration TYPE string PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE issued_at ON gateway_registration TYPE datetime PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE lease_expires_at ON gateway_registration TYPE datetime PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE metadata ON gateway_registration TYPE object FLEXIBLE PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE registration_access_token_digest ON gateway_registration TYPE string PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE slug ON gateway_registration TYPE string PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE software_statement ON gateway_registration TYPE string PERMISSIONS FULL;
+
+DEFINE FIELD OVERWRITE updated_at ON gateway_registration TYPE datetime PERMISSIONS FULL;
+
+DEFINE INDEX gateway_registration_slug ON gateway_registration FIELDS slug;
+
+DEFINE INDEX gateway_registration_lease ON gateway_registration FIELDS lease_expires_at;
 
 DEFINE FIELD OVERWRITE authorization_server ON gateway_replay_id TYPE string PERMISSIONS FULL;
 
