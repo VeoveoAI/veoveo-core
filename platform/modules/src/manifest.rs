@@ -1,4 +1,5 @@
-//! Wire form of an optional module declaration. A manifest a server sends at
+//! Wire form of an optional module declaration, in the snake_case of the OAuth
+//! registration document that carries it. A manifest a server sends at
 //! registration takes the same admission as the Rust declaration that produced it:
 //! [`ModuleManifest::admit`] rebuilds every name, migration, lane and claim through
 //! the checked constructors and [`ModuleSetup::builder`].
@@ -9,7 +10,7 @@ use sha2::{Digest, Sha256};
 /// compiled into the Gateway and never travel as manifests.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleManifest {
     pub name: ModuleName,
     pub ownership: Vec<ManifestClaim>,
@@ -22,7 +23,7 @@ pub struct ModuleManifest {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "camelCase", tag = "kind", content = "name")]
+#[serde(rename_all = "snake_case", tag = "kind", content = "name")]
 pub enum ManifestClaim {
     Table(TableName),
     TablePrefix(TablePrefix),
@@ -33,7 +34,7 @@ pub enum ManifestClaim {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ManifestRequirement {
     pub module: ModuleName,
     /// Absent: the dependency's whole lane must be current.
@@ -43,7 +44,7 @@ pub struct ManifestRequirement {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ManifestExtension {
     pub point: ExtensionPointName,
     pub implementation: ExtensionImplementationName,
@@ -51,7 +52,7 @@ pub struct ManifestExtension {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ManifestMigration {
     pub version: MigrationVersion,
     pub name: MigrationName,
@@ -263,8 +264,8 @@ mod tests {
             serde_json::json!({
                 "name": "time",
                 "ownership": [
-                    {"kind": "tablePrefix", "name": "time_"},
-                    {"kind": "functionPrefix", "name": "fn::time::"}
+                    {"kind": "table_prefix", "name": "time_"},
+                    {"kind": "function_prefix", "name": "fn::time::"}
                 ],
                 "requires": [{"module": "identity"}],
                 "migrations": [
@@ -305,7 +306,7 @@ mod tests {
         // Malformed names fail at the wire boundary.
         assert!(rejected(|w| w["name"] = serde_json::json!("Time")));
         assert!(rejected(|w| {
-            w["ownership"][0] = serde_json::json!({"kind": "tablePrefix", "name": "time-"})
+            w["ownership"][0] = serde_json::json!({"kind": "table_prefix", "name": "time-"})
         }));
         // A module cannot require itself.
         assert!(rejected(
@@ -316,7 +317,7 @@ mod tests {
         // A later migration cannot drop an earlier prerequisite.
         assert!(rejected(|w| {
             w["migrations"][0]["requires"] =
-                serde_json::json!([{"module": "identity", "atLeast": 2}])
+                serde_json::json!([{"module": "identity", "at_least": 2}])
         }));
     }
 

@@ -42,6 +42,58 @@ pub struct AuthorizationDeclaration {
     pub requirements: Requirements,
 }
 
+/// [`AuthorizationDeclaration`] as the `veoveo_authorization` registration member
+/// spells it: OAuth documents use snake_case member names.
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(rename = "AuthorizationDocument")]
+pub(crate) struct AuthorizationDocument {
+    permissions: Vec<PermissionDeclaration>,
+    requirements: RequirementsDocument,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct RequirementsDocument {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    tools: BTreeMap<LocalToolName, PermissionName>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    resources: BTreeMap<ResourceUri, PermissionName>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    resource_templates: BTreeMap<ResourceTemplateUri, PermissionName>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    prompts: BTreeMap<PromptName, PermissionName>,
+}
+
+impl From<AuthorizationDocument> for AuthorizationDeclaration {
+    fn from(document: AuthorizationDocument) -> Self {
+        let requirements = document.requirements;
+        Self {
+            permissions: document.permissions,
+            requirements: Requirements {
+                tools: requirements.tools,
+                resources: requirements.resources,
+                resource_templates: requirements.resource_templates,
+                prompts: requirements.prompts,
+            },
+        }
+    }
+}
+impl From<AuthorizationDeclaration> for AuthorizationDocument {
+    fn from(declaration: AuthorizationDeclaration) -> Self {
+        let requirements = declaration.requirements;
+        Self {
+            permissions: declaration.permissions,
+            requirements: RequirementsDocument {
+                tools: requirements.tools,
+                resources: requirements.resources,
+                resource_templates: requirements.resource_templates,
+                prompts: requirements.prompts,
+            },
+        }
+    }
+}
+
 /// One request target whose required permission the Gateway looks up.
 #[derive(Debug, Clone, Copy)]
 pub enum RequirementTarget<'a> {

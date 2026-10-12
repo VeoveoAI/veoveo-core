@@ -1,19 +1,21 @@
 //! The OAuth 2.0 Dynamic Client Registration profile that carries the declarations.
-//! Standard members keep their RFC 7591 and RFC 7592 names; Veoveo members use the
-//! collision-resistant `ai.veoveo/` names. Following RFC 7591, a receiver ignores
-//! client metadata it does not understand, while each Veoveo member admits only its
-//! own declared fields.
+//! Standard members keep their RFC 7591 and RFC 7592 names: the slug is `software_id`
+//! and the build `software_version`. Members without a standard equivalent take the
+//! RFC 6749 §8.2 vendor prefix in snake_case, such as `veoveo_authorization`, and times
+//! are NumericDate seconds. Following RFC 7591, a receiver ignores client metadata it
+//! does not understand, while each Veoveo member admits only its own declared fields.
 use std::fmt;
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use veoveo_types::{OAuthClientId, ServerSlug, TokenIssuer};
+use veoveo_types::{OAuthClientId, ResourceScheme, ServerSlug, TokenIssuer};
 
 use crate::{
     AuthorizationDeclaration, DeclarationError, Ed25519JwkSet, ModuleDeclaration,
-    RegistrationDeclaration, ServerKeySet, ServerPublicKey, registration::http_url,
+    RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerKeySet, ServerPublicKey,
+    ServerVersion, authorization::AuthorizationDocument, registration::http_url,
 };
 
 /// RFC 7591 `token_endpoint_auth_method`. A server authenticates with RFC 7523 JWTs
@@ -48,22 +50,70 @@ pub enum ResponseType {
 
 /// The client metadata a server registers (RFC 7591 §2) and the Gateway returns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(from = "ClientMetadataWire", into = "ClientMetadataWire")]
+#[schemars(with = "ClientMetadataWire")]
 pub struct ClientMetadata {
     pub jwks: ServerKeySet,
     pub token_endpoint_auth_method: TokenEndpointAuthMethod,
     pub grant_types: Vec<GrantType>,
     pub response_types: Vec<ResponseType>,
-    #[serde(rename = "ai.veoveo/registration")]
     pub registration: RegistrationDeclaration,
-    #[serde(rename = "ai.veoveo/authorization")]
     pub authorization: AuthorizationDeclaration,
     /// Absent for a server without its own tables.
-    #[serde(
-        rename = "ai.veoveo/module",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
     pub module: Option<ModuleDeclaration>,
+}
+
+/// The members of [`ClientMetadata`] as RFC 7591 names them.
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[schemars(rename = "ClientMetadata")]
+struct ClientMetadataWire {
+    jwks: ServerKeySet,
+    token_endpoint_auth_method: TokenEndpointAuthMethod,
+    grant_types: Vec<GrantType>,
+    response_types: Vec<ResponseType>,
+    /// The server's slug.
+    software_id: ServerSlug,
+    software_version: ServerVersion,
+    veoveo_uri_scheme: ResourceScheme,
+    veoveo_mcp_endpoint: ServerEndpoint,
+    veoveo_authorization: AuthorizationDocument,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    veoveo_module: Option<ModuleDeclaration>,
+}
+
+impl From<ClientMetadataWire> for ClientMetadata {
+    fn from(wire: ClientMetadataWire) -> Self {
+        Self {
+            jwks: wire.jwks,
+            token_endpoint_auth_method: wire.token_endpoint_auth_method,
+            grant_types: wire.grant_types,
+            response_types: wire.response_types,
+            registration: RegistrationDeclaration {
+                slug: wire.software_id,
+                uri_scheme: wire.veoveo_uri_scheme,
+                version: wire.software_version,
+                endpoint: wire.veoveo_mcp_endpoint,
+            },
+            authorization: wire.veoveo_authorization.into(),
+            module: wire.veoveo_module,
+        }
+    }
+}
+impl From<ClientMetadata> for ClientMetadataWire {
+    fn from(metadata: ClientMetadata) -> Self {
+        Self {
+            jwks: metadata.jwks,
+            token_endpoint_auth_method: metadata.token_endpoint_auth_method,
+            grant_types: metadata.grant_types,
+            response_types: metadata.response_types,
+            software_id: metadata.registration.slug,
+            software_version: metadata.registration.version,
+            veoveo_uri_scheme: metadata.registration.uri_scheme,
+            veoveo_mcp_endpoint: metadata.registration.endpoint,
+            veoveo_authorization: metadata.authorization.into(),
+            veoveo_module: metadata.module,
+        }
+    }
 }
 
 impl ClientMetadata {
@@ -192,13 +242,13 @@ pub struct ClientInformation {
     #[serde(flatten)]
     pub metadata: ClientMetadata,
     pub software_statement: SoftwareStatement,
-    #[serde(rename = "ai.veoveo/lease")]
+    #[serde(rename = "veoveo_lease")]
     pub lease: RegistrationLease,
-    #[serde(rename = "ai.veoveo/access-tokens")]
+    #[serde(rename = "veoveo_access_tokens")]
     pub access_tokens: AccessTokenTrust,
     /// The server's own database user. Present when the server registered a module.
     #[serde(
-        rename = "ai.veoveo/database",
+        rename = "veoveo_database",
         default,
         skip_serializing_if = "Option::is_none"
     )]
@@ -206,9 +256,19 @@ pub struct ClientInformation {
 }
 
 impl ClientInformation {
-    /// Check the URLs a client will call with its registration access token.
+    /// Check the URLs a client will call with its registration access token, the
+    /// access-token issuer and audience, and the registered metadata.
     pub fn check(&self) -> Result<(), DeclarationError> {
         http_url(&self.registration_client_uri, "registration_client_uri")?;
+        self.access_tokens.check()?;
+        if self.access_tokens.resource
+            != ResourceIndicator::from(&self.metadata.registration.endpoint)
+        {
+            return Err(DeclarationError::invalid(
+                "veoveo_access_tokens",
+                "the token audience must be the registered MCP endpoint",
+            ));
+        }
         self.metadata.check()
     }
 }
@@ -240,27 +300,50 @@ fn expose<S: serde::Serializer>(secret: &SecretString, serializer: S) -> Result<
     serializer.serialize_str(secret.expose_secret())
 }
 
-/// `ai.veoveo/lease`: when the registration expires unless the server updates it.
+/// `veoveo_lease`: when the registration expires unless the server updates it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct RegistrationLease {
+    /// NumericDate seconds.
+    #[serde(with = "chrono::serde::ts_seconds")]
+    #[schemars(with = "i64")]
     pub expires_at: DateTime<Utc>,
     /// Send an RFC 7592 update at this interval.
     pub renew_every_seconds: u32,
 }
 
-/// `ai.veoveo/access-tokens`: the issuer and keys of the RFC 9068 access tokens the
-/// Gateway forwards to this server.
+/// `veoveo_access_tokens`: the issuer, keys and audience of the RFC 9068 access tokens
+/// the Gateway forwards to this server.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct AccessTokenTrust {
+    /// The Gateway's HTTPS issuer URL, as its RFC 8414 metadata announces it.
     pub issuer: TokenIssuer,
     pub jwks: Ed25519JwkSet,
+    /// The `aud` of every token addressed to this server: its registered MCP endpoint.
+    pub resource: ResourceIndicator,
 }
 
-/// `ai.veoveo/database`: a database user the Gateway created for one server.
+impl AccessTokenTrust {
+    /// The issuer is an HTTPS URL without credentials, query or fragment.
+    pub fn check(&self) -> Result<(), DeclarationError> {
+        issuer_url(&self.issuer)
+    }
+}
+
+/// An RFC 8414 issuer: an HTTPS URL without credentials, query or fragment.
+pub fn issuer_url(issuer: &TokenIssuer) -> Result<(), DeclarationError> {
+    let url = url::Url::parse(issuer.as_str())
+        .map_err(|_| DeclarationError::invalid("issuer", "must be a URL"))?;
+    if url.scheme() != "https" {
+        return Err(DeclarationError::invalid("issuer", "must use https"));
+    }
+    http_url(&url, "issuer")
+}
+
+/// `veoveo_database`: a database user the Gateway created for one server.
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct DatabaseGrant {
     #[schemars(with = "url::Url")]
     pub endpoint: url::Url,

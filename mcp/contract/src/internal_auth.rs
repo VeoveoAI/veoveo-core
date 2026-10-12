@@ -1237,14 +1237,19 @@ pub(crate) mod tests {
 
     #[test]
     fn registration_key_sets_become_trust_bundles() {
-        let keys: Ed25519JwkSet = serde_json::from_value(serde_json::json!({"keys": [
-            {"kty": "OKP", "crv": "Ed25519", "x": PUBLIC_KEY_X, "alg": "EdDSA", "use": "sig", "kid": "key-1"}
-        ]}))
-        .unwrap();
+        let key = veoveo_mcp_ext_registration::ServerPublicKey::from_bytes(
+            URL_SAFE_NO_PAD
+                .decode(PUBLIC_KEY_X)
+                .unwrap()
+                .try_into()
+                .unwrap(),
+        );
+        let keys =
+            Ed25519JwkSet::new(vec![veoveo_mcp_ext_registration::Ed25519Jwk::new(key)]).unwrap();
         let bundle = GatewayInternalTrustBundle::from_key_set(&keys).unwrap();
         let issued = GatewayInternalTokenIssuer::new(
             TokenIssuer::parse("veoveo-internal").unwrap(),
-            signing_key("key-1"),
+            signing_key(key.thumbprint().as_str()),
         )
         .issue(
             GatewayProfileId::parse("default").unwrap(),

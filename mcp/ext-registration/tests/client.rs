@@ -46,6 +46,15 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
         .strip_prefix("Bearer ")
 }
 
+/// RFC 6750 §3: a 401 names the Bearer scheme.
+fn unauthorized() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        [("www-authenticate", r#"Bearer error="invalid_token""#)],
+    )
+        .into_response()
+}
+
 fn error(code: RegistrationErrorCode, description: String) -> Response {
     (
         StatusCode::BAD_REQUEST,
@@ -115,26 +124,24 @@ fn information(
         registration_client_uri: url::Url::parse(&format!("{}/register/{client_id}", gateway.base))
             .unwrap(),
         database: (database && metadata.module.is_some()).then(grant),
+        access_tokens: AccessTokenTrust {
+            issuer: TokenIssuer::parse("https://gateway.example").unwrap(),
+            jwks: Ed25519JwkSet::new(vec![Ed25519Jwk::new(ServerPublicKey::from_bytes([9; 32]))])
+                .unwrap(),
+            resource: ResourceIndicator::from(&metadata.registration.endpoint),
+        },
         metadata,
         software_statement: statement,
         lease: RegistrationLease {
             expires_at: Utc::now() + TimeDelta::seconds(3),
             renew_every_seconds: 1,
         },
-        access_tokens: AccessTokenTrust {
-            issuer: TokenIssuer::parse("veoveo-internal").unwrap(),
-            jwks: Ed25519JwkSet::new(vec![Ed25519Jwk {
-                kid: JwkKeyId::new("gateway-1").unwrap(),
-                key: ServerPublicKey::from_bytes([9; 32]),
-            }])
-            .unwrap(),
-        },
     }
 }
 
 async fn register(State(gateway): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
     if bearer(&headers) != Some(SECRET) {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return unauthorized();
     }
     let Ok(request) = serde_json::from_slice::<ClientRegistrationRequest>(&body) else {
         return error(
@@ -175,7 +182,7 @@ async fn read(
 ) -> Response {
     let mut gateway = gateway.lock().unwrap();
     let Some(metadata) = authorized(&gateway, &id, &headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return unauthorized();
     };
     let statement = SoftwareStatement::new("e30.e30.c2ln").unwrap();
     let read = information(&mut gateway, &id, metadata, statement, false);
@@ -190,7 +197,7 @@ async fn update(
 ) -> Response {
     let mut gateway = gateway.lock().unwrap();
     if authorized(&gateway, &id, &headers).is_none() {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return unauthorized();
     }
     let Ok(request) = serde_json::from_slice::<ClientUpdateRequest>(&body) else {
         return error(
@@ -228,13 +235,13 @@ async fn delete(
     State(gateway): State<Shared>,
     Path(id): Path<String>,
     headers: HeaderMap,
-) -> StatusCode {
+) -> Response {
     let mut gateway = gateway.lock().unwrap();
     if authorized(&gateway, &id, &headers).is_none() {
-        return StatusCode::UNAUTHORIZED;
+        return unauthorized();
     }
     gateway.clients.remove(&id);
-    StatusCode::NO_CONTENT
+    StatusCode::NO_CONTENT.into_response()
 }
 
 async fn gateway() -> (Shared, url::Url) {
@@ -262,7 +269,7 @@ fn module() -> ModuleDeclaration {
     ModuleDeclaration::new(
         serde_json::from_value(json!({
             "name": "clock",
-            "ownership": [{"kind": "tablePrefix", "name": "clock_"}],
+            "ownership": [{"kind": "table_prefix", "name": "clock_"}],
             "migrations": [{"version": 0, "name": "current", "sql": "DEFINE TABLE clock_event;"}]
         }))
         .unwrap(),
@@ -330,7 +337,7 @@ async fn registers_reads_renews_and_deregisters() {
     assert_eq!(database.username.as_str(), "clock_runtime");
     assert_eq!(
         registration.access_tokens().issuer.as_str(),
-        "veoveo-internal"
+        "https://gateway.example"
     );
     let first_token = registration
         .information()

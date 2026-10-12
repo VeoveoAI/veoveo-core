@@ -108,3 +108,49 @@ pub(crate) fn http_url(url: &url::Url, field: &'static str) -> Result<(), Declar
     }
     Ok(())
 }
+
+/// An RFC 8707 resource indicator: the absolute URL a token's `aud` names. HTTP or
+/// HTTPS, with a host and without credentials, query or fragment.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(try_from = "url::Url", into = "url::Url")]
+#[schemars(with = "url::Url")]
+pub struct ResourceIndicator(url::Url);
+
+impl ResourceIndicator {
+    pub fn new(url: url::Url) -> Result<Self, DeclarationError> {
+        http_url(&url, "resource")?;
+        Ok(Self(url))
+    }
+    pub fn parse(value: &str) -> Result<Self, DeclarationError> {
+        Self::new(
+            url::Url::parse(value)
+                .map_err(|_| DeclarationError::invalid("resource", "must be a URL"))?,
+        )
+    }
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+impl TryFrom<url::Url> for ResourceIndicator {
+    type Error = DeclarationError;
+    fn try_from(value: url::Url) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl From<ResourceIndicator> for url::Url {
+    fn from(value: ResourceIndicator) -> Self {
+        value.0
+    }
+}
+impl From<&ServerEndpoint> for ResourceIndicator {
+    fn from(endpoint: &ServerEndpoint) -> Self {
+        Self(endpoint.0.clone())
+    }
+}
+impl fmt::Display for ResourceIndicator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0.as_str())
+    }
+}

@@ -3,9 +3,9 @@
 //!
 //! The statement is a JWT signed with the server's Ed25519 key. Its claims are the
 //! request's client metadata together with the RFC 7523 §3 assertion claims: issuer and
-//! subject name the server's slug, the audience is the URL the request is sent to, and
-//! it lives at most 60 seconds. The Gateway rejects a statement whose metadata differs
-//! from the request's, so the signature covers every declaration.
+//! subject name the server's slug, the audience is the URL the request is sent to, the
+//! `jti` is a UUIDv7, and it lives at most 60 seconds. The Gateway rejects a statement
+//! whose metadata differs from the request's, so the signature covers every declaration.
 use aws_lc_rs::signature::{Ed25519KeyPair, KeyPair};
 use chrono::{DateTime, TimeDelta, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
@@ -105,7 +105,7 @@ impl ServerKeyPair {
             aud: audience.as_str().to_owned(),
             iat: now.timestamp(),
             exp: (now + MAX_STATEMENT_LIFETIME).timestamp(),
-            jti: uuid::Uuid::new_v4().to_string(),
+            jti: uuid::Uuid::now_v7().to_string(),
             metadata: metadata.clone(),
         };
         let mut header = Header::new(Algorithm::EdDSA);
@@ -179,6 +179,12 @@ pub fn verify_statement(
     }
     if expires - issued > MAX_STATEMENT_LIFETIME {
         return Err(StatementError::Rejected("lives longer than 60 seconds"));
+    }
+    if uuid::Uuid::parse_str(&claims.jti)
+        .ok()
+        .is_none_or(|jti| jti.get_version_num() != 7)
+    {
+        return Err(StatementError::Rejected("jti must be a UUIDv7"));
     }
     if &claims.metadata != metadata {
         return Err(StatementError::Rejected(

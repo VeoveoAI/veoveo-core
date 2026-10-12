@@ -329,25 +329,26 @@ fn server_keys_are_jwks_identified_by_their_thumbprint() {
             "{rejected}"
         );
     }
-    // The Gateway's own key set may rotate several named keys.
+    // The Gateway's key set rotates several keys, each named by its thumbprint.
+    let next = ServerPublicKey::from_bytes([7; 32]);
     let rotation = json!({"keys": [
-        {"kty": "OKP", "crv": "Ed25519", "x": RFC8037_X, "kid": "gateway-1", "alg": "EdDSA", "use": "sig"},
-        {"kty": "OKP", "crv": "Ed25519", "x": RFC8037_X, "kid": "gateway-2", "alg": "EdDSA", "use": "sig"}
+        serde_json::to_value(Ed25519Jwk::new(key)).unwrap(),
+        serde_json::to_value(Ed25519Jwk::new(next)).unwrap()
     ]});
     let keys: Ed25519JwkSet = serde_json::from_value(rotation).unwrap();
-    assert!(keys.get(&JwkKeyId::new("gateway-2").unwrap()).is_some());
-    let duplicate = json!({"keys": [
-        {"kty": "OKP", "crv": "Ed25519", "x": RFC8037_X, "kid": "gateway-1", "alg": "EdDSA", "use": "sig"},
-        {"kty": "OKP", "crv": "Ed25519", "x": RFC8037_X, "kid": "gateway-1", "alg": "EdDSA", "use": "sig"}
-    ]});
+    assert_eq!(keys.get(&next.thumbprint()), Some(&next));
+    let duplicate = json!({"keys": [jwk.clone(), jwk.clone()]});
     assert!(serde_json::from_value::<Ed25519JwkSet>(duplicate).is_err());
+    let mut named = jwk.clone();
+    named["kid"] = json!("gateway-1");
+    assert!(serde_json::from_value::<Ed25519JwkSet>(json!({"keys": [named]})).is_err());
 }
 
 fn module() -> ModuleDeclaration {
     ModuleDeclaration::new(
         serde_json::from_value(json!({
             "name": "clock",
-            "ownership": [{"kind": "tablePrefix", "name": "clock_"}],
+            "ownership": [{"kind": "table_prefix", "name": "clock_"}],
             "migrations": [{"version": 0, "name": "current", "sql": "DEFINE TABLE clock_event;"}]
         }))
         .unwrap(),
@@ -381,15 +382,31 @@ fn registration_requests_are_rfc7591_client_metadata() {
     assert_eq!(wire["response_types"], json!([]));
     assert_eq!(wire["jwks"]["keys"][0]["kid"], RFC8037_THUMBPRINT);
     assert_eq!(wire["software_statement"], STATEMENT);
+    assert_eq!(wire["software_id"], "clock");
+    assert_eq!(wire["software_version"], "0.1.0");
+    assert_eq!(wire["veoveo_uri_scheme"], "clock");
+    assert_eq!(wire["veoveo_mcp_endpoint"], "http://clock:8800/clock/mcp");
+    // OAuth documents spell members in snake_case; MCP keeps camelCase.
+    let mut snake = serde_json::to_value(authorization()).unwrap();
+    let templates = snake["requirements"]
+        .as_object_mut()
+        .unwrap()
+        .remove("resourceTemplates")
+        .unwrap();
+    snake["requirements"]["resource_templates"] = templates;
+    assert_eq!(wire["veoveo_authorization"], snake);
+    assert_eq!(wire["veoveo_module"]["name"], "clock");
     assert_eq!(
-        wire["ai.veoveo/registration"],
-        serde_json::to_value(registration()).unwrap()
+        wire["veoveo_module"]["ownership"][0]["kind"],
+        "table_prefix"
     );
-    assert_eq!(
-        wire["ai.veoveo/authorization"],
-        serde_json::to_value(authorization()).unwrap()
-    );
-    assert_eq!(wire["ai.veoveo/module"]["name"], "clock");
+    for member in [
+        "ai.veoveo/registration",
+        "ai.veoveo/authorization",
+        "ai.veoveo/module",
+    ] {
+        assert!(wire.get(member).is_none(), "{member}");
+    }
     assert_eq!(
         serde_json::from_value::<ClientRegistrationRequest>(wire.clone()).unwrap(),
         registration_request()
@@ -404,7 +421,7 @@ fn registration_requests_are_rfc7591_client_metadata() {
     );
     // Veoveo members admit only their own fields.
     let mut extended = wire.clone();
-    extended["ai.veoveo/registration"]["owner"] = json!("someone");
+    extended["veoveo_authorization"]["owner"] = json!("someone");
     assert!(serde_json::from_value::<ClientRegistrationRequest>(extended).is_err());
     let mut unsigned = wire;
     unsigned["software_statement"] = json!("not a jwt");
@@ -421,7 +438,7 @@ fn client_metadata_checks_every_declaration() {
     let foreign = ModuleDeclaration::new(
         serde_json::from_value(json!({
             "name": "clock",
-            "ownership": [{"kind": "tablePrefix", "name": "map_"}],
+            "ownership": [{"kind": "table_prefix", "name": "map_"}],
             "migrations": [{"version": 0, "name": "current", "sql": "DEFINE TABLE map_layer;"}]
         }))
         .unwrap(),
@@ -438,7 +455,7 @@ fn client_metadata_checks_every_declaration() {
     let renamed = ModuleDeclaration::new(
         serde_json::from_value(json!({
             "name": "calendar",
-            "ownership": [{"kind": "tablePrefix", "name": "clock_"}],
+            "ownership": [{"kind": "table_prefix", "name": "clock_"}],
             "migrations": []
         }))
         .unwrap(),
@@ -469,17 +486,22 @@ fn information() -> serde_json::Value {
             json!("http://gateway:8080/oauth/register/clock-0b6f"),
         ),
         (
-            "ai.veoveo/lease",
-            json!({"expiresAt": "2026-10-11T12:00:30Z", "renewEverySeconds": 10}),
+            "veoveo_lease",
+            json!({"expires_at": 1_791_763_230, "renew_every_seconds": 10}),
         ),
         (
-            "ai.veoveo/access-tokens",
-            json!({"issuer": "veoveo-internal", "jwks": {"keys": [
-                {"kty": "OKP", "crv": "Ed25519", "x": RFC8037_X, "kid": "gateway-1", "alg": "EdDSA", "use": "sig"}
-            ]}}),
+            "veoveo_access_tokens",
+            json!({
+                "issuer": "https://gateway.example",
+                "jwks": {"keys": [{
+                    "kty": "OKP", "crv": "Ed25519", "x": RFC8037_X,
+                    "kid": RFC8037_THUMBPRINT, "alg": "EdDSA", "use": "sig"
+                }]},
+                "resource": "http://clock:8800/clock/mcp"
+            }),
         ),
         (
-            "ai.veoveo/database",
+            "veoveo_database",
             json!({
                 "endpoint": "ws://surrealdb:8000/",
                 "namespace": "veoveo",
@@ -500,7 +522,10 @@ fn client_information_carries_lease_keys_and_database_user() {
     received.check().unwrap();
     assert_eq!(received.client_id.as_str(), "clock-0b6f");
     assert_eq!(received.lease.renew_every_seconds, 10);
-    assert_eq!(received.access_tokens.issuer.as_str(), "veoveo-internal");
+    assert_eq!(
+        received.access_tokens.issuer.as_str(),
+        "https://gateway.example"
+    );
     assert_eq!(received.metadata, metadata());
     let debug = format!("{received:?}");
     assert!(!debug.contains("hunter2"));
@@ -510,11 +535,24 @@ fn client_information_carries_lease_keys_and_database_user() {
         information(),
         "the response round-trips, secrets included"
     );
+    for issuer in ["veoveo-internal", "http://gateway.example"] {
+        let mut opaque_issuer = information();
+        opaque_issuer["veoveo_access_tokens"]["issuer"] = json!(issuer);
+        let received: ClientInformation = serde_json::from_value(opaque_issuer).unwrap();
+        assert!(received.check().is_err(), "the issuer must be an https URL");
+    }
+    let mut elsewhere = information();
+    elsewhere["veoveo_access_tokens"]["resource"] = json!("https://other.example/mcp");
+    let received: ClientInformation = serde_json::from_value(elsewhere).unwrap();
+    assert!(
+        received.check().is_err(),
+        "the audience is the registered endpoint"
+    );
     let mut without_database = information();
     without_database
         .as_object_mut()
         .unwrap()
-        .remove("ai.veoveo/database");
+        .remove("veoveo_database");
     let received: ClientInformation = serde_json::from_value(without_database).unwrap();
     assert!(received.database.is_none());
 }
@@ -639,11 +677,11 @@ fn published_schemas_admit_the_wire_examples() {
     let validator = validator::<ClientRegistrationRequest>();
     for (pointer, value) in [
         (
-            "/ai.veoveo~1authorization/permissions/0/access",
+            "/veoveo_authorization/permissions/0/access",
             json!("execute"),
         ),
-        ("/ai.veoveo~1module/migrations/0/version", json!(-1)),
-        ("/ai.veoveo~1module/ownership/0/name", json!("Clock_")),
+        ("/veoveo_module/migrations/0/version", json!(-1)),
+        ("/veoveo_module/ownership/0/name", json!("Clock_")),
         ("/jwks/keys/0/kty", json!("RSA")),
         ("/token_endpoint_auth_method", json!("client_secret_basic")),
     ] {

@@ -1,5 +1,5 @@
-//! Ed25519 verification keys as RFC 8037 JSON Web Keys. A server's key is identified by
-//! its RFC 7638 thumbprint; the Gateway's access-token keys carry rotation key IDs.
+//! Ed25519 verification keys as RFC 8037 JSON Web Keys. Every key, a server's or the
+//! Gateway's, is identified by its RFC 7638 thumbprint.
 use std::{collections::BTreeSet, fmt};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -97,15 +97,12 @@ enum KeyUse {
     Signature,
 }
 
-/// One Ed25519 signature verification key. Every member is required, and private or
-/// unknown members are refused.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// One Ed25519 signature verification key. Every member is required, `kid` is the
+/// key's RFC 7638 thumbprint, and private or unknown members are refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "JwkWire", into = "JwkWire")]
 #[schemars(with = "JwkWire")]
-pub struct Ed25519Jwk {
-    pub kid: JwkKeyId,
-    pub key: ServerPublicKey,
-}
+pub struct Ed25519Jwk(ServerPublicKey);
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -116,10 +113,23 @@ struct JwkWire {
     /// The 32-byte public key in base64url without padding.
     #[schemars(length(min = 43, max = 43))]
     x: String,
+    /// The key's RFC 7638 thumbprint.
     kid: JwkKeyId,
     alg: SigningAlgorithm,
     #[serde(rename = "use")]
     key_use: KeyUse,
+}
+
+impl Ed25519Jwk {
+    pub fn new(key: ServerPublicKey) -> Self {
+        Self(key)
+    }
+    pub fn key(&self) -> &ServerPublicKey {
+        &self.0
+    }
+    pub fn kid(&self) -> JwkKeyId {
+        self.0.thumbprint()
+    }
 }
 
 impl TryFrom<JwkWire> for Ed25519Jwk {
@@ -129,14 +139,18 @@ impl TryFrom<JwkWire> for Ed25519Jwk {
             .decode(&wire.x)
             .ok()
             .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+            .map(ServerPublicKey)
             .ok_or(DeclarationError::invalid(
                 "jwk",
                 "x must be 32 bytes in base64url without padding",
             ))?;
-        Ok(Self {
-            kid: wire.kid,
-            key: ServerPublicKey(key),
-        })
+        if wire.kid != key.thumbprint() {
+            return Err(DeclarationError::invalid(
+                "jwk",
+                "kid must be the key's RFC 7638 thumbprint",
+            ));
+        }
+        Ok(Self(key))
     }
 }
 impl From<Ed25519Jwk> for JwkWire {
@@ -144,15 +158,15 @@ impl From<Ed25519Jwk> for JwkWire {
         Self {
             kty: KeyType::Okp,
             crv: Curve::Ed25519,
-            x: jwk.key.x(),
-            kid: jwk.kid,
+            x: jwk.0.x(),
+            kid: jwk.kid(),
             alg: SigningAlgorithm::EdDsa,
             key_use: KeyUse::Signature,
         }
     }
 }
 
-/// A JWK Set of Ed25519 verification keys: at least one key, with distinct key IDs.
+/// A JWK Set of Ed25519 verification keys: at least one key, without repeats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "JwkSetWire", into = "JwkSetWire")]
 #[schemars(with = "JwkSetWire")]
@@ -171,12 +185,9 @@ impl Ed25519JwkSet {
         if keys.is_empty() {
             return Err(DeclarationError::invalid("jwks", "must contain a key"));
         }
-        let mut kids = BTreeSet::new();
-        if !keys.iter().all(|jwk| kids.insert(&jwk.kid)) {
-            return Err(DeclarationError::invalid(
-                "jwks",
-                "key IDs must be distinct",
-            ));
+        let mut distinct = BTreeSet::new();
+        if !keys.iter().all(|jwk| distinct.insert(jwk.0.0)) {
+            return Err(DeclarationError::invalid("jwks", "keys must be distinct"));
         }
         Ok(Self(keys))
     }
@@ -186,8 +197,8 @@ impl Ed25519JwkSet {
     pub fn get(&self, kid: &JwkKeyId) -> Option<&ServerPublicKey> {
         self.0
             .iter()
-            .find(|jwk| &jwk.kid == kid)
-            .map(|jwk| &jwk.key)
+            .find(|jwk| &jwk.kid() == kid)
+            .map(Ed25519Jwk::key)
     }
 }
 impl TryFrom<JwkSetWire> for Ed25519JwkSet {
@@ -202,8 +213,7 @@ impl From<Ed25519JwkSet> for JwkSetWire {
     }
 }
 
-/// The `jwks` client metadata of a registering server: exactly one key, identified by
-/// its RFC 7638 thumbprint.
+/// The `jwks` client metadata of a registering server: exactly one key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "Ed25519JwkSet", into = "Ed25519JwkSet")]
 #[schemars(with = "Ed25519JwkSet")]
@@ -221,11 +231,7 @@ impl TryFrom<Ed25519JwkSet> for ServerKeySet {
     type Error = DeclarationError;
     fn try_from(set: Ed25519JwkSet) -> Result<Self, Self::Error> {
         match set.keys() {
-            [jwk] if jwk.kid == jwk.key.thumbprint() => Ok(Self(jwk.key)),
-            [_] => Err(DeclarationError::invalid(
-                "jwks",
-                "the key ID must be the key's RFC 7638 thumbprint",
-            )),
+            [jwk] => Ok(Self(*jwk.key())),
             _ => Err(DeclarationError::invalid(
                 "jwks",
                 "must contain exactly one key",
@@ -235,9 +241,6 @@ impl TryFrom<Ed25519JwkSet> for ServerKeySet {
 }
 impl From<ServerKeySet> for Ed25519JwkSet {
     fn from(set: ServerKeySet) -> Self {
-        Self(vec![Ed25519Jwk {
-            kid: set.0.thumbprint(),
-            key: set.0,
-        }])
+        Self(vec![Ed25519Jwk(set.0)])
     }
 }
