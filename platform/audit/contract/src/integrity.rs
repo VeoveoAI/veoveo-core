@@ -1,5 +1,6 @@
-//! Signed block identities. Counters are decimal strings on the wire so JCS never
-//! rounds a 64-bit counter through an IEEE-754 JSON number.
+//! Signed block identities. Each partition numbers its blocks and its sealed records
+//! from one without gaps. Counters are decimal strings on the wire, so JCS never rounds
+//! one through an IEEE-754 JSON number.
 use crate::{AuditPartition, AuditRecordId};
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -62,39 +63,45 @@ impl fmt::Display for AuditBlockSequence {
     }
 }
 
+/// A sealed record's place in its partition: the first sealed record is 1 and each
+/// later one follows the previous without a gap, in commit order.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(try_from = "String", into = "String")]
-pub struct AuditVersionstamp(u64);
-impl AuditVersionstamp {
+pub struct AuditPosition(u64);
+impl AuditPosition {
     pub fn new(value: u64) -> Result<Self, AuditIntegrityValueError> {
-        check_counter(value, 0)?;
+        check_counter(value, 1)?;
         Ok(Self(value))
     }
     pub fn get(self) -> u64 {
         self.0
     }
+    /// The next position, or an error once the counter is exhausted.
+    pub fn next(self) -> Result<Self, AuditIntegrityValueError> {
+        Self::new(self.0.checked_add(1).ok_or(AuditIntegrityValueError)?)
+    }
 }
-impl FromStr for AuditVersionstamp {
+impl FromStr for AuditPosition {
     type Err = AuditIntegrityValueError;
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let number = parse_counter(value)?;
         Self::new(number)
     }
 }
-impl TryFrom<String> for AuditVersionstamp {
+impl TryFrom<String> for AuditPosition {
     type Error = AuditIntegrityValueError;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         value.parse()
     }
 }
-impl From<AuditVersionstamp> for String {
-    fn from(value: AuditVersionstamp) -> String {
+impl From<AuditPosition> for String {
+    fn from(value: AuditPosition) -> String {
         value.0.to_string()
     }
 }
-impl fmt::Display for AuditVersionstamp {
+impl fmt::Display for AuditPosition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
@@ -104,7 +111,7 @@ impl fmt::Display for AuditVersionstamp {
 #[serde(deny_unknown_fields)]
 pub struct AuditBlockMember {
     pub id: AuditRecordId,
-    pub versionstamp: AuditVersionstamp,
+    pub position: AuditPosition,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum AuditBlockFormat {
@@ -117,8 +124,8 @@ pub struct AuditBlockHead {
     pub format: AuditBlockFormat,
     pub partition: AuditPartition,
     pub sequence: AuditBlockSequence,
-    pub first_versionstamp: AuditVersionstamp,
-    pub last_versionstamp: AuditVersionstamp,
+    pub first_position: AuditPosition,
+    pub last_position: AuditPosition,
     pub members: Vec<AuditBlockMember>,
     pub root: Sha256Digest,
     pub previous: Option<Sha256Digest>,
@@ -184,7 +191,7 @@ pub struct AuditCheckpoint {
     pub partition: AuditPartition,
     pub sequence: AuditBlockSequence,
     pub head_hash: Sha256Digest,
-    pub last_versionstamp: AuditVersionstamp,
+    pub last_position: AuditPosition,
 }
 impl AuditBlock {
     pub fn checkpoint(&self) -> AuditCheckpoint {
@@ -192,7 +199,7 @@ impl AuditBlock {
             partition: self.head.partition.clone(),
             sequence: self.head.sequence,
             head_hash: self.head_hash.clone(),
-            last_versionstamp: self.head.last_versionstamp,
+            last_position: self.head.last_position,
         }
     }
 }
@@ -203,10 +210,12 @@ mod counter_tests {
     #[test]
     fn decimal_counters_preserve_admission_and_string_wire() {
         assert!(AuditBlockSequence::new(0).is_err());
-        assert_eq!(AuditVersionstamp::new(0).unwrap().get(), 0);
+        assert!(AuditPosition::new(0).is_err());
+        assert_eq!(AuditPosition::new(41).unwrap().next().unwrap().get(), 42);
+        assert!(AuditPosition::new(i64::MAX as u64).unwrap().next().is_err());
         for value in [1, 117300000000000001, i64::MAX as u64] {
             let block = AuditBlockSequence::new(value).unwrap();
-            let stamp = AuditVersionstamp::new(value).unwrap();
+            let stamp = AuditPosition::new(value).unwrap();
             let expected = value.to_string();
             assert_eq!(block.to_string(), expected);
             assert_eq!(
@@ -220,7 +229,7 @@ mod counter_tests {
             assert_eq!(block.serialize(BinaryStringProbe).unwrap(), expected);
             assert_eq!(stamp.serialize(BinaryStringProbe).unwrap(), expected);
             assert_eq!(
-                serde_json::from_value::<AuditVersionstamp>(serde_json::Value::String(expected))
+                serde_json::from_value::<AuditPosition>(serde_json::Value::String(expected))
                     .unwrap(),
                 stamp
             );
@@ -230,10 +239,10 @@ mod counter_tests {
                 invalid.parse::<AuditBlockSequence>().is_err(),
                 "{invalid:?}"
             );
-            assert!(invalid.parse::<AuditVersionstamp>().is_err(), "{invalid:?}");
+            assert!(invalid.parse::<AuditPosition>().is_err(), "{invalid:?}");
         }
         assert!(AuditBlockSequence::new(i64::MAX as u64 + 1).is_err());
-        assert!(serde_json::from_str::<AuditVersionstamp>("1").is_err());
+        assert!(serde_json::from_str::<AuditPosition>("1").is_err());
     }
     struct BinaryStringProbe;
     impl serde::Serializer for BinaryStringProbe {
