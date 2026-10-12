@@ -30,5 +30,5 @@ FROM source AS check
 RUN cargo fmt --check \
     && cargo clippy --locked --all-targets --all-features -- -D warnings \
     && cargo deny --locked check \
-    && cargo hack check --locked --each-feature --no-dev-deps \
+    && cargo hack check --each-feature --no-dev-deps \
     && cargo nextest run --locked --profile ci
