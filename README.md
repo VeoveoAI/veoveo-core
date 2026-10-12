@@ -15,6 +15,7 @@ revision of this repository.
 | `platform/policy` | `veoveo-policy` | The shared policy evaluator and role evaluation over registered servers' permissions |
 | `platform/oauth` | `veoveo-oauth-client` | RS256 client-assertion signing |
 | `platform/http` | `veoveo-http` | Shared HTTP admission |
+| `platform/task-runtime` | `veoveo-task-runtime` | Durable MCP Tasks in PostgreSQL: claims, recovery, owner reads, subscriptions and the hosted Tasks adapter |
 | `platform/task-runtime/contract` | `veoveo-task-contract` | The Task vocabulary |
 | `platform/audit/contract` | `veoveo-audit-contract` | Audit record, target and detail types |
 | `platform/artifacts/contract` | `veoveo-artifact-contract` | Artifact identities, metadata and release states |

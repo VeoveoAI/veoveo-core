@@ -1,10 +1,10 @@
 # Durable Task Runtime Instructions
 
 Follow root AGENTS.md and DESIGN.md. Keep provider-specific state and effects in the
-owning domain. Shared recovery must preserve uncertainty and current cancellation
-intent. A provider observation claim never authorizes replay of a mutation.
+owning domain. Recovery must preserve uncertainty and current cancellation intent: an
+`interrupted_indeterminate` Task is never run again.
 
-Treat recovery-class/schema changes as deployment contracts. Preserve other qualified
-profiles and declare reader compatibility before admitting a new stored class.
-Use isolated real-store tests for lease, migration and transaction behavior. Do not
-report environment-gated tests as executed when their setup returned early.
+Treat the `tasks` schema and the recovery classes as deployment contracts. Every worker
+write compares the owner instance, and every caller read selects the caller in SQL
+before decoding. Test claims, recovery, notifications and row-level security against
+the PostgreSQL fixture.

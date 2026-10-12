@@ -23,6 +23,6 @@ select it; contract consumers acquire no database driver by default. A separate
 package lets storage and Task Runtime reuse the declaration without a dependency
 cycle.
 
-Task request, owner, failure and contribution envelopes have their existing owners.
+Task Runtime owns the Task request, owner and failure envelopes.
 This crate does not enumerate operation types or domain result payloads. Tests cover
 complete vocabularies, unknown-string rejection and the PostgreSQL type mapping.
