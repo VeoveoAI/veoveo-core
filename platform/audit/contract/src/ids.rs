@@ -84,8 +84,7 @@ mod identity_profiles {
         assert_eq!(I::schema_name(), name);
         assert!(!I::inline_schema());
         assert_eq!(
-            serde_json::to_value(I::json_schema(&mut schemars::SchemaGenerator::default()))
-                .unwrap(),
+            wire_schema(I::json_schema(&mut schemars::SchemaGenerator::default())),
             serde_json::json!({"type":"string","pattern":"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"})
         );
         for value in [
@@ -98,6 +97,18 @@ mod identity_profiles {
             assert!(serde_json::from_value::<I>(serde_json::json!(value)).is_err());
         }
     }
+    /// The frozen wire schema, after checking and removing the naming-profile annotation.
+    fn wire_schema(schema: schemars::Schema) -> serde_json::Value {
+        let mut value = serde_json::to_value(schema).unwrap();
+        let annotation = value
+            .as_object_mut()
+            .unwrap()
+            .remove("ai.veoveo/naming-profile")
+            .expect("identity schemas carry the naming-profile annotation");
+        assert_eq!(annotation["role"]["kind"], "scalar");
+        value
+    }
+
     #[test]
     fn uuid_owners_keep_frozen_schema_and_canonical_profile() {
         check::<AuditRecordId>("AuditRecordId");
@@ -114,10 +125,9 @@ mod identity_profiles {
         assert!(AuditSpanId::parse("A".repeat(16)).is_err());
         assert!(AuditSpanId::parse(&trace).is_err());
         assert_eq!(
-            serde_json::to_value(AuditSpanId::json_schema(
+            wire_schema(AuditSpanId::json_schema(
                 &mut schemars::SchemaGenerator::default()
-            ))
-            .unwrap(),
+            )),
             serde_json::json!({"type":"string","pattern":"^[0-9a-f]{16}$","not":{"const":"0".repeat(16)}})
         );
     }

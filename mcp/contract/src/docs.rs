@@ -222,7 +222,7 @@ mod tests {
             .with_profile_json(bytes)
             .unwrap();
         let declaration = docs.contract_declaration();
-        assert_eq!(declaration.compliance().len(), 32);
+        assert_eq!(declaration.compliance().len(), 33);
         assert!(std::ptr::eq(declaration, docs.contract_declaration()));
         assert_eq!(
             serde_json::to_value(declaration).unwrap(),
