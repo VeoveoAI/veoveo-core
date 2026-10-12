@@ -221,6 +221,17 @@ impl PlatformStore {
         member: &IndexedMember,
     ) -> Result<(), StoreError> {
         let _mutation = ticket.lease.mutation().await;
+        crate::transaction_retry::retry_conflicts(|| {
+            self.replace_knowledge_member_once(ticket, member)
+        })
+        .await
+    }
+
+    async fn replace_knowledge_member_once(
+        &self,
+        ticket: &MemberReadTicket,
+        member: &IndexedMember,
+    ) -> Result<(), StoreError> {
         if member.uri() != &ticket.uri
             || member.observation().collection() != &ticket.collection
             || member.generation_revision() != &ticket.specification

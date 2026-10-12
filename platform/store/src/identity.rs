@@ -1,18 +1,18 @@
 //! Canonical installation-wide tenant, principal, and group identity mapping.
 
-use std::time::Duration;
-
 use chrono::Utc;
 use uuid::Uuid;
 
 use crate::{
     EnterpriseId, EnterpriseRecord, GroupId, GroupRecord, PlatformStore, PrincipalId,
     PrincipalKind, PrincipalRecord, StoreError, TenantId, TenantRecord, WorkContextId,
+    transaction_retry::{
+        MAX_TRANSACTION_ATTEMPTS, is_retryable_transaction_failure, transaction_retry_backoff,
+    },
 };
 
 pub(crate) const PLATFORM_ID_NAMESPACE: Uuid =
     Uuid::from_u128(0x7f7b11e2_3b9a_5c7a_9d51_2cf8e1bdfab4);
-const MAX_TRANSACTION_ATTEMPTS: u32 = 8;
 
 #[derive(Clone, Debug)]
 pub struct PlatformIdentity {
@@ -331,20 +331,6 @@ impl PlatformStore {
             .check()?;
         Ok(id)
     }
-}
-
-fn is_retryable_transaction_failure(error: &surrealdb::Error) -> bool {
-    matches!(
-        error.query_details(),
-        Some(surrealdb::types::QueryError::TransactionConflict)
-    ) || error.message().starts_with("Transaction conflict:")
-        || error
-            .message()
-            .contains("not executed due to a failed transaction")
-}
-
-async fn transaction_retry_backoff(attempt: u32) {
-    tokio::time::sleep(Duration::from_millis(1_u64 << attempt)).await;
 }
 
 fn validate_identity_field(

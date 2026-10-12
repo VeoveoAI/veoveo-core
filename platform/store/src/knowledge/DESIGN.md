@@ -82,9 +82,11 @@ specification in one transaction. Its state begins at `building`.
 `begin_knowledge_member_read` increments the member's epoch, marks it stale and removes
 its collection-coverage receipt before a source request begins. Search excludes stale
 members immediately. A replacement checks the epoch, tenant, current approval and
-generation specification, then replaces the chunks and observation atomically. A
-late source response cannot restore content after another member, source or coordinator
-invalidation. Failed source
+generation specification, then replaces the chunks and observation atomically. When
+SurrealDB rejects the commit with a retryable write conflict, the replacement runs again
+with bounded backoff, up to eight attempts; the rolled-back transaction re-evaluates
+every fence, so a retry cannot bypass one. A late source response cannot restore content
+after another member, source or coordinator invalidation. Failed source
 reads leave the member stale. Only definitive owner confirmation permits deletion;
 timeouts, unavailable reads and subscription loss do not establish that fact.
 

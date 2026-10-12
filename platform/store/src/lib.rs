@@ -39,6 +39,8 @@ mod identity;
 #[cfg(feature = "runtime")]
 mod kernel_facts;
 #[cfg(feature = "runtime")]
+mod transaction_retry;
+#[cfg(feature = "runtime")]
 pub use kernel_facts::{CurrentPrincipal, CurrentTenant};
 #[cfg(feature = "runtime")]
 mod ids;
