@@ -58,6 +58,7 @@ mod id;
 pub mod identifier_syntax;
 mod identity;
 mod names;
+mod permission_names;
 mod platform_names;
 mod provenance;
 mod resource;
@@ -102,6 +103,7 @@ pub use provenance::{InvocationMode, InvocationProvenance};
 pub use task::TaskId;
 pub use task_type::{TaskTypeDefinition, TaskTypeName};
 
+pub use permission_names::{PermissionName, ResourceTypeName};
 pub use platform_names::{
     CanonicalTaskId, GatewayProfileId, GatewayRefreshFamilyId, LocalToolName, OAuthClientId,
     PromptName, ServerSlug,

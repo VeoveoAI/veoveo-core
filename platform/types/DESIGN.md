@@ -460,6 +460,15 @@ and reason codes. MCP re-exports these types for its protocol consumers. The aud
 contract imports them directly without depending on MCP or the gateway. A managed-agent
 instance is a validated installation name; it is not assumed to be a UUID.
 
+## Permission Names
+
+`PermissionName` and `ResourceTypeName` hold lowercase dotted names such as
+`time.events.write` and `time.event`: at least two segments, each starting with an
+ASCII letter and holding letters, digits, hyphens or underscores, at most 128 bytes.
+The first segment is the declaring server's namespace, and `is_owned_by` compares it
+with a `ServerSlug`. Registration and the forwarded access token both reject a name
+outside the server's namespace.
+
 ## Resource Selection
 
 `ResourceSelector` admits a scheme, a literal prefix, or a restricted template.
