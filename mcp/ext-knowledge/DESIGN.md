@@ -98,7 +98,7 @@ addresses its members:
     "ai.veoveo/knowledge-source": {
       "collection": "time.events",
       "entityKind": "temporal-event",
-      "enumerate": "time://events{?cursor}",
+      "enumerate": "time://events",
       "freshness": { "maxAgeSeconds": 300 },
       "changeSignal": "listen",
       "access": "work_context",
@@ -132,9 +132,9 @@ Enumeration returns one JSON text item with an `items` array and an optional
 `nextCursor`. Each item has a concrete `uri`; the owner may add typed domain fields
 such as a title or identifier. Pages contain at most 100 items. An absent cursor
 ends traversal. A continuation cursor is nonempty, at most 4,096 UTF-8 bytes, and
-never repeats during a traversal. Consumers bind it to the declared enumeration
-template's `cursor` variable, or add that query parameter when the declaration is a
-concrete URI. The source selects readable members before ordering and pagination.
+never repeats during a traversal. The declaration names the concrete collection root,
+and consumers request the next page by adding the cursor as its `cursor` query
+parameter. The source selects readable members before ordering and pagination.
 
 ## Indexing Requests
 
