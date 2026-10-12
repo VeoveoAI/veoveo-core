@@ -21,6 +21,9 @@ COPY env/profile.d/rust.sh /etc/profile.d/rust.sh
 RUN useradd --create-home --uid 1000 --shell /bin/bash sandbox \
     && chown -R sandbox:sandbox /usr/local/rustup /usr/local/cargo
 USER sandbox
+LABEL org.opencontainers.image.title="veoveo-core" \
+      org.opencontainers.image.source="https://github.com/VeoveoAI/veoveo-core" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 FROM dev AS source
 WORKDIR /home/sandbox/src
