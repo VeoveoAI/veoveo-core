@@ -73,7 +73,7 @@ use veoveo_types::PrincipalId;
 #[serde(deny_unknown_fields)]
 struct AuditDraftWireInput {
     id: AuditRecordId,
-    schema: AuditSchema,
+    format: AuditRecordFormat,
     partition: AuditPartition,
     actor: Option<AuditActor>,
     authority: AuditAuthority,
@@ -91,7 +91,7 @@ impl AuditDecode for AuditDraft {
         let wire: AuditDraftWireInput = serde_json::from_value(value)?;
         let admitted = crate::model::AuditDraftWire {
             id: wire.id,
-            schema: wire.schema,
+            format: wire.format,
             partition: wire.partition,
             actor: wire.actor,
             authority: wire.authority,

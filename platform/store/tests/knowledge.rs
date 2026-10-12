@@ -42,7 +42,6 @@ fn space(revision: &str) -> EmbeddingSpace {
 }
 fn registration(tenant: &str) -> CollectionRegistration {
     CollectionRegistration {
-        source_contract_revision: 3,
         tenant: TenantId::parse(tenant).unwrap(),
         descriptor: CollectionDescriptor::new(
             CollectionId::try_from("fixture.records".to_owned()).unwrap(),

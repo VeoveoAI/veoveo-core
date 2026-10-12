@@ -1,7 +1,13 @@
 //! Requirement IDs and metadata; ownership is independent of runtime check IDs.
 use serde::Serialize;
 
-pub const CATALOG_REVISION: u32 = 2;
+/// The format of the published requirement catalog.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, veoveo_types::Vocabulary)]
+#[schemars(transform = veoveo_types::naming::format_uri_naming)]
+pub enum RequirementCatalogFormat {
+    #[vocabulary(rename = "https://veoveo.ai/formats/hosted-mcp-requirements")]
+    HostedMcpRequirements,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, veoveo_types::Vocabulary)]
 #[schemars(transform = requirement_id_naming)]
@@ -173,7 +179,7 @@ impl RequirementId {
             ),
             Self::C17 => (
                 RequirementLevel::Must,
-                "The registration and crate documents state the contract revision.",
+                "The registration and crate documents name the contract the server implements.",
                 None,
             ),
             Self::C18 => (
@@ -265,8 +271,8 @@ impl RequirementId {
 #[derive(Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RequirementCatalog {
-    pub catalog_revision: u32,
-    pub contract_revision: u32,
+    pub format: RequirementCatalogFormat,
+    pub contract: super::ContractId,
     /// Actual Rust Unicode White_Space admission rule for blank author notes.
     pub note_whitespace: String,
     pub requirements: Vec<RequirementMetadata>,
@@ -274,8 +280,8 @@ pub struct RequirementCatalog {
 
 pub fn requirement_catalog() -> RequirementCatalog {
     RequirementCatalog {
-        catalog_revision: CATALOG_REVISION,
-        contract_revision: super::CONTRACT_REVISION,
+        format: RequirementCatalogFormat::HostedMcpRequirements,
+        contract: super::ContractId::HostedMcp,
         note_whitespace: (0..=0x10ffff)
             .filter_map(char::from_u32)
             .filter(|character| character.is_whitespace())

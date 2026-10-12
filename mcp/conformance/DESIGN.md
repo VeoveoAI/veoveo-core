@@ -12,12 +12,12 @@
 | OAuth 2.0 authorization code / RFC 7636 | separate public-client CLI login with S256 PKCE and an installation-registered client |
 | RFC 8414 / RFC 8707 | SDK authorization-server discovery and explicit resource indication; requested and granted scopes must match |
 | RFC 8252 | numeric loopback HTTP redirect on an explicit port; remote issuer and resource require HTTPS |
-| `veoveo.ai/mcp-conformance-profile/v2` | domain-neutral declaration of applicable hosted-server checks |
-| `veoveo.ai/mcp-conformance-report/v1` | machine-readable implementation identity, capabilities, requirement results, and evidence |
-| `veoveo.ai/hosted-mcp/v4` | Veoveo hosted-server contract revision for MCP `2026-07-28` |
+| `https://veoveo.ai/formats/mcp-conformance-profile` | domain-neutral declaration of applicable hosted-server checks |
+| `https://veoveo.ai/formats/mcp-conformance-report` | machine-readable implementation identity, capabilities, requirement results, and evidence |
+| `https://veoveo.ai/contracts/hosted-mcp` | Veoveo hosted-server contract for MCP `2026-07-28` |
 | `ai.veoveo/gateway-discovery-degradation` | typed server/surface/failure-code catalog metadata; full-catalog rejection and selected-source coverage admission |
 | `ai.veoveo/knowledge-source` | typed collection declarations, enumeration, observations and conditional member reads; [extension rules](../ext-knowledge/DESIGN.md#server-rules) |
-| `veoveo.ai/live-view/v4` | optional provider-neutral authoritative cameras, typed camera regions in shared encoded products, actor/browser authorization, Annex B H.264 WebSocket fanout, and redaction profile layered on a domain-owned simulation server |
+| `https://veoveo.ai/contracts/live-view` | optional provider-neutral authoritative cameras, typed camera regions in shared encoded products, actor/browser authorization, Annex B H.264 WebSocket fanout, and redaction profile layered on a domain-owned simulation server |
 
 ## Naming Inspection
 
@@ -116,11 +116,11 @@ instance. This prevents an outer closed object from masking an open recursive ch
 
 ## Profile
 
-A profile names the expected implementation slug, selected contract revision, allowed
+A profile names the expected implementation slug, selected contract, allowed
 resource URI schemes, HTTP boundary checks, and required, optional, or forbidden MCP
 surfaces. Each profile lists its required tool, resource, template, and prompt
 identities; the conformance client has no compiled registry of them. A hosted-server certificate selects
-exactly `veoveo.ai/hosted-mcp/v4`: resources are required, and the profile must name
+exactly `https://veoveo.ai/contracts/hosted-mcp`: resources are required, and the profile must name
 the administrative `llms.txt` URL. Unauthenticated Bearer rejection is required for
 the MCP endpoint. C18–C21 cannot be disabled by a profile.
 
@@ -276,14 +276,13 @@ acceptance supplies that evidence for the NVIDIA runtime.
 
 Each result carries a stable requirement identifier, status, summary, and bounded
 evidence. The report records the negotiated protocol, implementation identity,
-advertised capabilities, selected contract revision, and execution interval. A failed
+advertised capabilities, selected contract, and execution interval. A failed
 requirement produces a report and a non-zero CLI exit.
 
 Certification reads the live contract declaration and binds it to the selection and
-observation. The selected revision must equal the conformance client's supported
-revision. The declaration's numeric revision must be the numeric member of that
-revision, and its server must match both the expected slug and discovered implementation.
-The complete declaration must match catalog revision 2 and mark C18–C21 met. Unknown
+observation. The declaration's contract must equal the selected contract, and its
+server must match both the expected slug and discovered implementation. The complete
+declaration must cover the current catalog and mark C18–C21 met. Unknown
 IDs, duplicate entries and omissions fail admission. Discover checks C32 applicability
 in both directions: extension presence forbids `not_applicable`, and absence requires
 it. Discover and the MCP lists supply the observed
@@ -336,8 +335,7 @@ offline bundle and execute it against extension endpoints.
 ## Requirement Verification Coverage
 
 `src/requirements.rs` maps the closed catalog IDs to existing VV-MCP and K-series
-checks. Coverage revision 3 evolves separately from catalog revision 2. The generated
-`catalog/coverage.json` records runtime, review and mixed verification modes. A missing
+checks. The generated `catalog/coverage.json`, checked against the suite by a test, records runtime, review and mixed verification modes. A missing
 or skipped required check produces an incomplete outcome; a failed check produces
 failure. Review and mixed requirements require review even when their runtime checks
 pass. C12 HTTP probes do not prove all private surfaces are authorized; C31 catalog

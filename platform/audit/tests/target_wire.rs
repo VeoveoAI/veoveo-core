@@ -52,10 +52,10 @@ fn literal_frozen_computer_record_hash() {
     let registry = builder.build();
     let record: AuditRecord = registry
         .decoder()
-        .from_str(include_str!("../testdata/computer-record-v1.json"))
+        .from_str(include_str!("../testdata/computer-record.json"))
         .unwrap();
     assert_eq!(
         record_root(&[record]).unwrap().hex(),
-        "921af6737d79acf02680f86f105ad81a68c7804161cb28d3be9a8bc15244cd9b"
+        "5889060b4647cf968f69ed90839480a012b33060a88499fe7d8fda03f3bcf485"
     );
 }

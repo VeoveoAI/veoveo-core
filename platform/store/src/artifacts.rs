@@ -393,7 +393,8 @@ impl PlatformStore {
             task: crate::task_record_id(TaskId::from_uuid(task_id.as_uuid())),
             task_id: task_id.to_string(),
             idempotency_key: idempotency_key.to_owned(),
-            request_format: veoveo_artifact_contract::ArtifactWriteRequestFormat::V2,
+            request_format:
+                veoveo_artifact_contract::ArtifactWriteRequestFormat::ArtifactWriteRequest,
             request_hash: request_hash.to_owned(),
             byte_len,
             artifact: proposed_artifact_id.record_id(),
@@ -418,7 +419,7 @@ impl PlatformStore {
             .bind(("idempotency_key", idempotency_key.to_owned()))
             .bind((
                 "request_format",
-                veoveo_artifact_contract::ArtifactWriteRequestFormat::V2
+                veoveo_artifact_contract::ArtifactWriteRequestFormat::ArtifactWriteRequest
                     .as_str()
                     .to_owned(),
             ))
@@ -587,7 +588,7 @@ impl PlatformStore {
             .bind(("requested_labels", requested_labels.to_vec()))
             .bind((
                 "request_format",
-                veoveo_artifact_contract::ArtifactWriteRequestFormat::V2
+                veoveo_artifact_contract::ArtifactWriteRequestFormat::ArtifactWriteRequest
                     .as_str()
                     .to_owned(),
             ))

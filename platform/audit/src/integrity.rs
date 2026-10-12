@@ -9,7 +9,7 @@ use veoveo_audit_contract::*;
 use veoveo_platform_store::ChangefeedCursor;
 use veoveo_types::Sha256Digest;
 
-const HEAD_DOMAIN: &[u8] = b"veoveo.ai/audit-block/v1\0";
+const HEAD_DOMAIN: &[u8] = b"https://veoveo.ai/formats/audit-block\0";
 const MAX_EXACT_JSON_INTEGER: u64 = (1u64 << 53) - 1;
 const MAX_BLOCK_RECORDS: usize = 4096;
 
@@ -155,7 +155,7 @@ impl AuditSigningKey {
             return Err(IntegrityError::Chain);
         }
         let head = AuditBlockHead {
-            schema: AuditBlockSchema::V1,
+            format: AuditBlockFormat::AuditBlock,
             partition,
             sequence,
             first_versionstamp: first,

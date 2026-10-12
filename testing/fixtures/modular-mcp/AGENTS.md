@@ -20,8 +20,7 @@ Resolve an independent contract consumer to check dependency isolation.
 ## Contract Compliance
 
 <!-- veoveo:contract-compliance:start -->
-Contract revision: 4
-Catalog revision: 2
+Contract: https://veoveo.ai/contracts/hosted-mcp
 
 - C01: pending — The independent modular fixture has not completed qualification for this requirement; installed authentication, deployment and service behavior are outside its current fixture coverage.
 - C02: pending — The independent modular fixture has not completed qualification for this requirement; installed authentication, deployment and service behavior are outside its current fixture coverage.

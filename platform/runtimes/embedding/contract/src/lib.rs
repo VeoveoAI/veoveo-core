@@ -76,7 +76,7 @@ pub struct EmbeddingSpace {
 }
 impl EmbeddingSpace {
     pub fn revision(&self) -> veoveo_types::Sha256Digest {
-        profile::digest(b"veoveo.ai/embedding-space/v1", self)
+        profile::digest(b"https://veoveo.ai/formats/embedding-space", self)
     }
 }
 

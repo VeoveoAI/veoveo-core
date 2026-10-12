@@ -209,7 +209,7 @@ fn forwarded_tokens_reject_other_types_and_invalid_execution_attribution() {
             2 => claims["groups"] = serde_json::json!(["foreign"]),
             3 => {
                 claims[invocation]["request_context"]["format"] =
-                    serde_json::json!("veoveo.ai/gateway-request-context/v2")
+                    serde_json::json!("https://veoveo.ai/formats/gateway-request-context")
             }
             4 => {
                 claims[invocation]["request_context"]["access_token"]["managed_execution"]["generation"] =

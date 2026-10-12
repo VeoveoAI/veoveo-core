@@ -8,9 +8,9 @@
 | W3C Trace Context | Nonzero lowercase 32-hex trace IDs and 16-hex span IDs |
 | RFC 9162, RFC 8785 and RFC 8032 | Typed block heads, decimal-string versionstamps, Merkle roots and Ed25519 signatures |
 | RFC 3339 and JSON | Typed timestamps, tagged closed enums and checked deserialization |
-| `veoveo.ai/audit-record/v1` | One reviewed record shape across platform producers and readers |
-| `veoveo.ai/audit-block/v1` | Persisted signed block heads and signature domain separation |
-| `veoveo.ai/audit-key-transition-qualification/v1` | Native fixture counts and final sequence; no signing material |
+| `https://veoveo.ai/formats/audit-record` | One reviewed record shape across platform producers and readers |
+| `https://veoveo.ai/formats/audit-block` | Persisted signed block heads and signature domain separation |
+| `https://veoveo.ai/formats/audit-key-transition-qualification` | Native fixture counts and final sequence; no signing material |
 | `ai.veoveo/knowledge-source` | Reviewed observation fields from the protocol-independent extension contract |
 
 This crate owns group-commit acknowledgements, persisted indexing windows, sealing,
@@ -139,7 +139,7 @@ New reads must have occurred within the preceding hour and at most one minute ah
 of database time. Receipts survive for one day, so pruning cannot admit an expired retry.
 
 Each observed resource URI and revision contributes a SHA-256 member digest to the
-window's ordered digest chain under `veoveo.ai/audit-indexing-members/v1`. Counters
+window's ordered digest chain under `https://veoveo.ai/formats/audit-indexing-members`. Counters
 record total, not-modified and failed reads. Open accumulators survive process loss.
 The writer checks elapsed windows every five seconds, and any replica may finalize
 up to 32 at a time. Finalization compares the persisted read count, appends the

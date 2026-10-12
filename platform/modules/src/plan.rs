@@ -23,7 +23,7 @@ struct SelectionWire {
 impl TryFrom<SelectionWire> for ModuleSelectionDocument {
     type Error = DeclarationError;
     fn try_from(wire: SelectionWire) -> Result<Self, Self::Error> {
-        if wire.format != "veoveo.ai/module-selection/v1" {
+        if wire.format != "https://veoveo.ai/formats/module-selection" {
             return Err(DeclarationError::new("unsupported module selection format"));
         }
         Self::new(wire.enabled, wire.generation, wire.credential_revision)
@@ -40,7 +40,7 @@ impl ModuleSelectionDocument {
             return Err(DeclarationError::new("duplicate enabled module"));
         }
         Ok(Self {
-            format: "veoveo.ai/module-selection/v1".into(),
+            format: "https://veoveo.ai/formats/module-selection".into(),
             enabled,
             generation,
             credential_revision,
@@ -109,7 +109,7 @@ struct PlanWire {
 impl TryFrom<PlanWire> for ModulePlanDocument {
     type Error = DeclarationError;
     fn try_from(wire: PlanWire) -> Result<Self, Self::Error> {
-        if wire.format != "veoveo.ai/module-plan/v1" {
+        if wire.format != "https://veoveo.ai/formats/module-plan" {
             return Err(DeclarationError::new("unsupported module plan format"));
         }
         let selection =
@@ -242,7 +242,7 @@ impl ModulePlanDocument {
             (&a.module, &a.component, &a.mcp_server).cmp(&(&b.module, &b.component, &b.mcp_server))
         });
         Self::try_from(PlanWire {
-            format: "veoveo.ai/module-plan/v1".into(),
+            format: "https://veoveo.ai/formats/module-plan".into(),
             composition,
             enabled: selection.enabled.clone(),
             generation: selection.generation,
@@ -291,7 +291,7 @@ fn lane_identity(module: &ModuleSetup) -> Result<LaneIdentity, DeclarationError>
         hash.update((value.len() as u64).to_be_bytes());
         hash.update(value);
     }
-    part(&mut hash, b"veoveo.ai/module-lane/v1");
+    part(&mut hash, b"https://veoveo.ai/formats/module-lane");
     part(&mut hash, module.name().as_str().as_bytes());
     for claim in module.ownership() {
         part(
@@ -336,7 +336,7 @@ pub fn preparation_key(
 ) -> Result<PreparationKey, DeclarationError> {
     let mut hash = Sha256::new();
     for bytes in [
-        b"veoveo.ai/installation-preparation/v1".as_slice(),
+        b"https://veoveo.ai/formats/installation-preparation".as_slice(),
         serde_json::to_vec(plan)
             .map_err(|_| DeclarationError::new("cannot encode preparation plan"))?
             .as_slice(),

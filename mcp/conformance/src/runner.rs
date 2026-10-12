@@ -16,7 +16,7 @@ use rmcp::{
 use serde_json::{Value, json};
 
 use crate::{
-    CheckResult, CheckStatus, ConformanceCredentials, ConformanceReport, ConformanceReportSchema,
+    CheckResult, CheckStatus, ConformanceCredentials, ConformanceReport, ConformanceReportFormat,
     HostedServerConformanceProfile, ObservedImplementation, SurfaceExpectation,
     validate_tool_input_schema,
 };
@@ -460,9 +460,9 @@ pub async fn run_hosted_server_conformance_with_evidence(
 
     client.cancel().await?;
     Ok(ConformanceReport {
-        schema_version: ConformanceReportSchema::V1,
+        format: ConformanceReportFormat::McpConformanceReport,
         profile_id: profile.profile_id.clone(),
-        contract_revision: profile.contract_revision.clone(),
+        contract: profile.contract,
         started_at,
         completed_at: chrono::Utc::now(),
         implementation: Some(implementation),
@@ -542,7 +542,7 @@ async fn read_document_index(client: &Client, scheme: &str) -> Result<Vec<String
 /// Reads the Well-Known Surface over the live session (contract C18, C19):
 /// at least one owned scheme must serve a docs index listing `agents` and
 /// `design`, every listed body must read, and `{scheme}://contract` must
-/// deserialize to the current contract revision with C18-C21 met.
+/// deserialize to the selected contract with C18-C21 met.
 async fn check_well_known_surface(
     client: &Client,
     profile: &HostedServerConformanceProfile,
@@ -616,8 +616,7 @@ async fn check_well_known_surface(
         Ok(text) => {
             match serde_json::from_str::<veoveo_mcp_contract::docs::ContractDeclaration>(&text) {
                 Ok(declaration) => {
-                    let revision_matches = declaration.contract_revision()
-                        == veoveo_mcp_contract::docs::CONTRACT_REVISION;
+                    let contract_matches = declaration.contract() == profile.contract;
                     let identity_matches = declaration.server().as_str() == profile.server_slug
                         && declaration.server().as_str() == implementation.name;
                     let unmet: Vec<&str> = ["C18", "C19", "C20", "C21"]
@@ -650,27 +649,26 @@ async fn check_well_known_surface(
                         ),
                         Err(error) => failed("VV-MCP-CONTRACT-003", error.to_string()),
                     });
-                    checks.push(if revision_matches && identity_matches && unmet.is_empty() {
+                    checks.push(if contract_matches && identity_matches && unmet.is_empty() {
                         passed(
                             "VV-MCP-CONTRACT-001",
-                            "contract declaration matches the selected revision and server identity with C18-C21 met",
+                            "contract declaration matches the selected contract and server identity with C18-C21 met",
                             Some(json!({
                                 "server": declaration.server().as_str(),
-                                "contractRevision": declaration.contract_revision(),
-                                "selectedRevision": profile.contract_revision
+                                "contract": declaration.contract(),
+                                "selectedContract": profile.contract
                             })),
                         )
                     } else {
                         failed(
                             "VV-MCP-CONTRACT-001",
                             format!(
-                                "declaration server {:?}, observed server {:?}, expected profile server {:?}; revision {} (expected {} for {}), unmet well-known items {unmet:?}",
+                                "declaration server {:?}, observed server {:?}, expected profile server {:?}; contract {} (selected {}), unmet well-known items {unmet:?}",
                                 declaration.server().as_str(),
                                 implementation.name,
                                 profile.server_slug,
-                                declaration.contract_revision(),
-                                veoveo_mcp_contract::docs::CONTRACT_REVISION,
-                                profile.contract_revision,
+                                declaration.contract().as_str(),
+                                profile.contract.as_str(),
                             ),
                         )
                     });

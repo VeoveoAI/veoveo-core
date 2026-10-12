@@ -1,6 +1,6 @@
 {
-  "catalogRevision": 2,
-  "contractRevision": 4,
+  "contract": "https://veoveo.ai/contracts/hosted-mcp",
+  "format": "https://veoveo.ai/formats/hosted-mcp-requirements",
   "noteWhitespace": "\t\n\u000b\f\r                  　",
   "requirements": [
     {
@@ -86,7 +86,7 @@
     {
       "id": "C17",
       "level": "must",
-      "text": "The registration and crate documents state the contract revision."
+      "text": "The registration and crate documents name the contract the server implements."
     },
     {
       "id": "C18",
@@ -159,10 +159,10 @@
       "text": "Readiness calls Discover and required list methods, compares the observed surface with installation allow/require policy, and fails closed on mismatch."
     },
     {
+      "applicability": "knowledge_source",
       "id": "C32",
       "level": "must_when_adopted",
-      "text": "A server that declares `ai.veoveo/knowledge-source` publishes its `{slug}.docs` collection and satisfies K01–K10 for every declared collection under the [knowledge extension](../ext-knowledge/DESIGN.md). A server that does not declare the extension marks C32 not applicable.",
-      "applicability": "knowledge_source"
+      "text": "A server that declares `ai.veoveo/knowledge-source` publishes its `{slug}.docs` collection and satisfies K01–K10 for every declared collection under the [knowledge extension](../ext-knowledge/DESIGN.md). A server that does not declare the extension marks C32 not applicable."
     },
     {
       "id": "C33",

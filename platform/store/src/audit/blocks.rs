@@ -470,7 +470,7 @@ mod binding_tests {
         let digest = veoveo_types::Sha256Digest::from_bytes([9; 32]);
         let mut block = AuditBlock {
             head: AuditBlockHead {
-                schema: AuditBlockSchema::V1,
+                format: AuditBlockFormat::AuditBlock,
                 partition: AuditPartition::Installation,
                 sequence: AuditBlockSequence::new(1).unwrap(),
                 first_versionstamp: AuditVersionstamp::new(7).unwrap(),

@@ -135,6 +135,6 @@ async fn drained_key_transition_preserves_archive_and_requires_post_cutover_trus
         let mut tampered = tail.clone();
         tampered.head.sealed_at += chrono::TimeDelta::seconds(1);
         assert!(matches!(verifier(&current_keys, Some(cutover)).verify(&tampered, records), Err(IntegrityError::HeadHash)));
-        println!("{{\"schema\":\"veoveo.ai/audit-key-transition-qualification/v1\",\"retainedRecords\":{},\"replacementRecords\":{},\"sequence\":{}}}", before.len() + 1, after.len(), expected_tail.sequence.get());
+        println!("{{\"schema\":\"https://veoveo.ai/formats/audit-key-transition-qualification\",\"retainedRecords\":{},\"replacementRecords\":{},\"sequence\":{}}}", before.len() + 1, after.len(), expected_tail.sequence.get());
     }).await.expect("audit key transition exceeded90seconds");
 }

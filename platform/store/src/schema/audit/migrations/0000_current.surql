@@ -63,7 +63,7 @@ DEFINE FUNCTION fn::audit::append_indexing($reads: array<object>) {
             LET $id: record<audit_indexing_window> = type::record('audit_indexing_window', [$read.scope, $start]);
             LET $window = SELECT * FROM ONLY $id;
             LET $previous = IF type::is_object($window) THEN $window.members_digest ELSE $read.genesis END;
-            LET $digest = IF $read.member = NONE THEN $previous ELSE crypto::sha256('veoveo.ai/audit-indexing-members/v1:' + $previous + $read.member) END;
+            LET $digest = IF $read.member = NONE THEN $previous ELSE crypto::sha256('https://veoveo.ai/formats/audit-indexing-members:' + $previous + $read.member) END;
             IF type::is_object($window) THEN {
                 UPDATE ONLY $id SET reads += 1, not_modified += $read.not_modified, failed += $read.failed, members_digest = $digest RETURN NONE;
             } ELSE {

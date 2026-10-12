@@ -10,7 +10,7 @@ use rmcp::{
     },
 };
 use veoveo_mcp_conformance::{
-    ConformanceCredentials, HostedServerConformanceProfile, HostedServerProfileSchema,
+    ConformanceCredentials, HostedServerConformanceProfile, HostedServerProfileFormat,
     HttpBoundaryProfile, SurfaceExpectation, SurfaceProfile,
     run_hosted_server_conformance_with_evidence,
 };
@@ -110,9 +110,9 @@ async fn qualify() -> anyhow::Result<()> {
     })));
     let endpoint = format!("http://{address}/observatory/mcp");
     let profile = HostedServerConformanceProfile {
-        schema_version: HostedServerProfileSchema::V2,
+        format: HostedServerProfileFormat::McpConformanceProfile,
         profile_id: "modular-fixture".into(),
-        contract_revision: veoveo_mcp_contract::HOSTED_MCP_CONTRACT_REVISION.into(),
+        contract: veoveo_mcp_conformance::ContractId::HostedMcp,
         endpoint: endpoint.clone(),
         server_slug: "observatory".into(),
         owned_resource_schemes: BTreeSet::from(["observatory".into()]),

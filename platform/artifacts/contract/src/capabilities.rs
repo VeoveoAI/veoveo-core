@@ -213,14 +213,14 @@ pub struct IssuedArtifactReadCapability {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, veoveo_types::Vocabulary)]
 #[schemars(transform = request_format_naming)]
 pub enum ArtifactWriteRequestFormat {
-    #[vocabulary(rename = "veoveo.ai/artifact-write-request/v2")]
-    V2,
+    #[vocabulary(rename = "https://veoveo.ai/formats/artifact-write-request")]
+    ArtifactWriteRequest,
 }
 
 fn request_format_naming(schema: &mut schemars::Schema) {
     *schema = veoveo_types::scalar_schema(
         schema.clone(),
-        veoveo_types::ScalarNaming::builtin(veoveo_types::ScalarGrammar::FormatTag),
+        veoveo_types::ScalarNaming::builtin(veoveo_types::ScalarGrammar::FormatUri),
     )
     .expect("Artifact request format is a declared scalar");
 }
@@ -278,15 +278,15 @@ mod request_format_tests {
 
     #[test]
     fn retained_request_format_is_current_only() {
-        let format = ArtifactWriteRequestFormat::V2;
+        let format = ArtifactWriteRequestFormat::ArtifactWriteRequest;
         assert_eq!(
             serde_json::to_value(format).unwrap(),
-            "veoveo.ai/artifact-write-request/v2"
+            "https://veoveo.ai/formats/artifact-write-request"
         );
         for invalid in [
             serde_json::Value::Null,
-            serde_json::json!("veoveo.ai/artifact-write-request/v1"),
-            serde_json::json!("v2"),
+            serde_json::json!("artifact-write-request"),
+            serde_json::json!("https://veoveo.ai/formats/artifact-read-request"),
         ] {
             assert!(serde_json::from_value::<ArtifactWriteRequestFormat>(invalid).is_err());
         }

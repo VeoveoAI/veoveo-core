@@ -1,21 +1,26 @@
 //! Requirement coverage is separate from owner declarations and runtime check outcomes.
 use crate::{CheckResult, CheckStatus};
-use veoveo_mcp_contract::docs::{CATALOG_REVISION, RequirementId};
+use veoveo_mcp_contract::docs::{ContractId, RequirementId};
 
-/// Mapping changes evolve independently of hosted and requirement catalog revisions.
-pub const COVERAGE_REVISION: u32 = 3;
+/// The format of the published requirement coverage map.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, veoveo_types::Vocabulary)]
+#[schemars(transform = veoveo_types::naming::format_uri_naming)]
+pub enum CoverageFormat {
+    #[vocabulary(rename = "https://veoveo.ai/formats/mcp-conformance-coverage")]
+    McpConformanceCoverage,
+}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequirementCoverage {
-    pub coverage_revision: u32,
-    pub catalog_revision: u32,
+    pub format: CoverageFormat,
+    pub contract: ContractId,
     pub requirements: Vec<RequirementVerification>,
 }
 pub fn requirement_coverage() -> RequirementCoverage {
     RequirementCoverage {
-        coverage_revision: COVERAGE_REVISION,
-        catalog_revision: CATALOG_REVISION,
+        format: CoverageFormat::McpConformanceCoverage,
+        contract: ContractId::HostedMcp,
         requirements: RequirementId::ALL
             .iter()
             .copied()

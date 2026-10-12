@@ -160,11 +160,11 @@ async fn windows_deduplicate_retries_separate_authority_and_close_once_across_re
             panic!("window expected")
         };
         assert_eq!((*count, *not_modified, *failed), (3, 1, 1));
-        let mut digest = hex(b"veoveo.ai/audit-indexing-members/v1");
+        let mut digest = hex(b"https://veoveo.ai/formats/audit-indexing-members");
         for _ in 0..2 {
             let leaf = hex(serde_json::to_vec(&("time://docs/design", "revision-1")).unwrap());
             digest = hex(format!(
-                "veoveo.ai/audit-indexing-members/v1:{digest}{leaf}"
+                "https://veoveo.ai/formats/audit-indexing-members:{digest}{leaf}"
             ));
         }
         assert_eq!(members_digest.hex(), digest);

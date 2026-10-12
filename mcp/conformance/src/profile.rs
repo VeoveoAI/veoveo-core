@@ -4,18 +4,17 @@ use anyhow::{Result, bail, ensure};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
-pub use veoveo_mcp_contract::HOSTED_MCP_CONTRACT_REVISION;
+pub use veoveo_mcp_contract::{HOSTED_MCP_CONTRACT, docs::ContractId};
 
-/// Hosted-server conformance profile schema.
-pub const HOSTED_SERVER_PROFILE_SCHEMA: &str = "veoveo.ai/mcp-conformance-profile/v2";
+/// Hosted-server conformance profile format.
+pub const HOSTED_SERVER_PROFILE_FORMAT: &str = "https://veoveo.ai/formats/mcp-conformance-profile";
 
-/// Supported hosted-server conformance profile schema.
+/// The hosted-server conformance profile format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[schemars(transform = profile_format_naming)]
-pub enum HostedServerProfileSchema {
-    /// Hosted-server conformance profile version 2.
-    #[serde(rename = "veoveo.ai/mcp-conformance-profile/v2")]
-    V2,
+pub enum HostedServerProfileFormat {
+    #[serde(rename = "https://veoveo.ai/formats/mcp-conformance-profile")]
+    McpConformanceProfile,
 }
 
 /// Whether a protocol surface must, may, or must not be advertised.
@@ -80,11 +79,11 @@ pub struct SurfaceProfile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostedServerConformanceProfile {
-    pub schema_version: HostedServerProfileSchema,
+    pub format: HostedServerProfileFormat,
     /// Installation-local identity for this conformance selection.
     pub profile_id: String,
-    /// Exact hosted-server contract revision selected by the compatibility manifest.
-    pub contract_revision: String,
+    /// The hosted-server contract the selection certifies.
+    pub contract: ContractId,
     /// Streamable HTTP MCP endpoint.
     pub endpoint: String,
     /// Expected server slug.
@@ -99,10 +98,6 @@ impl HostedServerConformanceProfile {
     /// Validates controlled profile fields before any network request.
     pub fn validate(&self) -> Result<()> {
         require_token("profileId", &self.profile_id)?;
-        ensure!(
-            self.contract_revision == HOSTED_MCP_CONTRACT_REVISION,
-            "contractRevision must be {HOSTED_MCP_CONTRACT_REVISION:?}"
-        );
         require_token("serverSlug", &self.server_slug)?;
         let endpoint = validate_url("endpoint", &self.endpoint)?;
         if let Some(url) = &self.http.health_url {
@@ -237,15 +232,15 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        HostedServerConformanceProfile, HostedServerProfileSchema, HttpBoundaryProfile,
+        HostedServerConformanceProfile, HostedServerProfileFormat, HttpBoundaryProfile,
         SurfaceExpectation, SurfaceProfile,
     };
 
     fn profile() -> HostedServerConformanceProfile {
         HostedServerConformanceProfile {
-            schema_version: HostedServerProfileSchema::V2,
+            format: HostedServerProfileFormat::McpConformanceProfile,
             profile_id: "extension-ci".to_owned(),
-            contract_revision: "veoveo.ai/hosted-mcp/v4".to_owned(),
+            contract: super::ContractId::HostedMcp,
             endpoint: "https://extension.example.internal/domain/mcp".to_owned(),
             server_slug: "domain".to_owned(),
             owned_resource_schemes: BTreeSet::from(["domain".to_owned()]),
@@ -290,10 +285,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_an_unsupported_revision_or_optional_well_known_surface() {
-        let mut unsupported_revision = profile();
-        unsupported_revision.contract_revision = "2".to_owned();
-        assert!(unsupported_revision.validate().is_err());
+    fn rejects_an_unsupported_contract_or_optional_well_known_surface() {
+        let mut unsupported = serde_json::to_value(profile()).unwrap();
+        unsupported["contract"] = serde_json::json!("https://veoveo.ai/contracts/other");
+        assert!(serde_json::from_value::<HostedServerConformanceProfile>(unsupported).is_err());
 
         let mut optional_resources = profile();
         optional_resources.surfaces.resources = SurfaceExpectation::Optional;

@@ -6,7 +6,7 @@ The declarations implement the internal Rust `ModuleSetup` contract from
 [`veoveo-modules`](../../../modules/DESIGN.md). Schema-only builds require no
 protocol, database driver or runtime. The private lane runner parses and executes
 its admitted SurrealDB 3.3.0 SurrealQL profile. The installation plan uses
-`veoveo.ai/module-plan/v1`; migration identity binds each owner's numbered body
+`https://veoveo.ai/formats/module-plan`; migration identity binds each owner's numbered body
 and declaration to its recorded SHA-256 checksum.
 
 ## Owners And Ordering

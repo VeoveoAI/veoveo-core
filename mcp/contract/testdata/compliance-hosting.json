@@ -1,7 +1,7 @@
 {
+  "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+  "contract": "https://veoveo.ai/contracts/hosted-mcp",
   "server": "fixture",
-  "contractRevision": 4,
-  "catalogRevision": 2,
   "compliance": [
     {
       "id": "C01",

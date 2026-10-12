@@ -280,10 +280,13 @@ pub(crate) fn digest<T: Serialize>(domain: &[u8], value: &T) -> Sha256Digest {
     Sha256Digest::from_bytes(hash.finalize().into())
 }
 fn profile_id(contents: &EmbeddingExecutionContents) -> EmbeddingExecutionProfileId {
-    digest(b"veoveo.ai/embedding-execution-profile/v1", contents)
-        .to_string()
-        .parse()
-        .expect("SHA-256 profile identity")
+    digest(
+        b"https://veoveo.ai/formats/embedding-execution-profile",
+        contents,
+    )
+    .to_string()
+    .parse()
+    .expect("SHA-256 profile identity")
 }
 
 /// Report digests bind measured results. These facts are trusted installation input,
@@ -355,10 +358,13 @@ impl EmbeddingQualification {
     }
 }
 fn qualification_id(contents: &QualificationContents) -> EmbeddingQualificationId {
-    digest(b"veoveo.ai/embedding-qualification/v1", contents)
-        .to_string()
-        .parse()
-        .expect("SHA-256 qualification identity")
+    digest(
+        b"https://veoveo.ai/formats/embedding-qualification",
+        contents,
+    )
+    .to_string()
+    .parse()
+    .expect("SHA-256 qualification identity")
 }
 impl Check for QualificationWire {
     type Error = EmbeddingError;

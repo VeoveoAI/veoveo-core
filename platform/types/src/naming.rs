@@ -22,7 +22,8 @@ pub enum ScalarGrammar {
     ResourceSelectorTemplate,
     ResourcePrefix,
     ExtensionName,
-    FormatTag,
+    FormatUri,
+    ContractUri,
 }
 
 /// Admitted informational text. Source review establishes its semantic truth.
@@ -155,7 +156,8 @@ impl ScalarNaming {
                 }
                 ScalarGrammar::ResourcePrefix => crate::ResourceUriPrefix::new(text).is_ok(),
                 ScalarGrammar::ExtensionName => crate::ExtensionName::parse(text).is_ok(),
-                ScalarGrammar::FormatTag => format_tag(text),
+                ScalarGrammar::FormatUri => format_uri(text),
+                ScalarGrammar::ContractUri => veoveo_uri(text, "https://veoveo.ai/contracts/"),
             },
         };
         if admitted {
@@ -171,24 +173,22 @@ pub enum SpellingCheck {
     BuiltinValidated,
     DeclaredSchemaRequired,
 }
-fn format_tag(text: &str) -> bool {
-    let Some(path) = text.strip_prefix("veoveo.ai/") else {
-        return false;
-    };
-    let mut segments: Vec<_> = path.split('/').collect();
-    let Some(version) = segments.pop().and_then(|s| s.strip_prefix('v')) else {
-        return false;
-    };
-    !segments.is_empty()
-        && !version.starts_with('0')
-        && version.parse::<u32>().is_ok_and(|v| v > 0)
-        && segments.iter().all(|s| {
-            !s.is_empty()
-                && s.bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-                && !s.starts_with('-')
-                && !s.ends_with('-')
-        })
+/// A Veoveo format identifier: `https://veoveo.ai/formats/<kebab-name>`.
+fn format_uri(text: &str) -> bool {
+    veoveo_uri(text, "https://veoveo.ai/formats/")
+}
+
+/// A Veoveo identifier URI: the given prefix followed by one kebab-case name.
+fn veoveo_uri(text: &str, prefix: &str) -> bool {
+    text.strip_prefix(prefix).is_some_and(|name| {
+        !name.is_empty()
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            && !name.starts_with('-')
+            && !name.ends_with('-')
+            && !name.contains("--")
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -814,4 +814,22 @@ fn emit_declaration_schema(
         root,
     )
     .expect("owner schema must match naming declaration")
+}
+
+/// Annotates a Veoveo format identifier's schema with the `format_uri` grammar.
+pub fn format_uri_naming(schema: &mut Schema) {
+    *schema = scalar_schema(
+        schema.clone(),
+        ScalarNaming::builtin(ScalarGrammar::FormatUri),
+    )
+    .expect("a format identifier schema is scalar");
+}
+
+/// Annotates a Veoveo contract identifier's schema with the `contract_uri` grammar.
+pub fn contract_uri_naming(schema: &mut Schema) {
+    *schema = scalar_schema(
+        schema.clone(),
+        ScalarNaming::builtin(ScalarGrammar::ContractUri),
+    )
+    .expect("a contract identifier schema is scalar");
 }

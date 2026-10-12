@@ -214,9 +214,9 @@ impl AuditContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum AuditSchema {
-    #[serde(rename = "veoveo.ai/audit-record/v1")]
-    V1,
+pub enum AuditRecordFormat {
+    #[serde(rename = "https://veoveo.ai/formats/audit-record")]
+    AuditRecord,
 }
 
 /// Immutable constructor-checked action. The database supplies recorded_at.
@@ -227,7 +227,7 @@ pub struct AuditDraft(AuditDraftWire);
 #[serde(deny_unknown_fields)]
 pub(crate) struct AuditDraftWire {
     pub(crate) id: AuditRecordId,
-    pub(crate) schema: AuditSchema,
+    pub(crate) format: AuditRecordFormat,
     pub(crate) partition: AuditPartition,
     pub(crate) actor: Option<AuditActor>,
     pub(crate) authority: AuditAuthority,
@@ -420,7 +420,7 @@ impl AuditDraft {
     ) -> AuditDraftBuilder {
         AuditDraftBuilder(AuditDraftWire {
             id: AuditRecordId::new(),
-            schema: AuditSchema::V1,
+            format: AuditRecordFormat::AuditRecord,
             partition: AuditPartition::Installation,
             actor: None,
             authority: AuditAuthority::default(),

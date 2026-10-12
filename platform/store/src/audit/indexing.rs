@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use veoveo_mcp_ext_knowledge::CollectionId;
 use veoveo_types::Sha256Digest;
 
-const DOMAIN: &str = "veoveo.ai/audit-indexing-members/v1";
+const DOMAIN: &str = "https://veoveo.ai/formats/audit-indexing-members";
 fn hash(value: impl serde::Serialize) -> Sha256Digest {
     Sha256Digest::from_bytes(
         Sha256::digest(serde_json::to_vec(&value).expect("typed audit value")).into(),

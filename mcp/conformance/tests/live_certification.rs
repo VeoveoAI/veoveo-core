@@ -12,7 +12,7 @@ use rmcp::{
     transport::streamable_http_server::StreamableHttpService,
 };
 use veoveo_mcp_conformance::{
-    ConformanceCredentials, HostedServerConformanceProfile, HostedServerProfileSchema,
+    ConformanceCredentials, HostedServerConformanceProfile, HostedServerProfileFormat,
     HttpBoundaryProfile, SurfaceExpectation, SurfaceProfile, run_hosted_server_conformance,
 };
 use veoveo_mcp_contract::docs::{ContractDeclaration, DOC_ID_AGENTS, DOC_ID_DESIGN, ServerDocs};
@@ -249,9 +249,9 @@ async fn certifies_a_domain_without_linking_its_implementation() -> anyhow::Resu
         );
 
     let profile = HostedServerConformanceProfile {
-        schema_version: HostedServerProfileSchema::V2,
+        format: HostedServerProfileFormat::McpConformanceProfile,
         profile_id: "anonymous-extension".to_owned(),
-        contract_revision: "veoveo.ai/hosted-mcp/v4".to_owned(),
+        contract: veoveo_mcp_conformance::ContractId::HostedMcp,
         endpoint: format!("http://{address}/domain/mcp"),
         server_slug: "domain".to_owned(),
         owned_resource_schemes: BTreeSet::from(["domain".to_owned()]),

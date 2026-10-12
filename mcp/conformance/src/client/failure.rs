@@ -7,8 +7,8 @@ use veoveo_types::Sha256Digest;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum FailureFormat {
-    #[serde(rename = "veoveo.ai/smoke-client-failure/v1")]
-    V1,
+    #[serde(rename = "https://veoveo.ai/formats/mcp-client-failure")]
+    McpClientFailure,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(
@@ -166,7 +166,7 @@ pub fn record(endpoint: &str, bearer: Option<&str>, error: &anyhow::Error) -> Re
         return Ok(());
     };
     let report = FailureReport {
-        format: FailureFormat::V1,
+        format: FailureFormat::McpClientFailure,
         endpoint: endpoint.to_owned(),
         arguments_digest: arguments_digest(std::env::args_os().skip(1)),
         bearer_digest: bearer_digest(bearer),

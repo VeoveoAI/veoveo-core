@@ -107,14 +107,14 @@ pub struct AuditBlockMember {
     pub versionstamp: AuditVersionstamp,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum AuditBlockSchema {
-    #[serde(rename = "veoveo.ai/audit-block/v1")]
-    V1,
+pub enum AuditBlockFormat {
+    #[serde(rename = "https://veoveo.ai/formats/audit-block")]
+    AuditBlock,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuditBlockHead {
-    pub schema: AuditBlockSchema,
+    pub format: AuditBlockFormat,
     pub partition: AuditPartition,
     pub sequence: AuditBlockSequence,
     pub first_versionstamp: AuditVersionstamp,

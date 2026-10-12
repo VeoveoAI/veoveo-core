@@ -10,7 +10,7 @@
 | JSON Schema draft 2020-12 | Composed closed target union, local definitions, scalar constraints and arrays; owner registration rejects open schemas, unresolved or nonlocal references and undeclared schema mechanics |
 | `ai.veoveo/naming-profile` v1 | Source annotation admitted through the foundational parser against the complete owner schema; Audit still enforces closed target payloads and lookup references |
 | RFC 3339 and JSON | Typed timestamps, tagged closed enums and checked deserialization |
-| `veoveo.ai/audit-record/v1` | One reviewed record shape across platform producers and readers |
+| `https://veoveo.ai/formats/audit-record` | One reviewed record shape across platform producers and readers |
 | `ai.veoveo/knowledge-source` | Reviewed observation fields from the protocol-independent extension contract |
 
 This library owns the protocol-independent audit vocabulary. It depends on foundational

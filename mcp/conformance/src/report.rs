@@ -3,15 +3,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Conformance report schema.
-pub const CONFORMANCE_REPORT_SCHEMA: &str = "veoveo.ai/mcp-conformance-report/v1";
+/// Conformance report format.
+pub const CONFORMANCE_REPORT_FORMAT: &str = "https://veoveo.ai/formats/mcp-conformance-report";
 
-/// Supported conformance report schema.
+/// The conformance report format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[schemars(transform = report_format_naming)]
-pub enum ConformanceReportSchema {
-    #[serde(rename = "veoveo.ai/mcp-conformance-report/v1")]
-    V1,
+pub enum ConformanceReportFormat {
+    #[serde(rename = "https://veoveo.ai/formats/mcp-conformance-report")]
+    McpConformanceReport,
 }
 
 /// Outcome of one applicable requirement.
@@ -49,9 +49,9 @@ pub struct ObservedImplementation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConformanceReport {
-    pub schema_version: ConformanceReportSchema,
+    pub format: ConformanceReportFormat,
     pub profile_id: String,
-    pub contract_revision: String,
+    pub contract: veoveo_mcp_contract::docs::ContractId,
     pub started_at: DateTime<Utc>,
     pub completed_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

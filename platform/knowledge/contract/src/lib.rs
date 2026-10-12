@@ -46,16 +46,12 @@ pub enum CollectionApproval {
 pub struct CollectionRegistration {
     pub tenant: TenantId,
     pub descriptor: CollectionDescriptor,
-    pub source_contract_revision: u32,
     pub approval: KnowledgeCollectionApproval,
     pub control_revision: Sha256Digest,
 }
 impl CollectionRegistration {
     pub fn validate(&self) -> Result<(), KnowledgeError> {
         self.approval.validate()?;
-        if self.source_contract_revision == 0 {
-            return Err(KnowledgeError("source contract revision must be positive"));
-        }
         if &self.approval.collection != self.descriptor.collection() {
             return Err(KnowledgeError("approval belongs to another collection"));
         }
@@ -101,13 +97,11 @@ impl CollectionRegistration {
         struct Fingerprint<'a> {
             tenant: &'a TenantId,
             descriptor: &'a CollectionDescriptor,
-            source_contract_revision: u32,
             approval: &'a KnowledgeCollectionApproval,
         }
         digest(&Fingerprint {
             tenant: &self.tenant,
             descriptor: &self.descriptor,
-            source_contract_revision: self.source_contract_revision,
             approval: &self.approval,
         })
     }

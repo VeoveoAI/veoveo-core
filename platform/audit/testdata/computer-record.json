@@ -1,7 +1,7 @@
 {
   "draft": {
     "id": "019f25e8-cf39-7000-8000-000000000002",
-    "schema": "veoveo.ai/audit-record/v1",
+    "format": "https://veoveo.ai/formats/audit-record",
     "partition": {
       "kind": "installation"
     },

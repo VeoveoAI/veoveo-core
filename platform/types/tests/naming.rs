@@ -88,8 +88,8 @@ fn builtins_preserve_existing_scope_task_resource_and_format_grammars() {
         "owner.file_transfer"
     ));
     assert!(admitted(
-        ScalarNaming::builtin(ScalarGrammar::FormatTag),
-        "veoveo.ai/owner/nested-format/v2"
+        ScalarNaming::builtin(ScalarGrammar::FormatUri),
+        "https://veoveo.ai/formats/owner-format"
     ));
     for (grammar, values) in [
         (
@@ -111,11 +111,12 @@ fn builtins_preserve_existing_scope_task_resource_and_format_grammars() {
             vec!["owner://{broken", "HTTP://example"],
         ),
         (
-            ScalarGrammar::FormatTag,
+            ScalarGrammar::FormatUri,
             vec![
-                concat!("io", ".veoveo/example/v1"),
-                "veoveo.ai/example/v0",
-                "veoveo.ai/example/v01",
+                "veoveo.ai/example/v1",
+                "https://veoveo.ai/formats/Example",
+                "https://veoveo.ai/formats/nested/format",
+                "http://veoveo.ai/formats/example",
             ],
         ),
     ] {

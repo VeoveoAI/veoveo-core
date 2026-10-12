@@ -3,9 +3,9 @@
     {
       "name": "complete_pending",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -177,9 +177,9 @@
     {
       "name": "complete_met",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -319,9 +319,9 @@
     {
       "name": "conditional_absence",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -493,9 +493,9 @@
     {
       "name": "preserved_note",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -667,9 +667,9 @@
     {
       "name": "server_alias",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "9_example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -841,9 +841,9 @@
     {
       "name": "note_bom",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -1015,9 +1015,9 @@
     {
       "name": "note_information_separators",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -1191,9 +1191,9 @@
     {
       "name": "missing_requirement",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -1360,9 +1360,9 @@
     {
       "name": "duplicate_requirement",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -1534,9 +1534,9 @@
     {
       "name": "unknown_requirement",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C34",
@@ -1706,11 +1706,11 @@
       }
     },
     {
-      "name": "unsupported_contract_revision",
+      "name": "unsupported_contract",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/other",
         "server": "example",
-        "contractRevision": 5,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -1880,11 +1880,11 @@
       }
     },
     {
-      "name": "unsupported_catalog_revision",
+      "name": "unsupported_format",
       "profile": {
+        "format": "https://veoveo.ai/formats/other",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 3,
         "compliance": [
           {
             "id": "C01",
@@ -2056,9 +2056,9 @@
     {
       "name": "unknown_field",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -2231,9 +2231,9 @@
     {
       "name": "unknown_item_field",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -2406,9 +2406,9 @@
     {
       "name": "blank_note",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -2580,9 +2580,9 @@
     {
       "name": "missing_pending_note",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -2753,9 +2753,9 @@
     {
       "name": "invalid_not_applicable",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -2927,9 +2927,9 @@
     {
       "name": "unknown_status",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -3101,9 +3101,9 @@
     {
       "name": "invalid_server",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "two words",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -3275,9 +3275,9 @@
     {
       "name": "multiline_note",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -3449,9 +3449,9 @@
     {
       "name": "null_note",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -3623,9 +3623,9 @@
     {
       "name": "server_whitespace",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": " example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -3797,9 +3797,9 @@
     {
       "name": "server_uppercase",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "Example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",
@@ -3971,9 +3971,9 @@
     {
       "name": "note_unicode_whitespace",
       "profile": {
+        "format": "https://veoveo.ai/formats/hosted-mcp-compliance",
+        "contract": "https://veoveo.ai/contracts/hosted-mcp",
         "server": "example",
-        "contractRevision": 4,
-        "catalogRevision": 2,
         "compliance": [
           {
             "id": "C01",

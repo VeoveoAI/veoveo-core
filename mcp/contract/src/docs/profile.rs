@@ -1,11 +1,19 @@
 //! Complete immutable owner declarations and their deterministic manual projection.
-use super::{CONTRACT_REVISION, ServerDocs, catalog::*};
+use super::{ContractId, ServerDocs, catalog::*};
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize};
 use veoveo_types::{Check, Checked, ServerSlug};
 
 pub const COMPLIANCE_START: &str = "<!-- veoveo:contract-compliance:start -->";
 pub const COMPLIANCE_END: &str = "<!-- veoveo:contract-compliance:end -->";
+
+/// The format of a server's compliance declaration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, veoveo_types::Vocabulary)]
+#[schemars(transform = veoveo_types::naming::format_uri_naming)]
+pub enum ComplianceProfileFormat {
+    #[vocabulary(rename = "https://veoveo.ai/formats/hosted-mcp-compliance")]
+    HostedMcpCompliance,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, veoveo_types::Vocabulary)]
 pub enum ComplianceStatus {
@@ -43,11 +51,9 @@ pub(super) fn invalid(reason: impl Into<String>) -> ComplianceError {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ProfileValue {
+    format: ComplianceProfileFormat,
+    contract: ContractId,
     server: ServerSlug,
-    #[schemars(schema_with = "contract_revision_schema")]
-    contract_revision: u32,
-    #[schemars(schema_with = "catalog_revision_schema")]
-    catalog_revision: u32,
     #[schemars(schema_with = "compliance_schema")]
     compliance: Vec<ComplianceItem>,
 }
@@ -63,21 +69,9 @@ fn compliance_schema(generator: &mut SchemaGenerator) -> Schema {
     );
     schema
 }
-fn contract_revision_schema(_: &mut SchemaGenerator) -> Schema {
-    schemars::json_schema!({"type":"integer","const":CONTRACT_REVISION})
-}
-fn catalog_revision_schema(_: &mut SchemaGenerator) -> Schema {
-    schemars::json_schema!({"type":"integer","const":CATALOG_REVISION})
-}
 impl Check for ProfileValue {
     type Error = ComplianceError;
     fn check(&self) -> Result<(), Self::Error> {
-        if self.contract_revision != CONTRACT_REVISION || self.catalog_revision != CATALOG_REVISION
-        {
-            return Err(invalid(
-                "unsupported contract or catalog revision; upgrade the owner profile",
-            ));
-        }
         if self.compliance.len() != RequirementId::ALL.len() {
             return Err(invalid(
                 "every catalog requirement must be declared exactly once",
@@ -131,7 +125,12 @@ impl JsonSchema for ComplianceProfile {
         concat!(module_path!(), "::ComplianceProfile").into()
     }
     fn json_schema(generator: &mut SchemaGenerator) -> Schema {
-        ProfileValue::json_schema(generator)
+        let mut schema = ProfileValue::json_schema(generator);
+        schema.insert(
+            "$id".into(),
+            serde_json::json!(ComplianceProfileFormat::HostedMcpCompliance.as_str()),
+        );
+        schema
     }
 }
 
@@ -141,9 +140,9 @@ impl ComplianceProfile {
         compliance: Vec<ComplianceItem>,
     ) -> Result<Self, ComplianceError> {
         Self::admit(ProfileValue {
+            format: ComplianceProfileFormat::HostedMcpCompliance,
+            contract: ContractId::HostedMcp,
             server,
-            contract_revision: CONTRACT_REVISION,
-            catalog_revision: CATALOG_REVISION,
             compliance,
         })
     }
@@ -154,11 +153,8 @@ impl ComplianceProfile {
     pub fn server(&self) -> &ServerSlug {
         &self.0.server
     }
-    pub fn contract_revision(&self) -> u32 {
-        self.0.contract_revision
-    }
-    pub fn catalog_revision(&self) -> u32 {
-        self.0.catalog_revision
+    pub fn contract(&self) -> ContractId {
+        self.0.contract
     }
     pub fn compliance(&self) -> &[ComplianceItem] {
         &self.0.compliance
@@ -202,11 +198,8 @@ impl ContractDeclaration {
     pub fn server(&self) -> &ServerSlug {
         self.0.server()
     }
-    pub fn contract_revision(&self) -> u32 {
-        self.0.contract_revision()
-    }
-    pub fn catalog_revision(&self) -> u32 {
-        self.0.catalog_revision()
+    pub fn contract(&self) -> ContractId {
+        self.0.contract()
     }
     pub fn compliance(&self) -> &[ComplianceItem] {
         self.0.compliance()
@@ -214,11 +207,7 @@ impl ContractDeclaration {
 }
 
 pub fn render_compliance(profile: &ComplianceProfile) -> String {
-    let mut body = format!(
-        "Contract revision: {}\nCatalog revision: {}\n\n",
-        profile.contract_revision(),
-        profile.catalog_revision()
-    );
+    let mut body = format!("Contract: {}\n\n", profile.contract().as_str());
     for item in profile.compliance() {
         body.push_str(&format!("- {}: {}", item.id.as_str(), item.status.as_str()));
         if let Some(note) = &item.note {
@@ -293,19 +282,14 @@ mod tests {
         ] {
             assert!(!validator.is_valid(&invalid));
         }
-        for field in [
-            "server",
-            "contractRevision",
-            "catalogRevision",
-            "compliance",
-        ] {
+        for field in ["format", "contract", "server", "compliance"] {
             let mut invalid = fixtures["valid"][0]["profile"].clone();
             invalid.as_object_mut().unwrap().remove(field);
             assert!(!validator.is_valid(&invalid), "missing {field}");
         }
         for (field, value) in [
-            ("contractRevision", CONTRACT_REVISION + 1),
-            ("catalogRevision", CATALOG_REVISION + 1),
+            ("format", "https://veoveo.ai/formats/other"),
+            ("contract", "https://veoveo.ai/contracts/other"),
         ] {
             let mut invalid = fixtures["valid"][0]["profile"].clone();
             invalid[field] = serde_json::json!(value);

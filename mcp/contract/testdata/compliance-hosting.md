@@ -15,8 +15,7 @@ Run the owning Rust fixture tests.
 ## Contract Compliance
 
 <!-- veoveo:contract-compliance:start -->
-Contract revision: 4
-Catalog revision: 2
+Contract: https://veoveo.ai/contracts/hosted-mcp
 
 - C01: pending — Independent fixture qualification remains pending.
 - C02: pending — Independent fixture qualification remains pending.

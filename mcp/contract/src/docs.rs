@@ -17,17 +17,23 @@ pub mod catalog;
 #[cfg(feature = "runtime")]
 mod knowledge;
 mod profile;
-pub use catalog::{CATALOG_REVISION, RequirementId};
+pub use catalog::{RequirementCatalogFormat, RequirementId};
 pub use profile::{
     COMPLIANCE_END, COMPLIANCE_START, ComplianceError, ComplianceItem, ComplianceProfile,
-    ComplianceStatus, ContractDeclaration, render_compliance, verify_manual,
+    ComplianceProfileFormat, ComplianceStatus, ContractDeclaration, render_compliance,
+    verify_manual,
 };
 #[doc(hidden)]
 pub use veoveo_macros::embedded_document;
 pub use veoveo_mcp_ext_knowledge as ext_knowledge;
 
-/// The normative contract revision this crate implements.
-pub const CONTRACT_REVISION: u32 = 4;
+/// The hosted MCP server contract this crate defines.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, veoveo_types::Vocabulary)]
+#[schemars(transform = veoveo_types::naming::contract_uri_naming)]
+pub enum ContractId {
+    #[vocabulary(rename = "https://veoveo.ai/contracts/hosted-mcp")]
+    HostedMcp,
+}
 
 /// Identifier of the required agent manual document.
 pub const DOC_ID_AGENTS: &str = "agents";
@@ -147,8 +153,9 @@ impl ServerDocs {
     /// The llms.txt index served at `{mount}/admin/docs/llms.txt` (C20).
     pub fn llms_txt(&self) -> String {
         let mut out = format!(
-            "# {}\n\n> Veoveo MCP server documents. Contract revision {}.\n\n## Docs\n\n",
-            self.server, CONTRACT_REVISION
+            "# {}\n\n> Veoveo MCP server documents under the {} contract.\n\n## Docs\n\n",
+            self.server,
+            ContractId::HostedMcp.as_str()
         );
         for doc in &self.docs {
             out.push_str(&format!("- [{}]({})\n", doc.title, doc.id));
@@ -165,7 +172,7 @@ impl ServerDocs {
     ///
     /// Discover and the list methods are the only authority for the observed
     /// running protocol surface. The embedded contract resource declares only
-    /// repository-owned revision and compliance evidence.
+    /// repository-owned contract and compliance evidence.
     pub fn contract_declaration(&self) -> &ContractDeclaration {
         self.declaration
             .get_or_init(|| ContractDeclaration::from_docs(self))
@@ -210,7 +217,8 @@ mod tests {
         assert!(index.starts_with("# example\n"));
         assert!(index.contains("- [Agent work manual](agents)"));
         assert!(index.contains("- [Domain design](design)"));
-        assert!(index.contains(&format!("Contract revision {CONTRACT_REVISION}")));
+        assert!(index.contains(ContractId::HostedMcp.as_str()));
+        assert_eq!(ContractId::HostedMcp.as_str(), crate::HOSTED_MCP_CONTRACT);
     }
 
     #[test]

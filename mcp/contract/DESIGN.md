@@ -6,10 +6,9 @@ schema, runtime, packaging, documentation, and self-description requirements. Th
 crate in this directory, `veoveo_mcp_contract`, implements the shared mechanics that
 make most of the contract hold by construction.
 
-**Contract revision: 4.** The crate exports the numeric revision as
-`veoveo_mcp_contract::docs::CONTRACT_REVISION` and the protocol tag as
-`veoveo_mcp_contract::HOSTED_MCP_CONTRACT_REVISION`
-(`veoveo.ai/hosted-mcp/v4`). A server declares the revision it complies with
+The contract is identified by `https://veoveo.ai/contracts/hosted-mcp`, exported as
+`veoveo_mcp_contract::docs::ContractId::HostedMcp` and as the string
+`veoveo_mcp_contract::HOSTED_MCP_CONTRACT`. A server names the contract it implements
 in its crate documents and in its contract resource.
 
 ## Standards And Protocols
@@ -21,7 +20,7 @@ in its crate documents and in its contract resource.
 | MCP Tasks, SEP-2663 | official `tasks/get`, `tasks/update`, and `tasks/cancel`, optional task notifications, opaque task IDs, and typed terminal payloads |
 | MCP multi-round requests, SEP-2322 | `input_required`, protected opaque `requestState`, and retry `inputResponses`; server-initiated elicitation is excluded |
 | MCP subscriptions | request-scoped `subscriptions/listen` with an authorized accepted filter; resource subscribe and unsubscribe are excluded |
-| Requirement catalog revision 2 | closed C01–C33 identifiers, complete camelCase owner profiles and deterministic manual sections; hosted revision 4 is independent |
+| Requirement catalog `https://veoveo.ai/formats/hosted-mcp-requirements` and compliance declaration `https://veoveo.ai/formats/hosted-mcp-compliance` | closed C01–C33 identifiers, complete camelCase owner profiles and deterministic manual sections; `catalog/requirements.json` and `catalog/compliance-profile.schema.json` are generated from the types and checked by tests |
 | JSON Schema 2020-12 | ordinary SDK and Pydantic generation with bounded references and composition; gateway configuration, deployment and provenance schemas remain typed |
 | RFC 6570 URI Templates | Checked MCP setup uses the foundational ASCII-template profile and iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses. Gateway policy selectors retain their documented restricted matching language. |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
@@ -601,7 +600,7 @@ Every server is self-describing. Under its canonical URI scheme it serves:
 |---|---|
 | `{scheme}://docs` | stable page of document entries with `id`, `title`, and concrete `uri`, in `items`; optional `nextCursor` names the last entry and continues through `?cursor=` |
 | `{scheme}://docs/{doc_id}` | a document body: at minimum `agents` (the crate `AGENTS.md`) and `design` (the crate `DESIGN.md`) |
-| `{scheme}://contract` | machine-readable complete owner profile: server, contract revision, catalog revision and per-item compliance status; Discover and list methods own the observed runtime surface |
+| `{scheme}://contract` | machine-readable complete owner profile: format, contract, server and per-item compliance status; Discover and list methods own the observed runtime surface |
 
 On its administrative mount the server serves the same material as a read-only
 HTTP projection at `{mount}/admin/docs/llms.txt` (an index in llms.txt form) and
@@ -656,13 +655,13 @@ Server crates are named `*-mcp`.
 ## Requirement Catalog And Owner Profiles
 
 `docs/catalog.rs` owns the closed `RequirementId` vocabulary and exhaustive metadata.
-The hosted contract revision is 4; catalog revision 2 contains C01–C33. Requirement
+The catalog contains C01–C33. Requirement
 IDs differ from conformance's runtime check IDs. Adding a catalog requirement forces
 every owner to declare it because admission requires each current ID exactly once.
 
 `docs/profile.rs` admits immutable profiles through the shared checked-value mechanism.
-The declaration wire uses `contractRevision` and `catalogRevision`; catalog metadata uses
-`noteWhitespace`. Both construction and JSON decoding reject unknown fields, revisions, IDs, duplicate
+The declaration wire carries `format` and `contract`; catalog metadata uses
+`noteWhitespace`. Both construction and JSON decoding reject unknown fields, formats, contracts, IDs, duplicate
 or missing entries and unknown statuses. Pending entries require a nonblank explanation.
 Provided notes preserve spaces and reject line breaks. Blankness uses Rust Unicode
 White_Space; generated catalog metadata exports its actual character set for all
@@ -699,7 +698,7 @@ Their loaders perform the same semantic admission without repository reads.
 | C14 | MUST | No private byte route. |
 | C15 | MUST | The server ships as an OCI image with a versioned Helm chart. |
 | C16 | MUST | The server registers with the Gateway through `ai.veoveo/registration` and declares the permission every tool, resource template and prompt requires through `ai.veoveo/authorization`. |
-| C17 | MUST | The registration and crate documents state the contract revision. |
+| C17 | MUST | The registration and crate documents name the contract the server implements. |
 | C18 | MUST | Docs resources are served under `{scheme}://docs`. |
 | C19 | MUST | The contract declaration resource is served at `{scheme}://contract`. |
 | C20 | MUST | The admin mount serves `docs/llms.txt` and document bodies. |
@@ -729,9 +728,9 @@ rules:
   with the manual.
 - **Protocol conformance** — the conformance client validates advertised
   schemas (C07) and the client-facing protocol shape against a running
-  server. Certification for `veoveo.ai/hosted-mcp/v4` always checks C18–C21;
+  server. Certification for `https://veoveo.ai/contracts/hosted-mcp` always checks C18–C21;
   a profile cannot forbid resources or omit the administrative docs URL.
-  The client reads `{scheme}://contract`, requires the selected revision,
+  The client reads `{scheme}://contract`, requires the selected contract,
   matches its server identity to the discovered implementation. It follows the
   links actually published by `llms.txt` and authenticates those requests with
   credentials supplied out of band after proving the projection rejects an

@@ -45,7 +45,7 @@ the owning suites; the fixtures provide no policy decisions or installation cred
 
 `store/server.rs` runs one `surreal` process per fixture on a loopback port, with memory
 storage or RocksDB in a fixture-owned temporary directory. Development environments
-install the SurrealDB 3.3.0 binary from the image that `veoveo-deploy` pins, so tests
+install the SurrealDB 3.3.0 binary from the image that `veoveo-template-installation` pins, so tests
 need no container runtime. A missing binary fails the fixture with that requirement
 in the diagnostic. Startup has 30 seconds and fails early when the process exits.
 Diagnostics identify the stage, fixture name and exit code or I/O category, and omit

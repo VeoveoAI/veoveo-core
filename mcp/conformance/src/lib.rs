@@ -14,12 +14,12 @@ mod tool_schema;
 
 pub use knowledge_source::{KnowledgeRoute, KnowledgeSourceTarget};
 pub use profile::{
-    HOSTED_MCP_CONTRACT_REVISION, HOSTED_SERVER_PROFILE_SCHEMA, HostedServerConformanceProfile,
-    HostedServerProfileSchema, HttpBoundaryProfile, SurfaceExpectation, SurfaceProfile,
+    ContractId, HOSTED_MCP_CONTRACT, HOSTED_SERVER_PROFILE_FORMAT, HostedServerConformanceProfile,
+    HostedServerProfileFormat, HttpBoundaryProfile, SurfaceExpectation, SurfaceProfile,
 };
 pub use report::{
-    CONFORMANCE_REPORT_SCHEMA, CheckResult, CheckStatus, ConformanceReport,
-    ConformanceReportSchema, ObservedImplementation,
+    CONFORMANCE_REPORT_FORMAT, CheckResult, CheckStatus, ConformanceReport,
+    ConformanceReportFormat, ObservedImplementation,
 };
 pub use runner::run_knowledge_source_conformance;
 pub use runner::{

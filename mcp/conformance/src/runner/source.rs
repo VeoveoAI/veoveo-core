@@ -1,8 +1,7 @@
 use super::{CertificationClient, failed, knowledge};
 use crate::{
-    ConformanceCredentials, ConformanceReport, ConformanceReportSchema,
-    HOSTED_MCP_CONTRACT_REVISION, KnowledgeSourceTarget, ObservedImplementation,
-    knowledge_probes::KnowledgeProbes,
+    ConformanceCredentials, ConformanceReport, ConformanceReportFormat, KnowledgeSourceTarget,
+    ObservedImplementation, knowledge_probes::KnowledgeProbes,
 };
 use anyhow::{Context, Result, ensure};
 use rmcp::{
@@ -106,9 +105,9 @@ async fn run(
             ));
         }
         Ok::<_, anyhow::Error>(ConformanceReport {
-            schema_version: ConformanceReportSchema::V1,
+            format: ConformanceReportFormat::McpConformanceReport,
             profile_id: format!("knowledge-{}", target.server()),
-            contract_revision: HOSTED_MCP_CONTRACT_REVISION.into(),
+            contract: veoveo_mcp_contract::docs::ContractId::HostedMcp,
             started_at,
             completed_at: chrono::Utc::now(),
             implementation: Some(ObservedImplementation {
