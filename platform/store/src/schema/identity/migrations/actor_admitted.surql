@@ -1,4 +1,4 @@
-DEFINE FUNCTION fn::kernel::identity::actor_admitted_v1($tenant: record<tenant>, $context: record<work_context>, $principal: record<principal>, $context_digest: string, $require_human: bool) -> bool {
+DEFINE FUNCTION fn::kernel::identity::actor_admitted($tenant: record<tenant>, $context: record<work_context>, $principal: record<principal>, $context_digest: string, $require_human: bool) -> bool {
     LET $organization = SELECT * FROM ONLY $tenant;
     LET $current = SELECT * FROM ONLY $context;
     LET $actor = SELECT * FROM ONLY $principal;

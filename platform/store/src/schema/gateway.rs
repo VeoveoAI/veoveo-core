@@ -5,13 +5,13 @@ use veoveo_modules::*;
 pub const CURRENT_SCHEMA: &str = concat!(
     include_str!("gateway/migrations/0000_current.surql"),
     include_str!("gateway/migrations/0000_admission_apis.surql"),
-    include_str!("gateway/migrations/control_revision_current_v1.surql"),
-    include_str!("gateway/migrations/refresh_family_current_v1.surql")
+    include_str!("gateway/migrations/control_revision_current.surql"),
+    include_str!("gateway/migrations/refresh_family_current.surql")
 );
 
-fn task_retention_route_v1_api() -> Result<KernelSqlApi, DeclarationError> {
+fn task_retention_route_api() -> Result<KernelSqlApi, DeclarationError> {
     KernelSqlApi::new(
-        FunctionName::new("fn::kernel::gateway::task_retention_route_v1")?,
+        FunctionName::new("fn::kernel::gateway::task_retention_route")?,
         MigrationVersion::new(0),
         SqlSignature::new(
             vec![SqlParameter::new(
@@ -25,9 +25,9 @@ fn task_retention_route_v1_api() -> Result<KernelSqlApi, DeclarationError> {
     )
 }
 
-fn control_revision_current_v1_api() -> Result<KernelSqlApi, DeclarationError> {
+fn control_revision_current_api() -> Result<KernelSqlApi, DeclarationError> {
     KernelSqlApi::new(
-        FunctionName::new("fn::kernel::gateway::control_revision_current_v1")?,
+        FunctionName::new("fn::kernel::gateway::control_revision_current")?,
         MigrationVersion::new(0),
         SqlSignature::new(
             vec![
@@ -44,13 +44,13 @@ fn control_revision_current_v1_api() -> Result<KernelSqlApi, DeclarationError> {
             TableName::new("gateway_control_active")?,
             TableName::new("gateway_control_revision")?,
         ])?,
-        include_str!("gateway/migrations/control_revision_current_v1.surql"),
+        include_str!("gateway/migrations/control_revision_current.surql"),
     )
 }
 
-fn refresh_family_current_v1_api() -> Result<KernelSqlApi, DeclarationError> {
+fn refresh_family_current_api() -> Result<KernelSqlApi, DeclarationError> {
     KernelSqlApi::new(
-        FunctionName::new("fn::kernel::gateway::refresh_family_current_v1")?,
+        FunctionName::new("fn::kernel::gateway::refresh_family_current")?,
         MigrationVersion::new(0),
         SqlSignature::new(
             vec![
@@ -63,7 +63,7 @@ fn refresh_family_current_v1_api() -> Result<KernelSqlApi, DeclarationError> {
             SqlType::Option(Box::new(SqlType::Object)),
         )?,
         SqlReadProfile::new(vec![TableName::new("gateway_refresh_family")?])?,
-        include_str!("gateway/migrations/refresh_family_current_v1.surql"),
+        include_str!("gateway/migrations/refresh_family_current.surql"),
     )
 }
 
@@ -72,13 +72,13 @@ pub fn module_setup(execution: LaneExecution) -> Result<ModuleSetup, Declaration
     ModuleSetup::builder(ModuleName::new("gateway")?, ModuleLayer::Kernel)
         .ownership(vec![
             OwnershipClaim::Function(FunctionName::new(
-                "fn::kernel::gateway::control_revision_current_v1",
+                "fn::kernel::gateway::control_revision_current",
             )?),
             OwnershipClaim::Function(FunctionName::new(
-                "fn::kernel::gateway::refresh_family_current_v1",
+                "fn::kernel::gateway::refresh_family_current",
             )?),
             OwnershipClaim::Function(FunctionName::new(
-                "fn::kernel::gateway::task_retention_route_v1",
+                "fn::kernel::gateway::task_retention_route",
             )?),
             OwnershipClaim::TablePrefix(TablePrefix::new("gateway_")?),
             OwnershipClaim::Table(TableName::new("policy_revision")?),
@@ -92,9 +92,9 @@ pub fn module_setup(execution: LaneExecution) -> Result<ModuleSetup, Declaration
             CURRENT_SCHEMA,
         )?])?)
         .sql_apis(vec![
-            control_revision_current_v1_api()?,
-            refresh_family_current_v1_api()?,
-            task_retention_route_v1_api()?,
+            control_revision_current_api()?,
+            refresh_family_current_api()?,
+            task_retention_route_api()?,
         ])
         .execution(execution)
         .requires(vec![LaneRequirement::Satisfied(ModuleName::new(

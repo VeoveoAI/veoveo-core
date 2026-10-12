@@ -1,1 +1,1 @@
-RETURN fn::kernel::own::read_v2(own:x,'key');
+RETURN fn::kernel::own::read_undeclared(own:x,'key');

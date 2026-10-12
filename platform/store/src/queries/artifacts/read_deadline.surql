@@ -1,6 +1,6 @@
 LET $at = time::now();
 LET $deadlines = SELECT VALUE {
-    LET $member = fn::kernel::artifacts::read_v1(
+    LET $member = fn::kernel::artifacts::read(
         id, $tenant, $principals, $groups, $clearance, $context, $context_key, $at);
     RETURN IF type::is_object($member) THEN $member.deadline ELSE NONE END;
 }

@@ -35,6 +35,6 @@ alone does not establish their database behavior.
 `PlatformStore::artifact_read_deadline` receives the checked `ArtifactReadScope` and
 specific Artifact IDs. An absent selection covers the full collection; an empty selection
 covers no members. The query selects candidate IDs before projecting deadlines through
-`fn::kernel::artifacts::read_v1`. One database timestamp governs visibility and expiry
+`fn::kernel::artifacts::read`. One database timestamp governs visibility and expiry
 for every member. It applies no page limit and returns only the earliest admitted future
 access deadline. The MCP caller caps that deadline at its token expiry.

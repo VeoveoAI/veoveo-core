@@ -19,10 +19,10 @@ its predecessor, and the registry resolves transitive requirements before effect
 | Owner | Table claims | Function claims |
 |---|---|---|
 | Store | `changefeed_checkpoint`, `platform_module_lane`, `platform_module_migration`, `platform_module_installation` | None |
-| Identity | `tenant`, `enterprise`, `principal`, `principal_group`, `work_context`, `oauth_client` | `fn::kernel::identity::actor_admitted_v1`, `fn::kernel::identity::identity_enabled_v1`, `fn::kernel::identity::principal_summaries_v1`, `fn::kernel::identity::search_enabled_users_v1`, `fn::kernel::identity::enabled_user_v1`, `fn::kernel::identity::identity_labels_v1`, `fn::kernel::identity::tenant_current_v1`, `fn::kernel::identity::principal_current_v1`, `fn::kernel::identity::tenant_matches_v1`, `fn::kernel::identity::oauth_client_exists_v1`, `fn::kernel::identity::service_principal_available_v1`, `fn::kernel::identity::create_service_principal_v1`, `fn::kernel::identity::context_snapshot_matches_v1`, `fn::kernel::identity::tenant_context_keys_v1` |
-| Gateway | `gateway_*`, `policy_revision`, `profile`, `profile_server`, `mcp_server` | `fn::kernel::gateway::task_retention_route_v1`, `fn::kernel::gateway::control_revision_current_v1`, `fn::kernel::gateway::refresh_family_current_v1` |
-| Artifacts | `artifact_*`, `share_link` | `fn::artifact_upload_profile_digest`, `fn::artifact_upload_authority_matches`, `fn::kernel::artifacts::read_v1` |
-| Tasks | `task`, `task_input`, `task_idempotency`, `task_produced_artifact`, `task_used_artifact`, `provider_job`, `provider_event`, `domain_usage` | `fn::kernel::tasks::selection_v1`, `fn::kernel::tasks::lifecycle_v1`, `fn::kernel::tasks::input_matches_v1`, `fn::kernel::tasks::exists_v1`, `fn::kernel::tasks::release_retention_v1` |
+| Identity | `tenant`, `enterprise`, `principal`, `principal_group`, `work_context`, `oauth_client` | `fn::kernel::identity::actor_admitted`, `fn::kernel::identity::identity_enabled`, `fn::kernel::identity::principal_summaries`, `fn::kernel::identity::search_enabled_users`, `fn::kernel::identity::enabled_user`, `fn::kernel::identity::identity_labels`, `fn::kernel::identity::tenant_current`, `fn::kernel::identity::principal_current`, `fn::kernel::identity::tenant_matches`, `fn::kernel::identity::oauth_client_exists`, `fn::kernel::identity::service_principal_available`, `fn::kernel::identity::create_service_principal`, `fn::kernel::identity::context_snapshot_matches`, `fn::kernel::identity::tenant_context_keys` |
+| Gateway | `gateway_*`, `policy_revision`, `profile`, `profile_server`, `mcp_server` | `fn::kernel::gateway::task_retention_route`, `fn::kernel::gateway::control_revision_current`, `fn::kernel::gateway::refresh_family_current` |
+| Artifacts | `artifact_*`, `share_link` | `fn::artifact_upload_profile_digest`, `fn::artifact_upload_authority_matches`, `fn::kernel::artifacts::read` |
+| Tasks | `task`, `task_input`, `task_idempotency`, `task_produced_artifact`, `task_used_artifact`, `provider_job`, `provider_event`, `domain_usage` | `fn::kernel::tasks::selection`, `fn::kernel::tasks::lifecycle`, `fn::kernel::tasks::input_matches`, `fn::kernel::tasks::exists`, `fn::kernel::tasks::release_retention` |
 | Audit | `audit_*` | `fn::append_audit`, `fn::append_audit_indexing` |
 | Knowledge | `knowledge_*` | None |
 
@@ -84,29 +84,29 @@ covering introduction; callers inspect every argument under the read-only profil
 
 | API | Owned reads and effect |
 |---|---|
-| `fn::kernel::identity::actor_admitted_v1` | Reads `tenant`, `work_context` and `principal`; checks supplied context digest and optional human requirement |
-| `fn::kernel::identity::identity_enabled_v1` | Reads those same Identity tables for current enabled identity |
-| `fn::kernel::identity::principal_summaries_v1` | Reads `principal`; returns tenant-scoped ID/name pairs for at most 256 supplied IDs, including disabled and service actors |
-| `fn::kernel::identity::search_enabled_users_v1` | Reads `principal`; filters enabled human users by tenant and lowercase name substring before ordering by name and limiting to 20 |
-| `fn::kernel::identity::enabled_user_v1` | Reads `principal`; returns whether one supplied principal is an enabled human in the supplied tenant |
-| `fn::kernel::identity::identity_labels_v1` | Reads `tenant`, `work_context` and `principal`; returns person, tenant name and context title when both records belong to that tenant, otherwise `NONE` |
-| `fn::kernel::identity::tenant_current_v1` | Reads `enterprise` and `tenant`; returns the tenant slug when both are enabled and their parent relationship agrees |
-| `fn::kernel::identity::principal_current_v1` | Reads `principal`; returns kind, issuer and subject when the principal is enabled and belongs to the supplied tenant |
-| `fn::kernel::identity::tenant_matches_v1` | Reads `enterprise` and `tenant`; checks retained parent and slug identity without granting enabled authority |
-| `fn::kernel::identity::oauth_client_exists_v1` | Reads `oauth_client`; checks retained global client-ID presence, including disabled registrations |
-| `fn::kernel::identity::service_principal_available_v1` | Reads `principal` and `oauth_client`; checks absence of the proposed principal and client ID before Agent capacity reservation |
-| `fn::kernel::identity::create_service_principal_v1` | Creates one supplied `principal` through `OwnedCreate`, assigning only tenant, kind, issuer, subject, display name, claims hash and enabled state in the enclosing Agent transaction |
-| `fn::kernel::identity::context_snapshot_matches_v1` | Reads `work_context`; checks the supplied tenant and policy/membership/output-policy digest without adding enabled authority |
-| `fn::kernel::identity::tenant_context_keys_v1` | Reads `tenant` and `work_context`; returns retained slug and context key only when both records exist and the context belongs to that tenant |
-| `fn::kernel::gateway::task_retention_route_v1` | Reads one `gateway_task_route` and returns its source Task and server; missing route throws |
-| `fn::kernel::gateway::control_revision_current_v1` | Reads `gateway_control_active` and the selected revision; checks active revision identity and digest agreement |
-| `fn::kernel::gateway::refresh_family_current_v1` | Reads one `gateway_refresh_family`; returns its expiry when unrevoked and unexpired at the supplied transaction time |
-| `fn::kernel::artifacts::read_v1` | Reads one `artifact_occurrence` and its `artifact_grant` edges; applies current scope and a supplied database timestamp, returning admitted opaque metadata, observation material and the next future expiry |
-| `fn::kernel::tasks::selection_v1` | Reads one `task`; returns the admitted object or `NONE` |
-| `fn::kernel::tasks::lifecycle_v1` | Trusted service selection of one Task by exact record, server, tenant and operation; returns lifecycle and typed ownership metadata plus whole-result agreement, without payloads or caller authorization |
-| `fn::kernel::tasks::input_matches_v1` | Compares the complete object-valued input of one exact Task record with a supplied receipt; missing Task/request or unequal input returns false, without exposing input or authenticating a caller |
-| `fn::kernel::tasks::exists_v1` | Returns exact Task record presence, distinguishing absence from lifecycle identity denial; grants no caller authorization and exposes no payload |
-| `fn::kernel::tasks::release_retention_v1` | Reads one `task` and updates only its `retention_pins`; checks expected server and existing pin |
+| `fn::kernel::identity::actor_admitted` | Reads `tenant`, `work_context` and `principal`; checks supplied context digest and optional human requirement |
+| `fn::kernel::identity::identity_enabled` | Reads those same Identity tables for current enabled identity |
+| `fn::kernel::identity::principal_summaries` | Reads `principal`; returns tenant-scoped ID/name pairs for at most 256 supplied IDs, including disabled and service actors |
+| `fn::kernel::identity::search_enabled_users` | Reads `principal`; filters enabled human users by tenant and lowercase name substring before ordering by name and limiting to 20 |
+| `fn::kernel::identity::enabled_user` | Reads `principal`; returns whether one supplied principal is an enabled human in the supplied tenant |
+| `fn::kernel::identity::identity_labels` | Reads `tenant`, `work_context` and `principal`; returns person, tenant name and context title when both records belong to that tenant, otherwise `NONE` |
+| `fn::kernel::identity::tenant_current` | Reads `enterprise` and `tenant`; returns the tenant slug when both are enabled and their parent relationship agrees |
+| `fn::kernel::identity::principal_current` | Reads `principal`; returns kind, issuer and subject when the principal is enabled and belongs to the supplied tenant |
+| `fn::kernel::identity::tenant_matches` | Reads `enterprise` and `tenant`; checks retained parent and slug identity without granting enabled authority |
+| `fn::kernel::identity::oauth_client_exists` | Reads `oauth_client`; checks retained global client-ID presence, including disabled registrations |
+| `fn::kernel::identity::service_principal_available` | Reads `principal` and `oauth_client`; checks absence of the proposed principal and client ID before Agent capacity reservation |
+| `fn::kernel::identity::create_service_principal` | Creates one supplied `principal` through `OwnedCreate`, assigning only tenant, kind, issuer, subject, display name, claims hash and enabled state in the enclosing Agent transaction |
+| `fn::kernel::identity::context_snapshot_matches` | Reads `work_context`; checks the supplied tenant and policy/membership/output-policy digest without adding enabled authority |
+| `fn::kernel::identity::tenant_context_keys` | Reads `tenant` and `work_context`; returns retained slug and context key only when both records exist and the context belongs to that tenant |
+| `fn::kernel::gateway::task_retention_route` | Reads one `gateway_task_route` and returns its source Task and server; missing route throws |
+| `fn::kernel::gateway::control_revision_current` | Reads `gateway_control_active` and the selected revision; checks active revision identity and digest agreement |
+| `fn::kernel::gateway::refresh_family_current` | Reads one `gateway_refresh_family`; returns its expiry when unrevoked and unexpired at the supplied transaction time |
+| `fn::kernel::artifacts::read` | Reads one `artifact_occurrence` and its `artifact_grant` edges; applies current scope and a supplied database timestamp, returning admitted opaque metadata, observation material and the next future expiry |
+| `fn::kernel::tasks::selection` | Reads one `task`; returns the admitted object or `NONE` |
+| `fn::kernel::tasks::lifecycle` | Trusted service selection of one Task by exact record, server, tenant and operation; returns lifecycle and typed ownership metadata plus whole-result agreement, without payloads or caller authorization |
+| `fn::kernel::tasks::input_matches` | Compares the complete object-valued input of one exact Task record with a supplied receipt; missing Task/request or unequal input returns false, without exposing input or authenticating a caller |
+| `fn::kernel::tasks::exists` | Returns exact Task record presence, distinguishing absence from lifecycle identity denial; grants no caller authorization and exposes no payload |
+| `fn::kernel::tasks::release_retention` | Reads one `task` and updates only its `retention_pins`; checks expected server and existing pin |
 
 Identity's metadata leaves use specific tenant, principal and Work Context record
 parameters. Principal summaries reject arrays above 256 entries before reading and
@@ -115,7 +115,7 @@ tenant IDs produce none. Historical attribution does not require an enabled prin
 Identity labels check record existence and both tenant relationships. These read-only
 leaves neither authenticate their supplied scope nor call other exports. Workspace
 owns human search input validation and all chat, invitation and run predicates. Its
-invitation transaction calls `enabled_user_v1` before mutations, and inbox metadata
+invitation transaction calls `enabled_user` before mutations, and inbox metadata
 resolves only the inviters selected by Workspace's pending-invitation query.
 
 Task selection takes thirteen typed bindings: Task, server, tenant, owner, profile,
@@ -140,7 +140,7 @@ Task, within its existing result-consumption transaction. The leaves neither cal
 foreign private functions nor commit independently. Supplied scope originates in
 service admission; these functions do not authenticate arbitrary caller values.
 
-Artifacts exports `fn::kernel::artifacts::read_v1` for exact occurrence admission.
+Artifacts exports `fn::kernel::artifacts::read` for exact occurrence admission.
 Its typed inputs separate principal and group subjects and include one database
 query timestamp. The leaf owns tenant, labels, classification, context, current
 grants and retention checks. Denial returns NONE; admitted reads return opaque
@@ -151,13 +151,13 @@ vocabulary into the kernel or querying paths inside opaque metadata.
 
 ### Directory And Session Facts
 
-Identity exports `tenant_current_v1` and `principal_current_v1` as minimal enabled
+Identity exports `tenant_current` and `principal_current` as minimal enabled
 facts with checked enterprise and tenant parents. `kernel_facts.rs` decodes their
-slug, kind, issuer and subject through nominal types. `tenant_matches_v1` checks
+slug, kind, issuer and subject through nominal types. `tenant_matches` checks
 only retained parent and slug identity; worker recovery can use it after directory
 revocation without acquiring admission authority. Gateway exports
-`control_revision_current_v1` for the active revision identity and digest, and
-`refresh_family_current_v1` for an unrevoked family expiry at the caller's
+`control_revision_current` for the active revision identity and digest, and
+`refresh_family_current` for an unrevoked family expiry at the caller's
 transaction clock. Consumers keep their domain policy and compare returned facts
 inside the same transaction as their mutations.
 

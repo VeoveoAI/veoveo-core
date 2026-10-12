@@ -14,7 +14,7 @@ fn kernel(sql: &'static str) -> ModuleSetup {
     ModuleSetup::builder(ModuleName::new("own").unwrap(), ModuleLayer::Kernel)
         .ownership(vec![
             OwnershipClaim::Table(TableName::new("own").unwrap()),
-            OwnershipClaim::Function(FunctionName::new("fn::kernel::own::read_v1").unwrap()),
+            OwnershipClaim::Function(FunctionName::new("fn::kernel::own::read").unwrap()),
         ])
         .execution(host())
         .lane(
@@ -30,7 +30,7 @@ fn kernel(sql: &'static str) -> ModuleSetup {
         )
         .sql_apis(vec![
             KernelSqlApi::new(
-                FunctionName::new("fn::kernel::own::read_v1").unwrap(),
+                FunctionName::new("fn::kernel::own::read").unwrap(),
                 MigrationVersion::new(0),
                 SqlSignature::new(
                     vec![
@@ -93,7 +93,7 @@ fn read_only_bodies_reject_writes_private_calls_and_foreign_reads() {
     for sql in [
         SAFE.replace("LET $rows =", "DELETE own; LET $rows ="),
         SAFE.replace("SELECT * FROM own", "SELECT * FROM foreign"),
-        SAFE.replace("array::first($rows)", "fn::kernel::own::read_v1(own:x,'x')"),
+        SAFE.replace("array::first($rows)", "fn::kernel::own::read(own:x,'x')"),
         SAFE.replace("$payload.key=$key", "fn::private((DELETE own))=$key"),
     ] {
         assert!(!admitted(leaked(sql.clone())), "must reject: {sql}");
@@ -251,7 +251,7 @@ fn api_cannot_be_exported_by_an_optional_or_differently_named_owner() {
                 .is_err()
         );
     }
-    let different_name = SAFE.replace("kernel::own::read_v1", "kernel::own::private_v1");
+    let different_name = SAFE.replace("kernel::own::read", "kernel::own::private");
     // Export metadata cannot relabel another function's otherwise matching definition.
     let changed = kernel(leaked(different_name));
     let registry = ModuleRegistry::new(vec![changed]).unwrap();
@@ -591,7 +591,7 @@ fn ordinary_schema_permissions_and_comments_cannot_call_updating_exports() {
 
 fn datetime_api(sql: &'static str) -> ModuleSetup {
     let api = KernelSqlApi::new(
-        FunctionName::new("fn::kernel::own::at_v1").unwrap(),
+        FunctionName::new("fn::kernel::own::at").unwrap(),
         MigrationVersion::new(0),
         SqlSignature::new(
             vec![SqlParameter::new("at", SqlType::Datetime).unwrap()],

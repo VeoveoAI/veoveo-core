@@ -604,7 +604,7 @@ async fn native_owned_update_api_and_caller_settle_or_roll_back_in_one_transacti
         let sql = include_str!("../../queries/tests/executor/native_owned_update_api_and_caller_settle_or_roll_back_in_one_transaction/initial.surql");
         let owner = module("store", "fixture_marker", ModuleLayer::Kernel, vec![migration(0, "initial", sql, vec![])], vec![]);
         let api = KernelSqlApi::new(
-            FunctionName::new("fn::kernel::store::update_v1").unwrap(), MigrationVersion::new(0),
+            FunctionName::new("fn::kernel::store::update").unwrap(), MigrationVersion::new(0),
             SqlSignature::new(vec![SqlParameter::new("id", SqlType::Record(TableName::new("fixture_marker").unwrap())).unwrap(), SqlParameter::new("value", SqlType::String).unwrap()], SqlType::Bool).unwrap(),
             SqlReadProfile::new(vec![TableName::new("fixture_marker").unwrap()]).unwrap(), API,
         ).unwrap().with_effects(SqlEffectProfile::OwnedUpdate(SqlUpdateProfile::new(TableName::new("fixture_marker").unwrap(), vec![SqlFieldName::new("value").unwrap()]).unwrap()));

@@ -1,4 +1,4 @@
-DEFINE FUNCTION fn::kernel::tasks::input_matches_v1($task: record<task>, $expected_input: object) -> bool {
+DEFINE FUNCTION fn::kernel::tasks::input_matches($task: record<task>, $expected_input: object) -> bool {
     LET $current = SELECT * FROM ONLY $task;
     RETURN IF type::is_object($current) THEN {
         LET $request = $current.request;

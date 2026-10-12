@@ -1,1 +1,1 @@
-RETURN fn::kernel::own::read_v1(own:x,<string>fn::kernel::own::read_v1(own:x,'nested'));
+RETURN fn::kernel::own::read(own:x,<string>fn::kernel::own::read(own:x,'nested'));

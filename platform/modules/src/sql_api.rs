@@ -138,7 +138,7 @@ pub enum SqlEffectProfile {
     OwnedUpdate(SqlUpdateProfile),
     OwnedCreate(SqlCreateProfile),
 }
-/// A versioned leaf function with a declared effect profile. The runner qualifies the full exact definition.
+/// An exact leaf function with a declared effect profile. The runner qualifies the full exact definition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KernelSqlApi {
     name: FunctionName,
@@ -156,17 +156,12 @@ impl KernelSqlApi {
         reads: SqlReadProfile,
         definition: &'static str,
     ) -> Result<Self, DeclarationError> {
-        let version = name
-            .as_str()
-            .rsplit_once("_v")
-            .and_then(|(_, v)| v.parse::<u32>().ok());
         if !name.as_str().starts_with("fn::kernel::")
-            || version.is_none_or(|v| v == 0 || !name.as_str().ends_with(&format!("_v{v}")))
             || definition.trim().is_empty()
             || definition.len() > 1_048_576
         {
             return Err(DeclarationError::new(
-                "kernel SQL API needs a versioned exact function name and bounded definition",
+                "kernel SQL API needs an exact `fn::kernel::` function name and bounded definition",
             ));
         }
         Ok(Self {

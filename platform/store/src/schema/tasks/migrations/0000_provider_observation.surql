@@ -1,5 +1,5 @@
--- Whole opaque observation facts; caller authorization is a separate selection_v1 admission.
-DEFINE FUNCTION fn::kernel::tasks::provider_observation_v1(
+-- Whole opaque observation facts; caller authorization is a separate selection admission.
+DEFINE FUNCTION fn::kernel::tasks::provider_observation(
     $job: record<provider_job>, $task: record<task>, $server: record<mcp_server>,
     $tenant: record<tenant>, $task_types: array<string>, $provider: string
 ) -> option<object> {

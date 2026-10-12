@@ -1,5 +1,5 @@
 -- Retained identity integrity does not grant current admission authority.
-DEFINE FUNCTION fn::kernel::identity::tenant_matches_v1(
+DEFINE FUNCTION fn::kernel::identity::tenant_matches(
     $enterprise: record<enterprise>, $tenant: record<tenant>, $slug: string
 ) -> bool {
     LET $organization = SELECT * FROM ONLY $enterprise;

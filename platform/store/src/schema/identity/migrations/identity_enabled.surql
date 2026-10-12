@@ -1,4 +1,4 @@
-DEFINE FUNCTION fn::kernel::identity::identity_enabled_v1($tenant: record<tenant>, $context: record<work_context>, $principal: record<principal>) -> bool {
+DEFINE FUNCTION fn::kernel::identity::identity_enabled($tenant: record<tenant>, $context: record<work_context>, $principal: record<principal>) -> bool {
     LET $organization = SELECT * FROM ONLY $tenant;
     LET $actor = SELECT * FROM ONLY $principal;
     LET $current = SELECT * FROM ONLY $context;

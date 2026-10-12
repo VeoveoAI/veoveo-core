@@ -1,4 +1,4 @@
-DEFINE FUNCTION fn::kernel::identity::tenant_context_keys_v1($tenant: record<tenant>, $context: record<work_context>) -> option<object> {
+DEFINE FUNCTION fn::kernel::identity::tenant_context_keys($tenant: record<tenant>, $context: record<work_context>) -> option<object> {
     LET $organization = SELECT * FROM ONLY $tenant;
     LET $current = SELECT * FROM ONLY $context;
     RETURN IF type::is_object($organization) THEN

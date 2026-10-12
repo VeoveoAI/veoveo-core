@@ -1,1 +1,1 @@
-RETURN fn::kernel::own::read_v1(own:x,(DELETE consumer));
+RETURN fn::kernel::own::read(own:x,(DELETE consumer));

@@ -92,7 +92,7 @@ executable field child use the ordinary admission policy. Runner history tables
 cannot appear in either profile. Optional modules cannot directly read kernel data. Analyzer MAPPER filters are rejected because they load external files. Private calls within one owner inspect the complete callee body and every transitive
 call under the callee's ownership. Calls between optional owners require a declared
 dependency, a concrete minimum covering introduction and a read-only callee. Optional
-calls into a kernel use declared versioned `KernelSqlApi` leaves. The builtin profile
+calls into a kernel use declared `KernelSqlApi` leaves. The builtin profile
 excludes network, file, scripting and provider effects. Pure `bytes::len` and
 `string::matches` support UTF-8 byte limits and Unicode control-character admission;
 the runner inspects every argument under its read-only owner rules before admitting
@@ -269,7 +269,7 @@ host. A runtime contribution binds its table against this declaration; that chec
 neither installs the table nor proves registry agreement. `ModuleSetup` uses the same
 value and adds composition-supplied execution, dependencies and lane history.
 
-A kernel owner exports an exact versioned `KernelSqlApi`. The default effect profile
+A kernel owner exports an exact `KernelSqlApi`; an incompatible change takes a new name. The default effect profile
 is read-only. An explicit `OwnedUpdate` profile names one owned table and its checked
 top-level fields. `OwnedCreate` names one owned table and its checked top-level
 fields, and requires `CREATE ONLY` with one statically typed record target. The declaration names the
@@ -303,7 +303,7 @@ of stored object shape.
 A migration calling an API must declare its owner's dependency and an explicit
 per-migration minimum covering introduction. Admission checks the exact API name,
 argument count and proven types, including specific record tables. It inspects every
-argument and rejects argument-side mutation, including calls to mutating exports. Private functions and undeclared versions
+argument and rejects argument-side mutation, including calls to mutating exports. Private and undeclared functions
 cannot become callable through a namespace prefix. Runtime services bind admitted
 caller scope through their owner contracts; the SQL API does not authenticate an
 arbitrary supplied scope.

@@ -1,4 +1,4 @@
-DEFINE FUNCTION fn::kernel::identity::tenant_current_v1($enterprise: record<enterprise>, $tenant: record<tenant>) -> option<object> {
+DEFINE FUNCTION fn::kernel::identity::tenant_current($enterprise: record<enterprise>, $tenant: record<tenant>) -> option<object> {
     LET $organization = SELECT * FROM ONLY $enterprise;
     LET $current = SELECT * FROM ONLY $tenant;
     RETURN IF type::is_object($organization) THEN

@@ -5,7 +5,7 @@ IF $_webhook_task = NONE
     OR $_webhook_task.task_type != $task_type OR $_webhook_task.recovery_class != 'webhook_wait'
     OR $_webhook_task.request != $expected_request
     OR $_webhook_task.owner_context != $expected_owner_context
-    OR fn::kernel::tasks::lifecycle_v1($task, $server, $tenant, [$task_type], NONE) = NONE {
+    OR fn::kernel::tasks::lifecycle($task, $server, $tenant, [$task_type], NONE) = NONE {
     THROW 'task_webhook_identity_conflict';
 };
 LET $_webhook_job = SELECT * FROM ONLY $job;

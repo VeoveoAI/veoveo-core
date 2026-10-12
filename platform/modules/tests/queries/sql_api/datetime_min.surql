@@ -1,1 +1,1 @@
-DEFINE FUNCTION fn::kernel::own::at_v1($at: datetime) -> object { RETURN { at: array::min([$at]) }; } PERMISSIONS FULL;
+DEFINE FUNCTION fn::kernel::own::at($at: datetime) -> object { RETURN { at: array::min([$at]) }; } PERMISSIONS FULL;

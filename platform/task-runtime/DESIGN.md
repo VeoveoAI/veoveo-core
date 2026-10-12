@@ -591,7 +591,7 @@ admission, operation changes during delivery and Store reconnect after event rem
 
 ## Trusted Lifecycle Reads
 
-The Tasks schema exports `fn::kernel::tasks::lifecycle_v1` for owner maintenance.
+The Tasks schema exports `fn::kernel::tasks::lifecycle` for owner maintenance.
 It selects an exact Task identity with server, tenant and operation constraints.
 The returned object includes lifecycle dates, status, recovery and retention data,
 and typed ownership links. A supplied complete result payload yields only a

@@ -1,5 +1,5 @@
 -- Pure admission: outer queries obtain one database timestamp and bind it here.
-DEFINE FUNCTION fn::kernel::artifacts::read_v1(
+DEFINE FUNCTION fn::kernel::artifacts::read(
     $artifact: record<artifact_occurrence>, $tenant: record<tenant>,
     $principals: array<record<principal>>, $groups: array<record<principal_group>>,
     $clearance: array<string>, $context: option<record<work_context>>,

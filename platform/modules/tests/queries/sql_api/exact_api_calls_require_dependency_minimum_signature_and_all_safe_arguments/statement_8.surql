@@ -1,1 +1,1 @@
-RETURN fn::kernel::own::read_v1(own:x);
+RETURN fn::kernel::own::read(own:x);

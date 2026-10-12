@@ -1,6 +1,6 @@
 LET $at = time::now();
 RETURN (SELECT * FROM artifact_occurrence
-WHERE tenant = $tenant AND fn::kernel::artifacts::read_v1(id, $tenant, $principals, $groups, $clearance, $context, $context_key, $at) != NONE
+WHERE tenant = $tenant AND fn::kernel::artifacts::read(id, $tenant, $principals, $groups, $clearance, $context, $context_key, $at) != NONE
     AND ($artifact = NONE OR id = $artifact)
     AND ($cursor = NONE OR id < $cursor)
 ORDER BY id DESC

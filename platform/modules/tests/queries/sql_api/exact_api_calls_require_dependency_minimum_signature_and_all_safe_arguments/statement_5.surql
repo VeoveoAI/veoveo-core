@@ -1,1 +1,1 @@
-RETURN fn::kernel::own::read_v1({id:own:x},'key');
+RETURN fn::kernel::own::read({id:own:x},'key');

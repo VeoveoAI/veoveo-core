@@ -6,6 +6,6 @@ IF $_dispatch_task = NONE
     OR $_dispatch_task.request != $expected_request
     OR $_dispatch_task.owner_context != $expected_owner_context
     OR $_dispatch_task.updated_at != $expected_updated_at
-    OR fn::kernel::tasks::lifecycle_v1($task, $server, $tenant, [$task_type], NONE) = NONE {
+    OR fn::kernel::tasks::lifecycle($task, $server, $tenant, [$task_type], NONE) = NONE {
     THROW 'task_dispatch_fence_conflict';
 };

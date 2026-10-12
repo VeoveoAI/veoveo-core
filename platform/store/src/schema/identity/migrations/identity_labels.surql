@@ -1,4 +1,4 @@
-DEFINE FUNCTION fn::kernel::identity::identity_labels_v1($tenant: record<tenant>, $context: record<work_context>, $principal: record<principal>) -> option<object> {
+DEFINE FUNCTION fn::kernel::identity::identity_labels($tenant: record<tenant>, $context: record<work_context>, $principal: record<principal>) -> option<object> {
     LET $organization = SELECT * FROM ONLY $tenant;
     LET $current = SELECT * FROM ONLY $context;
     LET $actor = SELECT * FROM ONLY $principal;

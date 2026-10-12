@@ -1,5 +1,5 @@
 -- Caller scope is service-admitted. This function reads persisted Task policy, not a caller object.
-DEFINE FUNCTION fn::kernel::tasks::selection_v1(
+DEFINE FUNCTION fn::kernel::tasks::selection(
     $task: record<task>,
     $server: record<mcp_server>,
     $tenant: record<tenant>,

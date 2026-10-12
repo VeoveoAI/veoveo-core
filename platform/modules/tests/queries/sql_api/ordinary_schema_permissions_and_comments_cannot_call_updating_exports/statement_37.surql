@@ -1,1 +1,1 @@
-DEFINE FUNCTION fn::consumer() { RETURN true; } PERMISSIONS WHERE fn::kernel::own::read_v1(own:x,'key');
+DEFINE FUNCTION fn::consumer() { RETURN true; } PERMISSIONS WHERE fn::kernel::own::read(own:x,'key');

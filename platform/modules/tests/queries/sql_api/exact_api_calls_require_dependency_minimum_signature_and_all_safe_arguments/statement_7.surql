@@ -1,1 +1,1 @@
-RETURN fn::kernel::own::read_v1($untyped,'key');
+RETURN fn::kernel::own::read($untyped,'key');

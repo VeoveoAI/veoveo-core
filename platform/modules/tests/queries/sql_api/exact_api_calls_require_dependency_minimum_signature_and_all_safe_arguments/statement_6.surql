@@ -1,1 +1,1 @@
-RETURN fn::kernel::own::read_v1(consumer:x,'key');
+RETURN fn::kernel::own::read(consumer:x,'key');

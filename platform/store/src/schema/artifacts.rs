@@ -4,13 +4,13 @@ use veoveo_modules::*;
 
 const BASE_SCHEMA: &str = concat!(
     include_str!("artifacts/migrations/0000_current.surql"),
-    include_str!("artifacts/migrations/read_v1.surql")
+    include_str!("artifacts/migrations/read.surql")
 );
 
 /// Complete current fresh-installation schema, including append-only receipt admission.
 pub const CURRENT_SCHEMA: &str = concat!(
     include_str!("artifacts/migrations/0000_current.surql"),
-    include_str!("artifacts/migrations/read_v1.surql"),
+    include_str!("artifacts/migrations/read.surql"),
     include_str!("artifacts/migrations/0001_request_format.surql")
 );
 
@@ -19,7 +19,7 @@ fn read_api() -> Result<KernelSqlApi, DeclarationError> {
     let array = |kind| SqlType::Array(Box::new(kind));
     let optional = |kind| SqlType::Option(Box::new(kind));
     KernelSqlApi::new(
-        FunctionName::new("fn::kernel::artifacts::read_v1")?,
+        FunctionName::new("fn::kernel::artifacts::read")?,
         MigrationVersion::new(0),
         SqlSignature::new(
             vec![
@@ -38,7 +38,7 @@ fn read_api() -> Result<KernelSqlApi, DeclarationError> {
             TableName::new("artifact_occurrence")?,
             TableName::new("artifact_grant")?,
         ])?,
-        include_str!("artifacts/migrations/read_v1.surql"),
+        include_str!("artifacts/migrations/read.surql"),
     )
 }
 
@@ -46,7 +46,7 @@ fn read_api() -> Result<KernelSqlApi, DeclarationError> {
 pub fn module_setup(execution: LaneExecution) -> Result<ModuleSetup, DeclarationError> {
     ModuleSetup::builder(ModuleName::new("artifacts")?, ModuleLayer::Kernel)
         .ownership(vec![
-            OwnershipClaim::Function(FunctionName::new("fn::kernel::artifacts::read_v1")?),
+            OwnershipClaim::Function(FunctionName::new("fn::kernel::artifacts::read")?),
             OwnershipClaim::TablePrefix(TablePrefix::new("artifact_")?),
             OwnershipClaim::Table(TableName::new("share_link")?),
             OwnershipClaim::Function(FunctionName::new("fn::artifact_upload_profile_digest")?),
