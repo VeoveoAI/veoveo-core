@@ -3311,6 +3311,7 @@ dependencies = [
  "schemars_derive",
  "serde",
  "serde_json",
+ "url",
  "uuid",
 ]
 
@@ -3344,6 +3345,7 @@ version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
 dependencies = [
+ "serde",
  "zeroize",
 ]
 
@@ -4864,6 +4866,33 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "veoveo-macros",
+ "veoveo-types",
+]
+
+[[package]]
+name = "veoveo-mcp-registration-extension"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "jsonschema",
+ "jsonwebtoken",
+ "reqwest",
+ "rmcp",
+ "rustls",
+ "schemars",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "veoveo-modules",
  "veoveo-types",
 ]
 

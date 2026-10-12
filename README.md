@@ -28,6 +28,7 @@ revision of this repository.
 | `mcp/contract` | `veoveo-mcp-contract` | The hosted MCP server contract and its hosting runtime |
 | `mcp/apps-extension` | `veoveo-mcp-apps-extension` | The MCP Apps extension |
 | `mcp/knowledge-extension` | `veoveo-mcp-knowledge-extension` | The `ai.veoveo/knowledge-source` extension |
+| `mcp/registration-extension` | `veoveo-mcp-registration-extension` | The server registration protocol: the `ai.veoveo/registration`, `ai.veoveo/authorization` and `ai.veoveo/module` declarations, RFC 7591 and RFC 7592 registration types, granted-permission details and the registration client servers run |
 | `mcp/conformance` | `veoveo-mcp-conformance` | Hosted server conformance checks |
 | `testing/fixtures/modular-mcp` | `veoveo-modular-fixture-mcp` | An independently typed server used as a conformance and Gateway test peer |
 | `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable SurrealDB store and tool-input cases |

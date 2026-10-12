@@ -5,6 +5,7 @@ members = [
     "mcp/conformance",
     "mcp/contract",
     "mcp/knowledge-extension",
+    "mcp/registration-extension",
     "platform/artifacts/client",
     "platform/artifacts/contract",
     "platform/audit",
@@ -100,6 +101,7 @@ zeroize = "=1.9.0"
 veoveo-mcp-contract = { path = "mcp/contract", default-features = false }
 veoveo-types = { path = "platform/types" }
 veoveo-modules = { path = "platform/modules", default-features = false }
+veoveo-mcp-registration-extension = { path = "mcp/registration-extension", default-features = false }
 veoveo-gateway-contract = { path = "platform/gateway/contract" }
 veoveo-artifact-client = { path = "platform/artifacts/client" }
 veoveo-artifact-contract = { path = "platform/artifacts/contract" }
