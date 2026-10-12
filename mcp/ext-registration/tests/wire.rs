@@ -509,7 +509,10 @@ fn database_grants_name_one_postgres_database_and_role() {
         ("url", json!("ws://surrealdb:8000/")),
         ("url", json!("postgres://postgres.internal:5432/")),
         ("url", json!("postgres://postgres.internal/veoveo/extra")),
-        ("url", json!("postgres://clock:secret@postgres.internal/veoveo")),
+        (
+            "url",
+            json!("postgres://clock:secret@postgres.internal/veoveo"),
+        ),
         ("url", json!("postgres://postgres.internal/veoveo#fragment")),
         ("username", json!("Clock")),
         ("username", json!("0clock")),

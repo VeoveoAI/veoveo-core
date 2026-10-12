@@ -33,10 +33,9 @@ pub use grants::{PERMISSIONS_DETAIL_TYPE, PermissionsDetail, PermissionsDetailTy
 pub use jwk::{Ed25519Jwk, Ed25519JwkSet, JwkKeyId, ServerKeySet, ServerPublicKey};
 pub use oauth::{
     AccessTokenTrust, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
-    ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DatabaseIdentifier,
-    DatabaseUrl, GrantType, RegistrationAccessToken, RegistrationErrorCode,
-    RegistrationErrorResponse, RegistrationLease, ResponseType, SoftwareStatement,
-    TokenEndpointAuthMethod, issuer_url,
+    ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DatabaseIdentifier, DatabaseUrl,
+    GrantType, RegistrationAccessToken, RegistrationErrorCode, RegistrationErrorResponse,
+    RegistrationLease, ResponseType, SoftwareStatement, TokenEndpointAuthMethod, issuer_url,
 };
 pub use registration::{RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerVersion};
 
