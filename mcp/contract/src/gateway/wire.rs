@@ -1,4 +1,4 @@
-use url::{Host, Url};
+use url::Url;
 
 use super::*;
 
@@ -42,18 +42,12 @@ pub(super) fn validate_oauth_endpoint_url(value: &str) -> Result<(), IdentifierE
     match url.scheme() {
         "https" if url.host().is_some() => Ok(()),
         "http" => {
-            let is_loopback = match url.host() {
-                Some(Host::Domain(host)) => host == "localhost",
-                Some(Host::Ipv4(addr)) => addr.is_loopback(),
-                Some(Host::Ipv6(addr)) => addr.is_loopback(),
-                None => false,
-            };
-            if is_loopback && url.port().is_some_and(|port| port != 0) {
+            if veoveo_types::is_local_host(&url) && url.port().is_some_and(|port| port != 0) {
                 return Ok(());
             }
             Err(IdentifierError::new(
                 value,
-                "http:// OAuth endpoints must use a loopback host and explicit non-zero port",
+                "http:// OAuth endpoints must use a local host and explicit non-zero port",
             ))
         }
         _ => Err(IdentifierError::new(

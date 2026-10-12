@@ -88,19 +88,7 @@ impl From<ServerEndpoint> for url::Url {
     }
 }
 
-/// Whether a plain-HTTP URL is allowed for this host: only a local installation's
-/// loopback names (RFC 6761 `localhost` and `*.localhost`), loopback addresses and
-/// OpenShell's host alias `host.openshell.internal`, which reaches the host loopback.
-pub fn is_local_host(url: &url::Url) -> bool {
-    match url.host() {
-        Some(url::Host::Domain(name)) => {
-            name == "localhost" || name.ends_with(".localhost") || name == "host.openshell.internal"
-        }
-        Some(url::Host::Ipv4(address)) => address.is_loopback(),
-        Some(url::Host::Ipv6(address)) => address.is_loopback(),
-        None => false,
-    }
-}
+pub use veoveo_types::is_local_host;
 
 /// An HTTPS URL, or an HTTP URL on a local host, with a host and without credentials,
 /// query or fragment.

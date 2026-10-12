@@ -11,7 +11,8 @@
 
 The library signs assertions without HTTP, database or authorization dependencies.
 Owners admit credential files and token endpoints. Worker assertions take an admitted
-OAuth client identity and canonical HTTPS token endpoint, expire after 60 seconds,
+OAuth client identity and a token endpoint that uses `https`, or `http` on a local
+host as the [conventions](../../docs/CONVENTIONS.md#http-paths) allow. They expire after 60 seconds,
 and generate a new assertion identifier on every call. Secret results expose text
 only through an explicit method and clear their owned text on drop.
 

@@ -5,6 +5,20 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+/// Whether plain HTTP is allowed for this URL's host: only a local installation's
+/// loopback names (RFC 6761 `localhost` and `*.localhost`), loopback addresses and
+/// OpenShell's host alias `host.openshell.internal`, which reaches the host loopback.
+pub fn is_local_host(url: &Url) -> bool {
+    match url.host() {
+        Some(url::Host::Domain(name)) => {
+            name == "localhost" || name.ends_with(".localhost") || name == "host.openshell.internal"
+        }
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    }
+}
+
 /// Canonical HTTPS URL without credentials or a fragment. Query spelling,
 /// order and repeated names are preserved, including signed URL parameters.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

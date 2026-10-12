@@ -83,13 +83,19 @@ impl ClientAssertionSigner {
         jwk.common.key_id = Some(self.key_id.to_string());
         Ok(jwk)
     }
-    /// Worker assertions bind the exact canonical token endpoint and expire after 60 seconds.
+    /// Worker assertions bind the exact canonical token endpoint and expire after 60
+    /// seconds. The endpoint uses https, or http on a local host.
     pub fn assertion(
         &self,
         client: &OAuthClientId,
         endpoint: &url::Url,
     ) -> Result<ClientAssertion, AssertionError> {
-        if endpoint.scheme() != "https"
+        let transport = match endpoint.scheme() {
+            "https" => true,
+            "http" => veoveo_types::is_local_host(endpoint),
+            _ => false,
+        };
+        if !transport
             || endpoint.host_str().is_none()
             || !endpoint.username().is_empty()
             || endpoint.password().is_some()
@@ -196,8 +202,11 @@ mod tests {
         );
         assert_ne!(first["jti"], second["jti"]);
         uuid::Uuid::parse_str(first["jti"].as_str().unwrap()).unwrap();
+        let local = url::Url::parse("http://127.0.0.1:8080/oauth/token").unwrap();
+        signer.assertion(&client, &local).unwrap();
         for endpoint in [
             "http://issuer.fixture/token",
+            "ftp://127.0.0.1/token",
             "https://user@issuer.fixture/token",
             "https://issuer.fixture/token#fragment",
         ] {
