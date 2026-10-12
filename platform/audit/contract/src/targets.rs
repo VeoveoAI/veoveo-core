@@ -23,43 +23,10 @@ pub enum AuditTargetError {
     Registry,
     #[error("audit target owner type does not match registration")]
     Type,
-    #[error("invalid closed audit target payload or lookup reference")]
+    #[error("invalid closed audit target payload")]
     Invalid,
     #[error("audit target schema definition collision `{0}`")]
     SchemaCollision(String),
-}
-
-/// Owner-controlled projection, admitted before any storage driver receives it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AuditLookupReference {
-    table: String,
-    key: AuditLookupKey,
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AuditLookupKey {
-    Uuid(uuid::Uuid),
-    Text(String),
-}
-impl AuditLookupReference {
-    pub fn new(table: impl Into<String>, key: AuditLookupKey) -> Result<Self, AuditTargetError> {
-        let table = table.into();
-        if table.is_empty()
-            || !table
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || c == b'_')
-            || !table.as_bytes()[0].is_ascii_alphabetic()
-            || matches!(&key, AuditLookupKey::Text(s) if s.is_empty())
-        {
-            return Err(AuditTargetError::Invalid);
-        }
-        Ok(Self { table, key })
-    }
-    pub fn table(&self) -> &str {
-        &self.table
-    }
-    pub fn key(&self) -> &AuditLookupKey {
-        &self.key
-    }
 }
 
 /// A closed owner object includes its discriminator in its existing wire shape.
@@ -67,7 +34,6 @@ pub trait AuditTargetOwner:
     Clone + std::fmt::Debug + Serialize + DeserializeOwned + JsonSchema + Send + Sync + 'static
 {
     const KIND: &'static str;
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError>;
 }
 #[derive(Clone)]
 pub struct AuditTargetRegistration<T> {
@@ -103,7 +69,7 @@ impl<T: AuditTargetOwner> AuditTargetRegistration<T> {
     }
 }
 type Payload = Arc<dyn Any + Send + Sync>;
-type Decode = fn(Value) -> Result<(Value, Payload, Option<AuditLookupReference>), AuditTargetError>;
+type Decode = fn(Value) -> Result<(Value, Payload), AuditTargetError>;
 struct Codec {
     type_id: TypeId,
     decode: Decode,
@@ -215,16 +181,13 @@ impl AuditTargetRegistryBuilder {
         }
     }
 }
-fn decode_owner<T: AuditTargetOwner>(
-    wire: Value,
-) -> Result<(Value, Payload, Option<AuditLookupReference>), AuditTargetError> {
+fn decode_owner<T: AuditTargetOwner>(wire: Value) -> Result<(Value, Payload), AuditTargetError> {
     let payload: T = serde_json::from_value(wire.clone()).map_err(|_| AuditTargetError::Invalid)?;
     let admitted = serde_json::to_value(&payload).map_err(|_| AuditTargetError::Invalid)?;
     if admitted != wire || admitted.get("kind").and_then(Value::as_str) != Some(T::KIND) {
         return Err(AuditTargetError::Invalid);
     }
-    let reference = payload.lookup_reference()?;
-    Ok((admitted, Arc::new(payload), reference))
+    Ok((admitted, Arc::new(payload)))
 }
 impl AuditTargetRegistry {
     pub fn builder() -> AuditTargetRegistryBuilder {
@@ -286,12 +249,11 @@ impl AuditTargetRegistry {
             .codecs
             .get(kind)
             .ok_or_else(|| AuditTargetError::Unbound(kind.into()))?;
-        let (wire, payload, reference) = (codec.decode)(wire)?;
+        let (wire, payload) = (codec.decode)(wire)?;
         Ok(AuditTarget::Extension(AdmittedAuditTarget {
             identity: self.identity.clone(),
             wire,
             payload,
-            reference,
         }))
     }
     pub(crate) fn compose_schema(
@@ -329,18 +291,12 @@ impl AuditTargetRegistry {
         Ok(root)
     }
 }
-/// Construction is private; wire equality deliberately excludes registry and reference metadata.
+/// Construction is private; wire equality deliberately excludes registry metadata.
 #[derive(Clone)]
 pub struct AdmittedAuditTarget {
     identity: Arc<()>,
     wire: Value,
     payload: Payload,
-    reference: Option<AuditLookupReference>,
-}
-impl AdmittedAuditTarget {
-    pub fn lookup_reference(&self) -> Option<&AuditLookupReference> {
-        self.reference.as_ref()
-    }
 }
 impl PartialEq for AdmittedAuditTarget {
     fn eq(&self, other: &Self) -> bool {

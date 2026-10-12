@@ -23,12 +23,6 @@ impl<'de> serde::Deserialize<'de> for Widget {
 }
 impl AuditTargetOwner for Widget {
     const KIND: &'static str = "widget";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(Some(AuditLookupReference::new(
-            "widget",
-            AuditLookupKey::Uuid(self.id),
-        )?))
-    }
 }
 fn registry() -> (AuditTargetRegistry, AuditTargetRegistration<Widget>) {
     let mut builder = AuditTargetRegistry::builder();
@@ -165,9 +159,6 @@ struct ImpersonatedCore {
 }
 impl AuditTargetOwner for ImpersonatedCore {
     const KIND: &'static str = "installation";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(None)
-    }
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename = "widget", deny_unknown_fields)]
@@ -176,9 +167,6 @@ struct WrongType {
 }
 impl AuditTargetOwner for WrongType {
     const KIND: &'static str = "widget";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(None)
-    }
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename = "open", deny_unknown_fields)]
@@ -187,9 +175,6 @@ struct OpenPayload {
 }
 impl AuditTargetOwner for OpenPayload {
     const KIND: &'static str = "open";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(None)
-    }
 }
 #[test]
 fn rejects_core_collision_type_substitution_and_open_payload() {
@@ -252,9 +237,6 @@ impl schemars::JsonSchema for DefinitionOwner {
 }
 impl AuditTargetOwner for DefinitionOwner {
     const KIND: &'static str = "definition_owner";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(None)
-    }
 }
 #[test]
 fn owner_definitions_cannot_replace_core_definitions() {
@@ -290,9 +272,6 @@ fn tuple_target_schema(schema: &mut schemars::Schema) {
 }
 impl AuditTargetOwner for TupleOwner {
     const KIND: &'static str = "tuple_owner";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(None)
-    }
 }
 #[test]
 fn composed_tuple_schema_and_decoder_reject_unconstrained_trailing_objects() {
@@ -330,9 +309,6 @@ impl schemars::JsonSchema for TextDefinitionOwner {
 }
 impl AuditTargetOwner for TextDefinitionOwner {
     const KIND: &'static str = "text_definition";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(None)
-    }
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct IntegerDefinitionOwner {
@@ -348,9 +324,6 @@ impl schemars::JsonSchema for IntegerDefinitionOwner {
 }
 impl AuditTargetOwner for IntegerDefinitionOwner {
     const KIND: &'static str = "integer_definition";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(None)
-    }
 }
 #[test]
 fn owner_definitions_cannot_replace_other_owner_definitions() {

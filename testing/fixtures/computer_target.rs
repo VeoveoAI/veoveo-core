@@ -1,8 +1,7 @@
 //! A fixture owner Audit target with the frozen Computer record wire. Audit tests use it
 //! to exercise owner registration and frozen record hashes without the Computers crate.
 use veoveo_audit_contract::{
-    AuditLookupKey, AuditLookupReference, AuditTargetError, AuditTargetOwner,
-    AuditTargetRegistration, AuditTargetRegistryBuilder,
+    AuditTargetError, AuditTargetOwner, AuditTargetRegistration, AuditTargetRegistryBuilder,
 };
 
 #[derive(
@@ -28,7 +27,7 @@ impl ComputerId {
         uuid::Uuid::parse_str(value).map(Self)
     }
 
-    #[allow(dead_code, reason = "Only lookup assertions read the UUID")]
+    #[allow(dead_code, reason = "Only some audit tests read the UUID")]
     pub fn as_uuid(&self) -> uuid::Uuid {
         self.0
     }
@@ -69,12 +68,6 @@ impl<'de> serde::Deserialize<'de> for ComputerAuditTarget {
 
 impl AuditTargetOwner for ComputerAuditTarget {
     const KIND: &'static str = "computer";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(Some(AuditLookupReference::new(
-            "computer",
-            AuditLookupKey::Uuid(self.computer.0),
-        )?))
-    }
 }
 
 pub fn register_audit_target(
