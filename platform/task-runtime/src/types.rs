@@ -1,0 +1,744 @@
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    str::FromStr,
+};
+pub use veoveo_task_contract::RecoveryClass;
+
+use chrono::{DateTime, Utc};
+use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use surrealdb::types::{RecordId, RecordIdKey};
+use veoveo_platform_store::{
+    PrincipalKind, StoreAuthLevel, StoreCredentials, TaskRecord, TaskStatus as StoreTaskStatus,
+    deterministic_principal_id, deterministic_tenant_id, deterministic_work_context_id,
+};
+use veoveo_types::InvocationAuthority;
+use veoveo_types::TaskId;
+
+/// Stable internal pin that prevents pruning while another durable owner needs a task result.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct TaskRetentionPin(String);
+
+impl TaskRetentionPin {
+    pub fn new(value: impl Into<String>) -> Result<Self, TaskRetentionPinError> {
+        let value = value.into();
+        if value.is_empty() || value.len() > 256 || value.chars().any(char::is_control) {
+            return Err(TaskRetentionPinError);
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for TaskRetentionPin {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskRetentionPin {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Self::new(String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("task retention pin is empty, too long, or contains a control character")]
+pub struct TaskRetentionPinError;
+
+const INSTALLATION_TENANT: &str = "installation";
+
+#[derive(Clone)]
+pub struct TaskRuntimeConfig {
+    pub endpoint: String,
+    pub namespace: String,
+    pub database: String,
+    pub credentials: StoreCredentials,
+}
+
+impl TaskRuntimeConfig {
+    pub fn new(
+        endpoint: impl Into<String>,
+        namespace: impl Into<String>,
+        database: impl Into<String>,
+        auth_level: StoreAuthLevel,
+        username: impl Into<String>,
+        password: impl Into<SecretString>,
+    ) -> Self {
+        Self {
+            endpoint: endpoint.into(),
+            namespace: namespace.into(),
+            database: database.into(),
+            credentials: StoreCredentials::new(auth_level, username, password),
+        }
+    }
+}
+
+impl std::fmt::Debug for TaskRuntimeConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TaskRuntimeConfig")
+            .field("endpoint", &self.endpoint)
+            .field("namespace", &self.namespace)
+            .field("database", &self.database)
+            .field("credentials", &self.credentials)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TaskOwner {
+    pub principal_key: String,
+    pub principal_kind: PrincipalKind,
+    pub issuer: String,
+    pub subject: String,
+    pub profile: String,
+    pub tenant_key: Option<String>,
+    #[serde(default)]
+    pub data_labels: BTreeSet<String>,
+    pub authority: InvocationAuthority,
+}
+
+impl TryFrom<&TaskOwner> for veoveo_platform_store::TaskOwnerRecord {
+    type Error = TaskError;
+    fn try_from(owner: &TaskOwner) -> Result<Self, Self::Error> {
+        fn field<T: std::str::FromStr>(value: &str) -> Result<T, TaskError>
+        where
+            T::Err: std::fmt::Display,
+        {
+            value.parse().map_err(|error| {
+                TaskError::InvalidRecord(format!("invalid Task owner identity: {error}"))
+            })
+        }
+        Ok(Self {
+            principal_key: field(&owner.principal_key)?,
+            principal_kind: owner.principal_kind,
+            issuer: field(&owner.issuer)?,
+            subject: field(&owner.subject)?,
+            profile: field(&owner.profile)?,
+            tenant_key: owner.tenant_key.as_deref().map(field).transpose()?,
+            data_labels: owner
+                .data_labels
+                .iter()
+                .map(|label| field(label))
+                .collect::<Result<_, _>>()?,
+            authority: owner.authority.clone(),
+        })
+    }
+}
+impl From<veoveo_platform_store::TaskOwnerRecord> for TaskOwner {
+    fn from(owner: veoveo_platform_store::TaskOwnerRecord) -> Self {
+        Self {
+            principal_key: owner.principal_key.to_string(),
+            principal_kind: owner.principal_kind,
+            issuer: owner.issuer.to_string(),
+            subject: owner.subject.to_string(),
+            profile: owner.profile.to_string(),
+            tenant_key: owner.tenant_key.map(|tenant| tenant.to_string()),
+            data_labels: owner
+                .data_labels
+                .into_iter()
+                .map(|label| label.to_string())
+                .collect(),
+            authority: owner.authority,
+        }
+    }
+}
+
+impl TaskOwner {
+    pub fn tenant_key(&self) -> &str {
+        self.tenant_key.as_deref().unwrap_or(INSTALLATION_TENANT)
+    }
+
+    pub fn allows(
+        &self,
+        principal_key: &str,
+        profile: &str,
+        tenant_key: Option<&str>,
+        data_labels: &BTreeSet<String>,
+    ) -> bool {
+        self.principal_key == principal_key
+            && self.profile == profile
+            && self.tenant_key.as_deref() == tenant_key
+            && self.data_labels.is_subset(data_labels)
+    }
+}
+
+/// Task admission preserves the operation's validated identity.
+/// ```compile_fail
+/// use veoveo_task_runtime::CreateTask;
+/// fn unchecked(mut draft: CreateTask) {
+///     draft.task_type = "unchecked-operation".to_owned();
+/// }
+/// ```
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateTask {
+    pub task_id: TaskId,
+    pub owner: TaskOwner,
+    pub server: String,
+    pub task_type: veoveo_types::TaskTypeName,
+    pub request: Value,
+    pub recovery_class: RecoveryClass,
+    pub idempotency_key: Option<String>,
+    pub ttl_ms: Option<u64>,
+    pub poll_interval_ms: Option<u64>,
+    pub retention_pins: BTreeSet<TaskRetentionPin>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreateTaskResult {
+    pub snapshot: TaskSnapshot,
+    pub created: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(from = "veoveo_types::Checked<TaskSnapshotWire>")]
+pub struct TaskSnapshot {
+    pub task_id: TaskId,
+    pub owner: TaskOwner,
+    pub server: String,
+    pub task_type: veoveo_types::TaskTypeName,
+    pub request: Value,
+    pub recovery_class: RecoveryClass,
+    pub status: StoreTaskStatus,
+    pub status_message: Option<String>,
+    pub progress: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<Value>,
+    pub result_uri: Option<veoveo_types::ResourceUri>,
+    pub error: Option<TaskFailure>,
+    pub idempotency_key: Option<String>,
+    pub lease_owner: Option<String>,
+    pub lease_expires_at: Option<DateTime<Utc>>,
+    pub cancel_requested_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub retention_expires_at: Option<DateTime<Utc>>,
+    pub retention_pins: BTreeSet<TaskRetentionPin>,
+    pub ttl_ms: Option<u64>,
+    pub poll_interval_ms: Option<u64>,
+}
+
+// Snapshots expose mutable execution progress; JSON admission still checks the
+// relationship between a product address and its retained terminal result.
+#[derive(Deserialize)]
+struct TaskSnapshotWire {
+    task_id: TaskId,
+    owner: TaskOwner,
+    server: String,
+    task_type: veoveo_types::TaskTypeName,
+    request: Value,
+    recovery_class: RecoveryClass,
+    status: StoreTaskStatus,
+    status_message: Option<String>,
+    progress: f64,
+    #[serde(default, deserialize_with = "deserialize_present_result")]
+    result: Option<Value>,
+    result_uri: Option<veoveo_types::ResourceUri>,
+    error: Option<TaskFailure>,
+    idempotency_key: Option<String>,
+    lease_owner: Option<String>,
+    lease_expires_at: Option<DateTime<Utc>>,
+    cancel_requested_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
+    retention_expires_at: Option<DateTime<Utc>>,
+    retention_pins: BTreeSet<TaskRetentionPin>,
+    ttl_ms: Option<u64>,
+    poll_interval_ms: Option<u64>,
+}
+
+impl veoveo_types::Check for TaskSnapshotWire {
+    type Error = TaskError;
+
+    fn check(&self) -> Result<(), Self::Error> {
+        if self.result_uri.is_some()
+            && (self.status != StoreTaskStatus::Succeeded || self.result.is_none())
+        {
+            return Err(TaskError::InvalidRecord(
+                "Task product address requires a successful retained result".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl From<veoveo_types::Checked<TaskSnapshotWire>> for TaskSnapshot {
+    fn from(wire: veoveo_types::Checked<TaskSnapshotWire>) -> Self {
+        let wire = wire.into_inner();
+        Self {
+            task_id: wire.task_id,
+            owner: wire.owner,
+            server: wire.server,
+            task_type: wire.task_type,
+            request: wire.request,
+            recovery_class: wire.recovery_class,
+            status: wire.status,
+            status_message: wire.status_message,
+            progress: wire.progress,
+            result: wire.result,
+            result_uri: wire.result_uri,
+            error: wire.error,
+            idempotency_key: wire.idempotency_key,
+            lease_owner: wire.lease_owner,
+            lease_expires_at: wire.lease_expires_at,
+            cancel_requested_at: wire.cancel_requested_at,
+            created_at: wire.created_at,
+            updated_at: wire.updated_at,
+            started_at: wire.started_at,
+            completed_at: wire.completed_at,
+            retention_expires_at: wire.retention_expires_at,
+            retention_pins: wire.retention_pins,
+            ttl_ms: wire.ttl_ms,
+            poll_interval_ms: wire.poll_interval_ms,
+        }
+    }
+}
+
+/// A stable position in a caller-owned task collection, ordered by creation and ID.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskPageCursor {
+    pub created_at: DateTime<Utc>,
+    pub task_id: TaskId,
+}
+
+#[derive(Clone, Debug)]
+pub struct TaskPage {
+    pub items: Vec<TaskSnapshot>,
+    pub next_cursor: Option<TaskPageCursor>,
+}
+
+impl TaskSnapshot {
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self.status,
+            StoreTaskStatus::Succeeded | StoreTaskStatus::Failed | StoreTaskStatus::Cancelled
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TaskFailure {
+    pub code: String,
+    pub message: String,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_result",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub details: Option<Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TaskInputRequest {
+    pub method: String,
+    #[serde(default)]
+    pub params: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TaskInputExchange {
+    pub key: String,
+    pub request: TaskInputRequest,
+    pub response: Option<BTreeMap<String, Value>>,
+    pub created_at: DateTime<Utc>,
+    pub responded_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TaskInputSubmission {
+    pub accepted: usize,
+    pub ignored: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub struct TaskUpdateCursor(i64);
+
+impl TaskUpdateCursor {
+    pub const fn initial() -> Self {
+        Self(0)
+    }
+
+    pub const fn versionstamp(self) -> i64 {
+        self.0
+    }
+
+    pub const fn from_versionstamp(sequence: i64) -> Option<Self> {
+        if sequence < 0 {
+            None
+        } else {
+            Some(Self(sequence))
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TaskUpdate {
+    pub cursor: TaskUpdateCursor,
+    pub snapshot: TaskSnapshot,
+}
+
+impl TaskFailure {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
+    }
+
+    pub fn interrupted_indeterminate() -> Self {
+        Self::new(
+            "interrupted_indeterminate",
+            "This task was interrupted and may have partly completed. It won't be retried automatically. Check the result before running it again.",
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TaskTransition {
+    Running {
+        message: String,
+        progress: f64,
+    },
+    Waiting {
+        message: String,
+        progress: f64,
+    },
+    Succeeded {
+        message: String,
+        result: Value,
+        result_uri: Option<veoveo_types::ResourceUri>,
+    },
+    Failed(TaskFailure),
+    CancelRequested,
+    Cancelled,
+}
+
+impl TaskTransition {
+    pub(crate) fn status(&self) -> StoreTaskStatus {
+        match self {
+            Self::Running { .. } => StoreTaskStatus::Running,
+            Self::Waiting { .. } => StoreTaskStatus::Waiting,
+            Self::Succeeded { .. } => StoreTaskStatus::Succeeded,
+            Self::Failed(_) => StoreTaskStatus::Failed,
+            Self::CancelRequested => StoreTaskStatus::CancelRequested,
+            Self::Cancelled => StoreTaskStatus::Cancelled,
+        }
+    }
+
+    pub(crate) fn message(&self) -> String {
+        match self {
+            Self::Running { message, .. }
+            | Self::Waiting { message, .. }
+            | Self::Succeeded { message, .. } => message.clone(),
+            Self::Failed(failure) => failure.message.clone(),
+            Self::CancelRequested => "Cancelling".to_owned(),
+            Self::Cancelled => "Cancelled".to_owned(),
+        }
+    }
+
+    pub(crate) fn progress(&self, current: f64) -> f64 {
+        match self {
+            Self::Running { progress, .. } | Self::Waiting { progress, .. } => *progress,
+            Self::Succeeded { .. } => 1.0,
+            _ => current,
+        }
+    }
+
+    pub(crate) fn result(&self) -> Option<Value> {
+        match self {
+            Self::Succeeded { result, .. } => Some(result.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn result_uri(&self) -> Option<veoveo_types::ResourceUri> {
+        match self {
+            Self::Succeeded { result_uri, .. } => result_uri.clone(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn failure(&self) -> Option<TaskFailure> {
+        match self {
+            Self::Failed(failure) => Some(failure.clone()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TaskPayloadState {
+    Completed(Value),
+    Failed(TaskFailure),
+    Cancelled,
+    Running,
+    Unknown,
+}
+
+#[derive(Clone, Debug)]
+pub struct ClaimedTask {
+    pub snapshot: TaskSnapshot,
+    pub lease_owner: String,
+    pub lease_expires_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RecoveryReport {
+    pub resumable: Vec<TaskSnapshot>,
+    pub webhook_waiting: Vec<TaskSnapshot>,
+    /// Original queued/running/waiting/cancel-requested state; observation only.
+    pub provider_waiting: Vec<TaskSnapshot>,
+    pub failed_indeterminate: Vec<TaskSnapshot>,
+    pub cancelled: Vec<TaskSnapshot>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TaskError {
+    #[error("Task operation `{0}` requires an unbound module contribution adapter")]
+    ContributionUnbound(veoveo_types::TaskTypeName),
+    #[error("task `{0}` was not found")]
+    NotFound(String),
+    #[error("task `{0}` is not owned by this server")]
+    WrongServer(String),
+    #[error("task transition from {from:?} to {to:?} is not allowed")]
+    InvalidTransition {
+        from: StoreTaskStatus,
+        to: StoreTaskStatus,
+    },
+    #[error("task `{0}` changed concurrently")]
+    Conflict(String),
+    #[error("task `{0}` has an active lease")]
+    LeaseHeld(String),
+    #[error("task progress must be finite and in 0..=1")]
+    InvalidProgress,
+    #[error("invalid task invocation authority: {0}")]
+    InvalidAuthority(String),
+    #[error("invalid persisted task: {0}")]
+    InvalidRecord(String),
+    #[error("task page requires 1..=32 task types and a limit in 1..=1000")]
+    InvalidPageQuery,
+    #[error("task input key is empty, too long, or contains a control character")]
+    InvalidInputKey,
+    #[error("task input key `{0}` has already been used")]
+    DuplicateInputKey(String),
+    #[error(transparent)]
+    Store(#[from] veoveo_platform_store::StoreError),
+    #[error(transparent)]
+    Config(#[from] veoveo_platform_store::StoreConfigError),
+    #[error(transparent)]
+    Database(#[from] surrealdb::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+}
+
+impl From<&TaskSnapshot> for veoveo_platform_store::TaskRequestRecord {
+    fn from(snapshot: &TaskSnapshot) -> Self {
+        Self {
+            input: snapshot.request.clone(),
+            status_message: snapshot.status_message.clone(),
+            ttl_ms: snapshot.ttl_ms,
+            poll_interval_ms: snapshot.poll_interval_ms,
+        }
+    }
+}
+
+pub(crate) fn failure_to_record(failure: &TaskFailure) -> veoveo_platform_store::TaskFailureRecord {
+    veoveo_platform_store::TaskFailureRecord {
+        code: failure.code.clone(),
+        message: failure.message.clone(),
+        details: failure.details.clone(),
+    }
+}
+
+fn deserialize_present_result<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
+}
+
+pub(crate) fn record_to_snapshot(record: TaskRecord) -> Result<TaskSnapshot, TaskError> {
+    let task_id = task_id_from_record(&record.id)?;
+    let envelope = record.request;
+    let owner: TaskOwner = record.owner_context.into();
+    let authority = crate::runtime::authority_record(&owner.authority);
+    let initiator = authority
+        .initiator_key
+        .as_deref()
+        .map(|initiator| {
+            deterministic_principal_id(owner.tenant_key(), initiator)
+                .map(|principal| principal.record_id())
+        })
+        .transpose()?;
+    if record.created_at_exact.timestamp() != record.created_at
+        || record.updated_at_exact.timestamp() != record.updated_at
+        || record.server.table.as_str() != "mcp_server"
+        || owner.authority.tenant.as_str() != owner.tenant_key()
+        || record.profile != RecordId::new("profile", owner.profile.clone())
+        || record.tenant != deterministic_tenant_id(owner.tenant_key())?.record_id()
+        || record.owner
+            != deterministic_principal_id(owner.tenant_key(), &owner.principal_key)?.record_id()
+        || record.work_context
+            != deterministic_work_context_id(
+                owner.tenant_key(),
+                owner.authority.work_context.as_str(),
+            )?
+            .record_id()
+        || record.initiator != initiator
+        || record.invocation_mode != authority.invocation_mode
+        || record.delegation_id != authority.delegation_id
+        || record.policy_revision != authority.policy_revision
+        || record.authority != authority
+    {
+        return Err(TaskError::InvalidRecord(
+            "task owner and invocation authority do not match canonical platform state".to_owned(),
+        ));
+    }
+    let error = record.error.map(|failure| TaskFailure {
+        code: failure.code,
+        message: failure.message,
+        details: failure.details,
+    });
+    if record.result_uri.is_some()
+        && (record.status != StoreTaskStatus::Succeeded || record.result.is_none())
+    {
+        return Err(TaskError::InvalidRecord(
+            "Task product address requires a successful retained result".into(),
+        ));
+    }
+    Ok(TaskSnapshot {
+        task_id,
+        owner,
+        server: record_key(&record.server)?,
+        task_type: record.task_type,
+        request: envelope.input,
+        recovery_class: record.recovery_class,
+        status: record.status,
+        status_message: envelope.status_message,
+        progress: record.progress,
+        result: record
+            .result
+            .map(veoveo_platform_store::TaskResultRecord::into_payload),
+        result_uri: record.result_uri,
+        error,
+        idempotency_key: record.idempotency_key,
+        lease_owner: record.lease_owner,
+        lease_expires_at: record.lease_expires_at,
+        cancel_requested_at: record.cancel_requested_at,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        started_at: record.started_at,
+        completed_at: record.completed_at,
+        retention_expires_at: record.retention_expires_at,
+        retention_pins: record
+            .retention_pins
+            .into_iter()
+            .map(TaskRetentionPin::new)
+            .collect::<Result<_, _>>()
+            .map_err(|error| TaskError::InvalidRecord(error.to_string()))?,
+        ttl_ms: envelope.ttl_ms,
+        poll_interval_ms: envelope.poll_interval_ms,
+    })
+}
+
+impl TryFrom<TaskRecord> for TaskSnapshot {
+    type Error = TaskError;
+
+    fn try_from(record: TaskRecord) -> Result<Self, Self::Error> {
+        record_to_snapshot(record)
+    }
+}
+
+pub(crate) fn task_id_from_record(record: &RecordId) -> Result<TaskId, TaskError> {
+    let uuid = match &record.key {
+        RecordIdKey::Uuid(value) => uuid::Uuid::parse_str(&value.to_string()),
+        RecordIdKey::String(value) => uuid::Uuid::parse_str(value),
+        _ => {
+            return Err(TaskError::InvalidRecord(format!(
+                "task id has non-UUID key: {:?}",
+                record.key
+            )));
+        }
+    }
+    .map_err(|error| TaskError::InvalidRecord(error.to_string()))?;
+    task_id_from_uuid(uuid)
+}
+
+pub(crate) fn record_key(record: &RecordId) -> Result<String, TaskError> {
+    match &record.key {
+        RecordIdKey::String(value) => Ok(value.clone()),
+        RecordIdKey::Uuid(value) => Ok(value.to_string()),
+        RecordIdKey::Number(value) => Ok(value.to_string()),
+        other => Err(TaskError::InvalidRecord(format!(
+            "unsupported record key {other:?}"
+        ))),
+    }
+}
+
+pub(crate) fn parse_task_id(value: &str) -> Result<TaskId, TaskError> {
+    let task_id =
+        TaskId::from_str(value).map_err(|error| TaskError::InvalidRecord(error.to_string()))?;
+    validate_task_id(task_id)
+}
+
+pub(crate) fn validate_task_id(task_id: TaskId) -> Result<TaskId, TaskError> {
+    task_id_from_uuid(task_id.as_uuid())
+}
+
+fn task_id_from_uuid(uuid: uuid::Uuid) -> Result<TaskId, TaskError> {
+    if uuid.get_version_num() != 7 || uuid.get_variant() != uuid::Variant::RFC4122 {
+        return Err(TaskError::InvalidRecord(
+            "task id must be a UUIDv7".to_owned(),
+        ));
+    }
+    Ok(TaskId::from_uuid(uuid))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_task_ids_must_be_uuid_v7() {
+        let version_seven = uuid::Uuid::now_v7().to_string();
+        assert!(parse_task_id(&version_seven).is_ok());
+
+        assert!(validate_task_id(TaskId::new()).is_ok());
+        let wrong_variant = "01983da0-0000-7000-0000-000000000001";
+        assert!(parse_task_id(wrong_variant).is_err());
+        assert!(validate_task_id(TaskId::from_uuid(wrong_variant.parse().unwrap())).is_err());
+        let version_four = uuid::Uuid::new_v4().to_string();
+        assert!(matches!(
+            parse_task_id(&version_four),
+            Err(TaskError::InvalidRecord(message)) if message == "task id must be a UUIDv7"
+        ));
+    }
+
+    #[test]
+    fn task_update_cursors_reject_negative_versionstamps() {
+        assert_eq!(TaskUpdateCursor::from_versionstamp(-1), None);
+        assert_eq!(
+            TaskUpdateCursor::from_versionstamp(42).map(TaskUpdateCursor::versionstamp),
+            Some(42)
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "types/storage_tests.rs"]
+mod storage_tests;

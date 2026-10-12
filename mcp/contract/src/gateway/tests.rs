@@ -1,0 +1,2295 @@
+use super::*;
+use veoveo_gateway_contract::{
+    CertificateAuthorityFilePath, GatewayAction, SecretLocator, SecretSource,
+};
+
+fn identity_provider() -> IdentityProvider {
+    IdentityProvider {
+        id: IdentityProviderId::parse("enterprise").unwrap(),
+        issuer: TokenIssuer::parse("https://idp.example.com").unwrap(),
+        jwks: JwksSource::Remote {
+            jwks_uri: HttpsUrl::new("https://idp.example.com/.well-known/jwks.json").unwrap(),
+        },
+        claim_mapping: IdentityProviderClaimMapping::default(),
+        trusted_certificate_authorities: Vec::new(),
+        authorization_endpoint: Some(
+            OAuthEndpointUrl::new("https://idp.example.com/oauth2/authorize").unwrap(),
+        ),
+        token_endpoint: Some(
+            OAuthEndpointUrl::new("https://idp.example.com/oauth2/token").unwrap(),
+        ),
+        enterprise_managed_authorization_endpoint: Some(
+            OAuthEndpointUrl::new("https://idp.example.com/oauth2/id-jag").unwrap(),
+        ),
+        metadata: Value::Null,
+    }
+}
+
+fn authorization_server() -> ResourceAuthorizationServer {
+    ResourceAuthorizationServer {
+        id: AuthorizationServerId::parse("veoveo").unwrap(),
+        issuer: TokenIssuer::parse("https://veoveo.example/oauth").unwrap(),
+        jwks: JwksSource::Remote {
+            jwks_uri: HttpsUrl::new("https://veoveo.example/oauth/jwks.json").unwrap(),
+        },
+        access_token_key_id: JwtId::parse("test-key").unwrap(),
+        access_token_signing_key: SecretReferenceId::parse("veoveo_access_token_private_key")
+            .unwrap(),
+        identity_provider: Some(IdentityProviderId::parse("enterprise").unwrap()),
+        authorization_endpoint: Some(
+            OAuthEndpointUrl::new("https://veoveo.example/oauth/authorize").unwrap(),
+        ),
+        token_endpoint: OAuthEndpointUrl::new("https://veoveo.example/oauth/token").unwrap(),
+        metadata: Value::Null,
+    }
+}
+
+fn signing_secret() -> SecretReference {
+    SecretReference {
+        id: SecretReferenceId::parse("veoveo_access_token_private_key").unwrap(),
+        source: SecretSource::Env,
+        purpose: SecretPurpose::JwksPrivateKey,
+        locator: SecretLocator::parse("VEOVEO_AUTHORIZATION_SERVER_PRIVATE_KEY_DER_B64").unwrap(),
+        owner: SecretOwner::Gateway,
+        rotation_hint: None,
+        metadata: Value::Null,
+    }
+}
+
+fn oidc_client_secret() -> SecretReference {
+    SecretReference {
+        id: SecretReferenceId::parse("enterprise_oidc_client_secret").unwrap(),
+        source: SecretSource::Env,
+        purpose: SecretPurpose::OAuthClientSecret,
+        locator: SecretLocator::parse("VEOVEO_IDP_OIDC_CLIENT_SECRET").unwrap(),
+        owner: SecretOwner::Gateway,
+        rotation_hint: None,
+        metadata: Value::Null,
+    }
+}
+
+fn tls_client_certificate_secret() -> SecretReference {
+    SecretReference {
+        id: SecretReferenceId::parse("media_upstream_tls_client_certificate").unwrap(),
+        source: SecretSource::Env,
+        purpose: SecretPurpose::TlsClientCertificate,
+        locator: SecretLocator::parse("MEDIA_UPSTREAM_TLS_CLIENT_CERTIFICATE_PEM").unwrap(),
+        owner: SecretOwner::Gateway,
+        rotation_hint: None,
+        metadata: Value::Null,
+    }
+}
+
+fn tls_client_private_key_secret() -> SecretReference {
+    SecretReference {
+        id: SecretReferenceId::parse("media_upstream_tls_client_private_key").unwrap(),
+        source: SecretSource::Env,
+        purpose: SecretPurpose::TlsClientPrivateKey,
+        locator: SecretLocator::parse("MEDIA_UPSTREAM_TLS_CLIENT_PRIVATE_KEY_PEM").unwrap(),
+        owner: SecretOwner::Gateway,
+        rotation_hint: None,
+        metadata: Value::Null,
+    }
+}
+
+fn default_secrets() -> Vec<SecretReference> {
+    vec![signing_secret(), oidc_client_secret()]
+}
+
+fn media_manifest() -> ServerManifest {
+    ServerManifest {
+        knowledge: Vec::new(),
+        slug: ServerSlug::parse("media").unwrap(),
+        uri_scheme: ResourceScheme::parse("media").unwrap(),
+        mount_path: MountPath::new("/media").unwrap(),
+        mcp_path: MountPath::new("/media/mcp").unwrap(),
+        upstream: UpstreamEndpoint {
+            transport: UpstreamTransport::StreamableHttp,
+            url: UpstreamUrl::parse("http://media-mcp:8787/media/mcp").unwrap(),
+            health_url: UpstreamUrl::parse("http://media-mcp:8787/media/healthz").unwrap(),
+            security: UpstreamTransportSecurity::ClusterInternalHttp,
+            trusted_certificate_authorities: Vec::new(),
+            client_certificate: None,
+            client_private_key: None,
+        },
+        capabilities: McpSurfaceCapabilities {
+            apps: false,
+            tools: true,
+            resources: true,
+            resource_templates: true,
+            resource_subscriptions: true,
+            prompts: true,
+            completions: true,
+            tasks: true,
+            tools_list_changed: false,
+            prompts_list_changed: false,
+            resources_list_changed: true,
+        },
+        resource_projection: ResourceProjectionMode::Identity,
+        referenced_resource_schemes: BTreeSet::new(),
+        app_resource_dependencies: Vec::new(),
+        app_tool_dependencies: Vec::new(),
+        tools: vec![LocalToolName::parse("run").unwrap()],
+        compatibility_helpers: Vec::new(),
+        prompts: vec![PromptName::parse("model_help").unwrap()],
+        required_scopes: vec![ScopeName::parse("operator:use").unwrap()],
+        owned_routes: vec![OwnedRoute {
+            path: MountPath::new("/media/webhooks").unwrap(),
+            purpose: OwnedRoutePurpose::Webhook,
+        }],
+        metadata: Value::Null,
+    }
+}
+
+fn control_plane_with_server_and_secrets(
+    server: ServerManifest,
+    secrets: Vec<SecretReference>,
+) -> GatewayControlPlane {
+    GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![server],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets,
+        metadata: Value::Null,
+    }
+}
+
+#[test]
+fn control_plane_lists_every_public_file_mount() {
+    let mut control_plane =
+        control_plane_with_server_and_secrets(media_manifest(), default_secrets());
+    control_plane.identity_providers[0].jwks = JwksSource::File {
+        path: JwksFilePath::new("/etc/veoveo/gateway/identity-jwks.json").unwrap(),
+    };
+    control_plane.identity_providers[0]
+        .trusted_certificate_authorities
+        .push(CertificateAuthoritySource::File {
+            path: CertificateAuthorityFilePath::parse("/etc/veoveo/gateway/identity-ca.pem")
+                .unwrap(),
+        });
+    control_plane.authorization_servers[0].jwks = JwksSource::File {
+        path: JwksFilePath::new("/etc/veoveo/gateway/authorization-jwks.json").unwrap(),
+    };
+    control_plane.oauth_clients[0].jwks = Some(JwksSource::File {
+        path: JwksFilePath::new("/etc/veoveo/gateway/machine-jwks.json").unwrap(),
+    });
+
+    assert_eq!(
+        control_plane.jwks_file_paths(),
+        BTreeSet::from([
+            "/etc/veoveo/gateway/authorization-jwks.json",
+            "/etc/veoveo/gateway/identity-jwks.json",
+            "/etc/veoveo/gateway/machine-jwks.json",
+        ])
+    );
+    assert_eq!(
+        control_plane.certificate_authority_file_paths(),
+        BTreeSet::from(["/etc/veoveo/gateway/identity-ca.pem"])
+    );
+}
+
+fn default_policy() -> PolicySet {
+    PolicySet {
+        version: PolicyVersion::parse("2026-07-02").unwrap(),
+        rules: vec![PolicyRule {
+            id: PolicyRuleId::parse("allow_media_use").unwrap(),
+            effect: PolicyEffect::Allow,
+            actions: BTreeSet::from([GatewayAction::ToolsCall.into()]),
+            profiles: BTreeSet::from([GatewayProfileId::parse("default").unwrap()]),
+            protected_resources: BTreeSet::new(),
+            servers: BTreeSet::from([ServerSlug::parse("media").unwrap()]),
+            tools: BTreeSet::from([LocalToolName::parse("run").unwrap()]),
+            resource_schemes: BTreeSet::new(),
+            prompts: BTreeSet::new(),
+            principal_ids: BTreeSet::new(),
+            tenant_ids: BTreeSet::new(),
+            groups: BTreeSet::new(),
+            roles: BTreeSet::new(),
+            required_scopes: BTreeSet::from([ScopeName::parse("operator:use").unwrap()]),
+            required_data_labels: BTreeSet::new(),
+            required_assurances: BTreeSet::new(),
+            metadata: Value::Null,
+        }],
+        metadata: Value::Null,
+    }
+}
+
+fn default_data_labels() -> Vec<DataLabelDefinition> {
+    vec![
+        DataLabelDefinition {
+            id: DataLabelId::parse("cui").unwrap(),
+            title: Some("Controlled Unclassified Information".to_string()),
+            description: None,
+            regulated: true,
+            metadata: Value::Null,
+        },
+        DataLabelDefinition {
+            id: DataLabelId::parse("itar").unwrap(),
+            title: Some("ITAR-controlled data".to_string()),
+            description: None,
+            regulated: true,
+            metadata: Value::Null,
+        },
+        DataLabelDefinition {
+            id: DataLabelId::parse("pii").unwrap(),
+            title: Some("Personally Identifiable Information".to_string()),
+            description: None,
+            regulated: true,
+            metadata: Value::Null,
+        },
+    ]
+}
+
+fn default_tenants() -> Vec<TenantDefinition> {
+    vec![TenantDefinition {
+        id: TenantId::parse("tenant-a").unwrap(),
+        title: Some("Tenant A".to_string()),
+        description: None,
+        metadata: Value::Null,
+    }]
+}
+
+fn default_work_contexts() -> Vec<crate::WorkContextDefinition> {
+    vec![crate::WorkContextDefinition {
+        id: WorkContextId::parse("default").unwrap(),
+        tenant: TenantId::parse("tenant-a").unwrap(),
+        title: "Default work".to_owned(),
+        policy_revision: PolicyVersion::parse("2026-07-02").unwrap(),
+        output_policy: veoveo_types::WorkContextOutputPolicy {
+            owner: veoveo_types::AccessSubject::Group(GroupId::parse("operations").unwrap()),
+            initial_grants: Vec::new(),
+            classification: None,
+            data_labels: BTreeSet::new(),
+        },
+        memberships: vec![crate::WorkContextMembershipRule {
+            level: veoveo_types::WorkContextMembershipLevel::Owner,
+            principals: BTreeSet::new(),
+            groups: BTreeSet::new(),
+            roles: BTreeSet::from([RoleId::parse("operator").unwrap()]),
+            oauth_clients: BTreeSet::from([
+                OAuthClientId::parse("operator-local-public").unwrap(),
+                OAuthClientId::parse("operator-hosted-public").unwrap(),
+                OAuthClientId::parse("operator-service").unwrap(),
+            ]),
+        }],
+    }]
+}
+
+fn default_profile() -> GatewayProfile {
+    GatewayProfile {
+        id: GatewayProfileId::parse("default").unwrap(),
+        identity_provider: IdentityProviderId::parse("enterprise").unwrap(),
+        authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
+        protected_resource: ProtectedResourceId::parse("https://veoveo.example/mcp/operator")
+            .unwrap(),
+        policy_version: PolicyVersion::parse("2026-07-02").unwrap(),
+        artifact_upload: None,
+        auth_modes: BTreeSet::from([
+            AuthMode::EnterpriseManagedAuthorization,
+            AuthMode::OAuthClientCredentials,
+            AuthMode::OidcAuthorizationCodePkce,
+        ]),
+        discovery_failure_mode: DiscoveryFailureMode::Isolate,
+        required_scopes: vec![ScopeName::parse("operator:use").unwrap()],
+        servers: vec![ProfileServerExposure {
+            server: ServerSlug::parse("media").unwrap(),
+            tools: Exposure::Listed(vec![LocalToolName::parse("run").unwrap()]),
+            resources: Exposure::Listed(vec![ResourceSelector::Scheme {
+                scheme: ResourceScheme::parse("media").unwrap(),
+            }]),
+            prompts: Exposure::All,
+            completions: CompletionExposure::Enabled,
+            tasks: TaskExposure::Enabled,
+        }],
+        metadata: Value::Null,
+    }
+}
+
+fn default_oauth_clients() -> Vec<OAuthClientRegistration> {
+    vec![
+        OAuthClientRegistration {
+            knowledge_indexing: None,
+            id: OAuthClientId::parse("operator-local-public").unwrap(),
+            authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
+            default_work_context: WorkContextId::parse("default").unwrap(),
+            invocation_mode: veoveo_types::InvocationMode::Direct,
+            display_name: Some("Veoveo Operator Local Client".to_string()),
+            client_surface: OAuthClientSurface::FullMcp,
+            allowed_compatibility_helpers: BTreeSet::new(),
+            direct_task_call_adapter: false,
+            allowed_resources: BTreeSet::from([ProtectedResourceId::parse(
+                "https://veoveo.example/mcp/operator",
+            )
+            .unwrap()]),
+            grant_types: BTreeSet::from([
+                OAuthGrantType::AuthorizationCodePkce,
+                OAuthGrantType::RefreshToken,
+                OAuthGrantType::EnterpriseManagedAuthorization,
+            ]),
+            auth_methods: BTreeSet::from([OAuthClientAuthMethod::None]),
+            redirect_uris: vec![
+                OAuthRedirectUri::new("https://veoveo.example/oauth/callback").unwrap(),
+                OAuthRedirectUri::new("http://127.0.0.1:8789/oauth/callback").unwrap(),
+            ],
+            allowed_scopes: BTreeSet::from([
+                ScopeName::parse("operator:use").unwrap(),
+                ScopeName::parse("admin:manage").unwrap(),
+            ]),
+            credential_secret: None,
+            jwks: None,
+            tenant: None,
+            metadata: Value::Null,
+        },
+        OAuthClientRegistration {
+            knowledge_indexing: None,
+            id: OAuthClientId::parse("operator-service").unwrap(),
+            authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
+            default_work_context: WorkContextId::parse("default").unwrap(),
+            invocation_mode: veoveo_types::InvocationMode::Automated,
+            display_name: Some("Veoveo Operator Service".to_string()),
+            client_surface: OAuthClientSurface::FullMcp,
+            allowed_compatibility_helpers: BTreeSet::new(),
+            direct_task_call_adapter: false,
+            allowed_resources: BTreeSet::from([ProtectedResourceId::parse(
+                "https://veoveo.example/mcp/operator",
+            )
+            .unwrap()]),
+            grant_types: BTreeSet::from([OAuthGrantType::ClientCredentials]),
+            auth_methods: BTreeSet::from([OAuthClientAuthMethod::PrivateKeyJwt]),
+            redirect_uris: vec![],
+            allowed_scopes: BTreeSet::from([
+                ScopeName::parse("operator:use").unwrap(),
+                ScopeName::parse("admin:manage").unwrap(),
+            ]),
+            credential_secret: None,
+            jwks: Some(JwksSource::Remote {
+                jwks_uri: HttpsUrl::new("https://idp.example.com/oauth2/clients/jwks.json")
+                    .unwrap(),
+            }),
+            tenant: None,
+            metadata: Value::Null,
+        },
+    ]
+}
+
+fn default_oidc_clients() -> Vec<IdentityProviderOidcClientRegistration> {
+    vec![IdentityProviderOidcClientRegistration {
+        id: OidcClientRegistrationId::parse("enterprise").unwrap(),
+        identity_provider: IdentityProviderId::parse("enterprise").unwrap(),
+        authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
+        allowed_resources: BTreeSet::from([ProtectedResourceId::parse(
+            "https://veoveo.example/mcp/operator",
+        )
+        .unwrap()]),
+        client_id: OidcClientId::parse("veoveo").unwrap(),
+        redirect_uri: OAuthRedirectUri::new("https://veoveo.example/oauth/callback").unwrap(),
+        auth_method: OidcClientAuthMethod::ClientSecretPost,
+        credential_secret: SecretReferenceId::parse("enterprise_oidc_client_secret").unwrap(),
+        scopes: BTreeSet::from([
+            ScopeName::parse("openid").unwrap(),
+            ScopeName::parse("profile").unwrap(),
+            ScopeName::parse("email").unwrap(),
+        ]),
+        metadata: Value::Null,
+    }]
+}
+
+fn hosted_compat_oauth_client(
+    helpers: BTreeSet<CompatibilityHelperId>,
+    direct_task_call_adapter: bool,
+) -> OAuthClientRegistration {
+    OAuthClientRegistration {
+        knowledge_indexing: None,
+        id: OAuthClientId::parse("operator-hosted-public").unwrap(),
+        authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
+        default_work_context: WorkContextId::parse("default").unwrap(),
+        invocation_mode: veoveo_types::InvocationMode::Direct,
+        display_name: Some("Veoveo Operator Hosted Client".to_string()),
+        client_surface: OAuthClientSurface::ToolsCompat,
+        allowed_compatibility_helpers: helpers,
+        direct_task_call_adapter,
+        allowed_resources: BTreeSet::from([ProtectedResourceId::parse(
+            "https://veoveo.example/mcp/operator",
+        )
+        .unwrap()]),
+        grant_types: BTreeSet::from([OAuthGrantType::AuthorizationCodePkce]),
+        auth_methods: BTreeSet::from([OAuthClientAuthMethod::None]),
+        redirect_uris: vec![
+            OAuthRedirectUri::new("https://claude.ai/api/mcp/auth_callback").unwrap(),
+        ],
+        allowed_scopes: BTreeSet::from([ScopeName::parse("operator:use").unwrap()]),
+        credential_secret: None,
+        jwks: None,
+        tenant: None,
+        metadata: Value::Null,
+    }
+}
+
+#[test]
+fn identifiers_reject_invalid_wire_values() {
+    assert!(ServerSlug::parse("Media").is_err());
+    assert!(GatewayProfileId::parse("default/profile").is_err());
+    assert!(ResourceScheme::parse("1media").is_err());
+    assert!(MountPath::new("media").is_err());
+    assert!(OAuthRedirectUri::new("https://veoveo.example/oauth/callback").is_ok());
+    assert!(OAuthRedirectUri::new("http://127.0.0.1:8789/oauth/callback").is_ok());
+    assert!(OAuthRedirectUri::new("http://[::1]:8789/oauth/callback").is_ok());
+    assert!(OAuthRedirectUri::new("http://example.com/oauth/callback").is_err());
+    assert!(OAuthRedirectUri::new("http://127.0.0.1/oauth/callback").is_err());
+    assert!(OAuthRedirectUri::new("http://127.0.0.1:0/oauth/callback").is_err());
+    assert!(OAuthStateValue::parse("oauth-state-1").is_ok());
+    assert!(OAuthStateValue::parse("oauth state").is_err());
+    assert!(OidcNonce::parse("nonce-1").is_ok());
+    assert!(OAuthAuthorizationCode::parse("a".repeat(43)).is_ok());
+    assert!(OAuthAuthorizationCode::parse("short").is_err());
+    assert!(PrincipalDisplayName::new("Mara Chen").is_ok());
+    assert!(PrincipalDisplayName::new("mara.chen@example.com").is_ok());
+    assert!(PrincipalDisplayName::new("").is_err());
+    assert!(PrincipalDisplayName::new(" Mara Chen ").is_err());
+    assert!(PrincipalDisplayName::new("Mara\nChen").is_err());
+    assert!(PrincipalDisplayName::new("x".repeat(257)).is_err());
+    assert!(PkceCodeChallenge::parse("A".repeat(43)).is_ok());
+    assert!(PkceCodeVerifier::parse("a".repeat(129)).is_err());
+    assert!(UpstreamUrl::parse("http://media-mcp:8787/media/mcp").is_ok());
+    assert!(UpstreamUrl::parse("https://media.example.com/mcp").is_ok());
+    assert!(UpstreamUrl::parse("ftp://media-mcp/media/mcp").is_err());
+    assert!(UpstreamUrl::parse("http://user:pass@media-mcp/media/mcp").is_err());
+    assert!(UpstreamUrl::parse("http://media-mcp/media/mcp?debug=true").is_err());
+    assert!(ResourceUri::new("media://artifact/abc").is_ok());
+    assert!(ResourceUriTemplate::new("media://model").is_err());
+}
+
+#[test]
+fn resource_uri_templates_match_simple_resource_uris() {
+    let model_template = ResourceUriTemplate::new("media://model/{model_id}").unwrap();
+    assert!(model_template.matches_uri(&ResourceUri::new("media://model/provider/model").unwrap()));
+    assert!(model_template.matches_uri(&ResourceUri::new("media://model/simple").unwrap()));
+    assert!(!model_template.matches_uri(&ResourceUri::new("media://models").unwrap()));
+    assert!(
+        !model_template
+            .matches_uri(&ResourceUri::new("simulation://model/provider/model").unwrap())
+    );
+
+    let usage_template = ResourceUriTemplate::new("media://usage/task/{task_id}").unwrap();
+    assert!(usage_template.matches_uri(&ResourceUri::new("media://usage/task/task-1").unwrap()));
+    assert!(!usage_template.matches_uri(&ResourceUri::new("media://usage/task/").unwrap()));
+    assert!(!usage_template.matches_uri(&ResourceUri::new("media://usage").unwrap()));
+}
+
+#[test]
+fn resource_uri_templates_reject_unsupported_expressions() {
+    assert!(ResourceUriTemplate::new("media://model/{}").is_err());
+    assert!(ResourceUriTemplate::new("media://model/{+model_id}").is_err());
+    assert!(ResourceUriTemplate::new("media://model/{model id}").is_err());
+    assert!(ResourceUriTemplate::new("media://model/{model_id").is_err());
+    assert!(ResourceUriTemplate::new("media://model/model_id}").is_err());
+    assert!(ResourceUriTemplate::new("media://model/{left}{right}").is_err());
+}
+
+#[test]
+fn control_plane_validates_upstream_transport_security() {
+    let mut loopback_manifest = media_manifest();
+    loopback_manifest.upstream.url =
+        UpstreamUrl::parse("http://127.0.0.1:18801/media/mcp").unwrap();
+    loopback_manifest.upstream.health_url =
+        UpstreamUrl::parse("http://127.0.0.1:18801/media/healthz").unwrap();
+    loopback_manifest.upstream.security = UpstreamTransportSecurity::LoopbackHttp;
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![loopback_manifest],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    config
+        .validate(&crate::catalog_fixture::registry())
+        .expect("loopback HTTP upstream is valid");
+
+    let mut mesh_manifest = media_manifest();
+    mesh_manifest.upstream.url =
+        UpstreamUrl::parse("http://media-mcp.default.svc.cluster.local/media/mcp").unwrap();
+    mesh_manifest.upstream.health_url =
+        UpstreamUrl::parse("http://media-mcp.default.svc.cluster.local/media/healthz").unwrap();
+    mesh_manifest.upstream.security = UpstreamTransportSecurity::ServiceMeshMtls;
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![mesh_manifest],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    config
+        .validate(&crate::catalog_fixture::registry())
+        .expect("service-mesh internal HTTP upstream is valid");
+
+    let mut public_plaintext_manifest = media_manifest();
+    public_plaintext_manifest.upstream.url =
+        UpstreamUrl::parse("http://media.example.com/media/mcp").unwrap();
+    public_plaintext_manifest.upstream.security = UpstreamTransportSecurity::ServiceMeshMtls;
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![public_plaintext_manifest],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("public plaintext upstream must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ServerUpstreamSecurityMismatch { .. }
+    ));
+}
+
+#[test]
+fn mutual_tls_upstream_requires_typed_client_material() {
+    let mut manifest = media_manifest();
+    manifest.upstream.url = UpstreamUrl::parse("https://media.example.com/media/mcp").unwrap();
+    manifest.upstream.health_url =
+        UpstreamUrl::parse("https://media.example.com/media/healthz").unwrap();
+    manifest.upstream.security = UpstreamTransportSecurity::MutualTls;
+
+    let err = control_plane_with_server_and_secrets(manifest.clone(), default_secrets())
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("mutual TLS requires client certificate and private key references");
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ServerUpstreamTlsSecretRequired {
+            purpose: SecretPurpose::TlsClientCertificate,
+            ..
+        }
+    ));
+
+    manifest.upstream.client_certificate =
+        Some(SecretReferenceId::parse("media_upstream_tls_client_certificate").unwrap());
+    let err = control_plane_with_server_and_secrets(manifest.clone(), default_secrets())
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("mutual TLS also requires a client private key reference");
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ServerUpstreamTlsSecretRequired {
+            purpose: SecretPurpose::TlsClientPrivateKey,
+            ..
+        }
+    ));
+
+    manifest.upstream.client_private_key =
+        Some(SecretReferenceId::parse("media_upstream_tls_client_private_key").unwrap());
+    let err = control_plane_with_server_and_secrets(manifest.clone(), default_secrets())
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("mutual TLS references must exist in the secret catalog");
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownServerUpstreamTlsSecret { .. }
+    ));
+
+    let mut wrong_purpose = tls_client_private_key_secret();
+    wrong_purpose.purpose = SecretPurpose::OAuthClientSecret;
+    let err = control_plane_with_server_and_secrets(
+        manifest.clone(),
+        vec![
+            signing_secret(),
+            oidc_client_secret(),
+            tls_client_certificate_secret(),
+            wrong_purpose,
+        ],
+    )
+    .validate(&crate::catalog_fixture::registry())
+    .expect_err("mutual TLS secrets must have TLS-specific purposes");
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ServerUpstreamTlsSecretPurposeMismatch {
+            expected: SecretPurpose::TlsClientPrivateKey,
+            ..
+        }
+    ));
+
+    control_plane_with_server_and_secrets(
+        manifest,
+        vec![
+            signing_secret(),
+            oidc_client_secret(),
+            tls_client_certificate_secret(),
+            tls_client_private_key_secret(),
+        ],
+    )
+    .validate(&crate::catalog_fixture::registry())
+    .expect("mutual TLS validates with typed certificate and private key secrets");
+}
+
+#[test]
+fn non_mutual_tls_upstream_rejects_client_material() {
+    let mut manifest = media_manifest();
+    manifest.upstream.client_certificate =
+        Some(SecretReferenceId::parse("media_upstream_tls_client_certificate").unwrap());
+    manifest.upstream.client_private_key =
+        Some(SecretReferenceId::parse("media_upstream_tls_client_private_key").unwrap());
+
+    let err = control_plane_with_server_and_secrets(
+        manifest,
+        vec![
+            signing_secret(),
+            oidc_client_secret(),
+            tls_client_certificate_secret(),
+            tls_client_private_key_secret(),
+        ],
+    )
+    .validate(&crate::catalog_fixture::registry())
+    .expect_err("client TLS material is only meaningful for mutual TLS upstreams");
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ServerUpstreamTlsClientMaterialNotAllowed { .. }
+    ));
+}
+
+#[test]
+fn auth_modes_expose_mcp_extension_ids() {
+    assert_eq!(
+        AuthMode::EnterpriseManagedAuthorization.mcp_extension_id(),
+        Some(MCP_ENTERPRISE_MANAGED_AUTHORIZATION_EXTENSION)
+    );
+    assert_eq!(
+        AuthMode::OAuthClientCredentials.mcp_extension_id(),
+        Some(MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION)
+    );
+    assert_eq!(AuthMode::OidcAuthorizationCodePkce.mcp_extension_id(), None);
+}
+
+#[test]
+fn gateway_actions_expose_final_subscription_and_task_methods() {
+    assert_eq!(
+        GatewayAction::SubscriptionsListen.mcp_method(),
+        Some("subscriptions/listen")
+    );
+    assert_eq!(
+        GatewayAction::TasksUpdate.mcp_method(),
+        Some("tasks/update")
+    );
+    assert_eq!(
+        GatewayAction::TasksCancel.mcp_method(),
+        Some("tasks/cancel")
+    );
+}
+
+#[test]
+fn control_plane_validates_cross_references() {
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: vec![
+            signing_secret(),
+            oidc_client_secret(),
+            SecretReference {
+                id: SecretReferenceId::parse("media_provider_key").unwrap(),
+                source: SecretSource::Env,
+                purpose: SecretPurpose::ProviderApiKey,
+                locator: SecretLocator::parse("MEDIA_PROVIDER_API_KEY").unwrap(),
+                owner: SecretOwner::Server {
+                    server: ServerSlug::parse("media").unwrap(),
+                },
+                rotation_hint: None,
+                metadata: Value::Null,
+            },
+        ],
+        metadata: Value::Null,
+    };
+
+    config
+        .validate(&crate::catalog_fixture::registry())
+        .expect("valid gateway control plane");
+}
+
+#[test]
+fn control_plane_rejects_unknown_server_reference() {
+    let mut profile = default_profile();
+    profile.servers[0].server = ServerSlug::parse("simulation").unwrap();
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown server must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownServer { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_duplicate_profile_server_reference() {
+    let mut profile = default_profile();
+    profile.servers.push(profile.servers[0].clone());
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("duplicate profile server exposure must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::DuplicateProfileServer { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_unknown_profile_tool() {
+    let mut profile = default_profile();
+    profile.servers[0].tools = Exposure::Listed(vec![LocalToolName::parse("simulate").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown profile tool must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownProfileTool { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_unknown_profile_prompt() {
+    let mut profile = default_profile();
+    profile.servers[0].prompts =
+        Exposure::Listed(vec![PromptName::parse("unknown-prompt").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown profile prompt must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownProfilePrompt { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_profile_resource_scheme_mismatch() {
+    let mut profile = default_profile();
+    profile.servers[0].resources = Exposure::Listed(vec![ResourceSelector::Scheme {
+        scheme: ResourceScheme::parse("simulation").unwrap(),
+    }]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("profile resource selector must stay server-scoped");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ProfileResourceSelectorMismatch { .. }
+    ));
+}
+
+#[test]
+fn control_plane_accepts_server_owned_projected_ui_resources() {
+    let mut chart_server = media_manifest();
+    chart_server.slug = ServerSlug::parse("charts").unwrap();
+    chart_server.uri_scheme = ResourceScheme::parse("charts").unwrap();
+    chart_server.resource_projection = ResourceProjectionMode::ServerOwned;
+
+    let mut profile = default_profile();
+    profile.servers[0].server = ServerSlug::parse("charts").unwrap();
+    profile.servers[0].tools = Exposure::None;
+    profile.servers[0].resources = Exposure::Listed(vec![ResourceSelector::UriPrefix {
+        prefix: ResourceUriPrefix::new("ui://charts/").unwrap(),
+    }]);
+
+    let mut policy = default_policy();
+    policy.rules[0].actions = BTreeSet::from([GatewayAction::ResourcesRead.into()]);
+    policy.rules[0].servers = BTreeSet::from([ServerSlug::parse("charts").unwrap()]);
+    policy.rules[0].tools.clear();
+    policy.rules[0].resource_schemes = BTreeSet::from([ResourceScheme::parse("ui").unwrap()]);
+
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![chart_server],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    config
+        .validate(&crate::catalog_fixture::registry())
+        .expect("server-owned projected UI resources must validate");
+}
+
+#[test]
+fn control_plane_rejects_unregistered_cross_server_resource_scheme() {
+    let mut server = media_manifest();
+    server
+        .referenced_resource_schemes
+        .insert(ResourceScheme::parse("frames").unwrap());
+    let config = control_plane_with_server_and_secrets(server, default_secrets());
+
+    let error = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("cross-server resource schemes must name a registered server");
+
+    assert!(matches!(
+        error,
+        GatewayControlPlaneError::UnknownServerReferencedResourceScheme {
+            server,
+            scheme,
+        } if server.as_str() == "media" && scheme.as_str() == "frames"
+    ));
+}
+
+#[test]
+fn control_plane_rejects_projected_ui_resources_for_other_server_slug() {
+    let mut chart_server = media_manifest();
+    chart_server.slug = ServerSlug::parse("charts").unwrap();
+    chart_server.uri_scheme = ResourceScheme::parse("charts").unwrap();
+    chart_server.resource_projection = ResourceProjectionMode::ServerOwned;
+
+    let mut profile = default_profile();
+    profile.servers[0].server = ServerSlug::parse("charts").unwrap();
+    profile.servers[0].resources = Exposure::Listed(vec![ResourceSelector::UriPrefix {
+        prefix: ResourceUriPrefix::new("ui://other/").unwrap(),
+    }]);
+
+    let mut policy = default_policy();
+    policy.rules[0].servers = BTreeSet::from([ServerSlug::parse("charts").unwrap()]);
+
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![chart_server],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("projected UI resource prefix must belong to the server slug");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ProfileResourceSelectorMismatch { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_disabled_profile_capability() {
+    let mut manifest = media_manifest();
+    manifest.capabilities.tasks = false;
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![manifest],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("profile cannot expose disabled task capability");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::ProfileExposesDisabledCapability {
+            capability: McpSurfaceCapability::Tasks,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_unknown_identity_provider_reference() {
+    let mut profile = default_profile();
+    profile.identity_provider = IdentityProviderId::parse("missing").unwrap();
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown identity provider must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownIdentityProvider { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_unknown_authorization_server_reference() {
+    let mut profile = default_profile();
+    profile.authorization_server = AuthorizationServerId::parse("missing").unwrap();
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown authorization server must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownAuthorizationServer { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_authorization_server_unknown_identity_provider() {
+    let mut authorization_server = authorization_server();
+    authorization_server.identity_provider = Some(IdentityProviderId::parse("missing").unwrap());
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("authorization server IdP reference must be known");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownAuthorizationServerIdentityProvider { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_profile_without_auth_modes() {
+    let mut profile = default_profile();
+    profile.auth_modes.clear();
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("empty auth modes must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::MissingAuthModes { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_oidc_profile_without_browser_endpoints() {
+    let mut auth_server = authorization_server();
+    auth_server.authorization_endpoint = None;
+    let mut profile = default_profile();
+    profile.auth_modes = BTreeSet::from([AuthMode::OidcAuthorizationCodePkce]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![auth_server],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("OIDC browser auth requires authorization endpoint");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::MissingAuthorizationServerEndpoint {
+            endpoint: AuthorizationServerEndpoint::Authorization,
+            ..
+        }
+    ));
+
+    let mut idp = identity_provider();
+    idp.token_endpoint = None;
+    let mut profile = default_profile();
+    profile.auth_modes = BTreeSet::from([AuthMode::OidcAuthorizationCodePkce]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![idp],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("OIDC browser auth requires token endpoint");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::MissingIdentityProviderEndpoint {
+            endpoint: IdentityProviderEndpoint::Token,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_extension_auth_modes_without_matching_endpoints() {
+    let mut idp = identity_provider();
+    idp.enterprise_managed_authorization_endpoint = None;
+    let mut profile = default_profile();
+    profile.auth_modes = BTreeSet::from([AuthMode::EnterpriseManagedAuthorization]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![idp],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("enterprise-managed auth requires endpoint");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::MissingIdentityProviderEndpoint {
+            endpoint: IdentityProviderEndpoint::EnterpriseManagedAuthorization,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_unknown_secret_owner_references() {
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: vec![
+            signing_secret(),
+            SecretReference {
+                id: SecretReferenceId::parse("profile_secret").unwrap(),
+                source: SecretSource::Env,
+                purpose: SecretPurpose::OAuthClientSecret,
+                locator: SecretLocator::parse("PROFILE_SECRET").unwrap(),
+                owner: SecretOwner::Profile {
+                    profile: GatewayProfileId::parse("missing").unwrap(),
+                },
+                rotation_hint: None,
+                metadata: Value::Null,
+            },
+        ],
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown profile secret owner must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownSecretOwnerProfile { .. }
+    ));
+
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: vec![
+            signing_secret(),
+            SecretReference {
+                id: SecretReferenceId::parse("server_secret").unwrap(),
+                source: SecretSource::Env,
+                purpose: SecretPurpose::ProviderApiKey,
+                locator: SecretLocator::parse("SERVER_SECRET").unwrap(),
+                owner: SecretOwner::Server {
+                    server: ServerSlug::parse("missing").unwrap(),
+                },
+                rotation_hint: None,
+                metadata: Value::Null,
+            },
+        ],
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown server secret owner must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownSecretOwnerServer { .. }
+    ));
+
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: vec![
+            signing_secret(),
+            SecretReference {
+                id: SecretReferenceId::parse("tenant_secret").unwrap(),
+                source: SecretSource::Env,
+                purpose: SecretPurpose::TokenExchangeCredential,
+                locator: SecretLocator::parse("TENANT_SECRET").unwrap(),
+                owner: SecretOwner::Tenant {
+                    tenant: TenantId::parse("missing").unwrap(),
+                },
+                rotation_hint: None,
+                metadata: Value::Null,
+            },
+        ],
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown tenant secret owner must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownSecretOwnerTenant { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_missing_oauth_client_for_auth_mode() {
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: vec![],
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("profile auth modes require OAuth clients");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::MissingOAuthClientForAuthMode { .. }
+    ));
+}
+
+#[test]
+fn control_plane_allows_service_profile_before_durable_client_admission() {
+    let mut profile = default_profile();
+    profile.auth_modes = BTreeSet::from([AuthMode::OAuthClientCredentials]);
+    let mut contexts = default_work_contexts();
+    for context in &mut contexts {
+        for rule in &mut context.memberships {
+            rule.oauth_clients.clear();
+        }
+    }
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: contexts,
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: vec![],
+        oidc_clients: vec![],
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+    config
+        .validate(&crate::catalog_fixture::registry())
+        .expect("durable service registration follows installation");
+}
+
+#[test]
+fn control_plane_rejects_missing_oidc_client_for_browser_auth() {
+    let mut profile = default_profile();
+    profile.auth_modes = BTreeSet::from([AuthMode::OidcAuthorizationCodePkce]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: vec![],
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("browser OIDC auth requires an OIDC client registration");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::MissingOidcClientForProfile { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_oidc_client_without_openid_scope() {
+    let mut clients = default_oidc_clients();
+    clients[0]
+        .scopes
+        .remove(&ScopeName::parse("openid").unwrap());
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: clients,
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("OIDC clients must request the openid scope");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OidcClientMissingOpenIdScope(_)
+    ));
+}
+
+#[test]
+fn control_plane_rejects_public_client_credentials() {
+    let mut clients = default_oauth_clients();
+    clients[1].auth_methods = BTreeSet::from([OAuthClientAuthMethod::None]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: clients,
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("client credentials must not be public");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OAuthClientPublicClientCredentials(_)
+    ));
+}
+
+#[test]
+fn control_plane_rejects_private_key_jwt_without_jwks() {
+    let mut clients = default_oauth_clients();
+    clients[1].jwks = None;
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: clients,
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("private-key JWT clients require a JWKS source");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OAuthClientMissingJwks { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_unsupported_oauth_client_auth_combinations() {
+    let mut clients = default_oauth_clients();
+    clients[0].auth_methods = BTreeSet::from([
+        OAuthClientAuthMethod::None,
+        OAuthClientAuthMethod::PrivateKeyJwt,
+    ]);
+    clients[0].jwks = Some(JwksSource::Remote {
+        jwks_uri: HttpsUrl::new("https://idp.example.com/oauth2/browser/jwks.json").unwrap(),
+    });
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: clients,
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("browser OAuth client must remain public none-auth");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OAuthClientUnsupportedAuthConfiguration { .. }
+    ));
+
+    let mut clients = default_oauth_clients();
+    clients[0].grant_types = BTreeSet::from([OAuthGrantType::RefreshToken]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: clients,
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("refresh tokens require an authorization-code grant on the same client");
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OAuthClientUnsupportedAuthConfiguration { .. }
+    ));
+
+    let mut clients = default_oauth_clients();
+    clients[1].auth_methods = BTreeSet::from([OAuthClientAuthMethod::ClientSecretPost]);
+    clients[1].credential_secret =
+        Some(SecretReferenceId::parse("enterprise_oidc_client_secret").unwrap());
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: clients,
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("client credentials must use private-key JWT");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OAuthClientUnsupportedAuthConfiguration { .. }
+    ));
+
+    let mut clients = default_oauth_clients();
+    clients[1].grant_types = BTreeSet::from([
+        OAuthGrantType::AuthorizationCodePkce,
+        OAuthGrantType::ClientCredentials,
+    ]);
+    clients[1].redirect_uris =
+        vec![OAuthRedirectUri::new("https://veoveo.example/oauth/callback").unwrap()];
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: clients,
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("one OAuth client must not mix browser and client credentials grants");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OAuthClientUnsupportedAuthConfiguration { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_oauth_client_missing_required_scope() {
+    let mut clients = default_oauth_clients();
+    clients[0]
+        .allowed_scopes
+        .remove(&ScopeName::parse("operator:use").unwrap());
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: clients,
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("client allowed scopes must cover profile and policy scopes");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::OAuthClientMissingAllowedScope { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_duplicate_resource_schemes() {
+    let mut second_server = media_manifest();
+    second_server.slug = ServerSlug::parse("simulation").unwrap();
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest(), second_server],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("duplicate resource schemes must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::DuplicateResourceScheme(_)
+    ));
+}
+
+#[test]
+fn control_plane_rejects_duplicate_tenants() {
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: vec![
+            TenantDefinition {
+                id: TenantId::parse("tenant-a").unwrap(),
+                title: Some("Tenant A".to_string()),
+                description: None,
+                metadata: Value::Null,
+            },
+            TenantDefinition {
+                id: TenantId::parse("tenant-a").unwrap(),
+                title: Some("Tenant A duplicate".to_string()),
+                description: None,
+                metadata: Value::Null,
+            },
+        ],
+        work_contexts: default_work_contexts(),
+        policies: vec![default_policy()],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("duplicate tenants must fail");
+
+    assert!(matches!(err, GatewayControlPlaneError::DuplicateTenant(_)));
+}
+
+#[test]
+fn control_plane_rejects_duplicate_policy_rule_ids() {
+    let mut policy = default_policy();
+    policy.rules.push(policy.rules[0].clone());
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("duplicate policy rule ids must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::DuplicatePolicyRule { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_unknown_policy_rule_references() {
+    let mut policy = default_policy();
+    policy.rules[0].profiles = BTreeSet::from([GatewayProfileId::parse("missing").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown policy profile must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownPolicyRuleProfile { .. }
+    ));
+
+    let mut policy = default_policy();
+    policy.rules[0].servers = BTreeSet::from([ServerSlug::parse("missing").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown policy server must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownPolicyRuleServer { .. }
+    ));
+
+    let mut policy = default_policy();
+    policy.rules[0].resource_schemes =
+        BTreeSet::from([ResourceScheme::parse("simulation").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown policy resource scheme must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownPolicyRuleResourceScheme { .. }
+    ));
+
+    let mut policy = default_policy();
+    policy.rules[0].tools = BTreeSet::from([LocalToolName::parse("simulate").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown policy tool must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownPolicyRuleTool { .. }
+    ));
+
+    let mut policy = default_policy();
+    policy.rules[0].prompts = BTreeSet::from([PromptName::parse("unknown-prompt").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown policy prompt must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownPolicyRulePrompt { .. }
+    ));
+
+    let mut policy = default_policy();
+    policy.rules[0].required_data_labels =
+        BTreeSet::from([DataLabelId::parse("unknown_label").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown policy data label must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownPolicyRuleDataLabel { .. }
+    ));
+
+    let mut policy = default_policy();
+    policy.rules[0].tenant_ids = BTreeSet::from([TenantId::parse("missing").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest()],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("unknown policy tenant must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::UnknownPolicyRuleTenant { .. }
+    ));
+
+    let mut simulation_server = media_manifest();
+    simulation_server.slug = ServerSlug::parse("simulation").unwrap();
+    simulation_server.uri_scheme = ResourceScheme::parse("simulation").unwrap();
+    simulation_server.mount_path = MountPath::new("/simulation").unwrap();
+    simulation_server.mcp_path = MountPath::new("/simulation/mcp").unwrap();
+    simulation_server.owned_routes.clear();
+    let mut policy = default_policy();
+    policy.rules[0].resource_schemes =
+        BTreeSet::from([ResourceScheme::parse("simulation").unwrap()]);
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![media_manifest(), simulation_server],
+        profiles: vec![default_profile()],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("policy resource scheme outside server scope must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::PolicyRuleResourceSchemeOutsideServerScope { .. }
+    ));
+}
+
+#[test]
+fn control_plane_rejects_policy_action_outside_server_capabilities() {
+    let mut manifest = media_manifest();
+    manifest.capabilities.resource_subscriptions = false;
+    manifest.capabilities.tasks = false;
+    manifest.capabilities.resources_list_changed = false;
+    let mut policy = default_policy();
+    policy.rules[0].actions = BTreeSet::from([GatewayAction::SubscriptionsListen.into()]);
+    policy.rules[0].tools.clear();
+    policy.rules[0].resource_schemes = BTreeSet::from([ResourceScheme::parse("media").unwrap()]);
+    let mut profile = default_profile();
+    profile.servers[0].tasks = TaskExposure::Disabled;
+    let config = GatewayControlPlane {
+        branding: None,
+        identity_providers: vec![identity_provider()],
+        authorization_servers: vec![authorization_server()],
+        servers: vec![manifest],
+        profiles: vec![profile],
+        extensions: Default::default(),
+        tenants: default_tenants(),
+        work_contexts: default_work_contexts(),
+        policies: vec![policy],
+        data_labels: default_data_labels(),
+        oauth_clients: default_oauth_clients(),
+        oidc_clients: default_oidc_clients(),
+        secrets: default_secrets(),
+        metadata: Value::Null,
+    };
+
+    let err = config
+        .validate(&crate::catalog_fixture::registry())
+        .expect_err("policy action outside server capabilities must fail");
+
+    assert!(matches!(
+        err,
+        GatewayControlPlaneError::PolicyRuleActionUnsupportedByServerScope {
+            action,
+            ..
+        } if action == GatewayAction::SubscriptionsListen.into()
+    ));
+}
+
+#[test]
+fn policy_decision_defaults_to_explicit_deny() {
+    let decision = PolicyDecision::deny(
+        GatewayProfileId::parse("default").unwrap(),
+        GatewayAction::ToolsCall,
+        PolicyTarget::Tool {
+            server: ServerSlug::parse("media").unwrap(),
+            tool: LocalToolName::parse("run").unwrap(),
+        },
+        PolicyReasonCode::MissingScope,
+        TraceId::parse("trace-1").unwrap(),
+    );
+
+    assert_eq!(decision.effect, PolicyEffect::Deny);
+    assert_eq!(decision.reason, PolicyReasonCode::MissingScope);
+}
+
+#[test]
+fn tools_compat_client_accepts_task_projection_without_a_helper_tool() {
+    let mut config = control_plane_with_server_and_secrets(media_manifest(), default_secrets());
+    config
+        .oauth_clients
+        .push(hosted_compat_oauth_client(BTreeSet::new(), true));
+
+    config
+        .validate(&crate::catalog_fixture::registry())
+        .expect("internal task projection should not require a public helper tool");
+}
+
+#[test]
+fn refresh_tokens_are_redacted_from_diagnostics_but_serialize_on_the_wire() {
+    let raw = "R".repeat(43);
+    let token = OAuthRefreshToken::parse(raw.clone()).unwrap();
+
+    assert_eq!(token.to_string(), "[REDACTED]");
+    assert!(!format!("{token:?}").contains(&raw));
+    assert_eq!(serde_json::to_value(token).unwrap(), serde_json::json!(raw));
+}
+
+#[test]
+fn app_resource_dependencies_bind_exact_apps_to_registered_resource_families() {
+    let target = media_manifest();
+    let mut owner = media_manifest();
+    owner.slug = ServerSlug::parse("mission").unwrap();
+    owner.uri_scheme = ResourceScheme::parse("mission").unwrap();
+    owner.capabilities.apps = true;
+    owner.resource_projection = ResourceProjectionMode::ServerOwned;
+    owner.app_resource_dependencies = vec![AppResourceDependency {
+        app_resource: ResourceUri::new("ui://mission/operations.html").unwrap(),
+        server: target.slug.clone(),
+        scheme: target.uri_scheme.clone(),
+        uri_prefix: ResourceUriPrefix::new("media://artifact/").unwrap(),
+        required_scope: ScopeName::parse("media:read").unwrap(),
+        operations: BTreeSet::from([AppResourceOperation::Read]),
+        data_labels: BTreeSet::from([DataLabelId::parse("cui").unwrap()]),
+    }];
+    let servers = std::collections::BTreeMap::from([
+        (owner.slug.clone(), &owner),
+        (target.slug.clone(), &target),
+    ]);
+    let labels = BTreeSet::from([DataLabelId::parse("cui").unwrap()]);
+    super::validation::validate_app_resource_dependencies(&owner, &servers, &labels)
+        .expect("exact registered dependency should validate");
+
+    drop(servers);
+    owner.app_resource_dependencies[0].uri_prefix =
+        ResourceUriPrefix::new("recording://artifact/").unwrap();
+    let servers = std::collections::BTreeMap::from([
+        (owner.slug.clone(), &owner),
+        (target.slug.clone(), &target),
+    ]);
+    let error = super::validation::validate_app_resource_dependencies(&owner, &servers, &labels)
+        .expect_err("scheme and prefix mismatch must fail");
+    assert!(matches!(
+        error,
+        GatewayControlPlaneError::InvalidAppResourceDependency { .. }
+    ));
+}
+
+#[test]
+fn normalized_identity_and_decision_reject_unknown_fields() {
+    let principal = serde_json::json!({
+        "id": "alice", "kind": "user", "issuer": "https://idp.example.com",
+        "subject": "alice"
+    });
+    let admitted: Principal = serde_json::from_value(principal.clone()).unwrap();
+    let mut unknown = principal;
+    unknown["external_claim"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<Principal>(unknown).is_err());
+    assert!(
+        serde_json::from_value::<crate::access::GroupMembership>(serde_json::json!({
+            "group": "engineering", "role": "read", "unexpected": true
+        }))
+        .is_err()
+    );
+    let decision = PolicyDecision::deny(
+        GatewayProfileId::parse("default").unwrap(),
+        veoveo_gateway_contract::GatewayAction::ToolsCall,
+        PolicyTarget::Gateway,
+        PolicyReasonCode::PolicyDeny,
+        TraceId::parse("trace-normalized").unwrap(),
+    );
+    let mut wire = serde_json::to_value(&decision).unwrap();
+    assert!(serde_json::from_value::<PolicyDecision>(wire.clone()).is_ok());
+    wire["unexpected"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<PolicyDecision>(wire).is_err());
+    assert_eq!(
+        serde_json::from_value::<Principal>(serde_json::to_value(&admitted).unwrap()).unwrap(),
+        admitted
+    );
+}
+
+#[test]
+fn control_plane_refuses_retired_core_keys_in_extension_space() {
+    let control = control_plane_with_server_and_secrets(media_manifest(), default_secrets());
+    let wire = serde_json::to_value(control).unwrap();
+    assert!(serde_json::from_value::<GatewayControlPlane>(wire.clone()).is_ok());
+    for key in [
+        "identity_providers",
+        "authorization_servers",
+        "work_contexts",
+        "data_labels",
+        "oauth_clients",
+        "oidc_clients",
+    ] {
+        let mut mixed = wire.clone();
+        mixed[key] = serde_json::json!([]);
+        assert!(
+            serde_json::from_value::<GatewayControlPlane>(mixed).is_err(),
+            "retired core key {key}"
+        );
+    }
+}
+
+#[test]
+fn revision_wire_refuses_retired_names_instead_of_dropping_them() {
+    let value = GatewayControlPlaneRevision {
+        revision_id: GatewayControlPlaneRevisionId::parse("gcp-fixture").unwrap(),
+        sha256: "a".repeat(64),
+        source: GatewayControlPlaneRevisionSource::SeedFile,
+        applied_at: chrono::DateTime::parse_from_rfc3339("2026-10-06T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        applied_by: PrincipalId::parse("author").unwrap(),
+        tenant: None,
+        control_plane: control_plane_with_server_and_secrets(media_manifest(), default_secrets()),
+    };
+    let current = serde_json::to_value(value).unwrap();
+    let schema = serde_json::to_value(schemars::schema_for!(GatewayControlPlaneRevision)).unwrap();
+    let validator = jsonschema::validator_for(&schema).unwrap();
+    assert!(validator.is_valid(&current));
+    assert!(serde_json::from_value::<GatewayControlPlaneRevision>(current.clone()).is_ok());
+    for (canonical, retired) in [
+        ("revisionId", "revision_id"),
+        ("appliedAt", "applied_at"),
+        ("appliedBy", "applied_by"),
+        ("controlPlane", "control_plane"),
+    ] {
+        for mixed in [false, true] {
+            let mut invalid = current.clone();
+            invalid[retired] = invalid[canonical].clone();
+            if !mixed {
+                invalid.as_object_mut().unwrap().remove(canonical);
+            }
+            assert!(
+                serde_json::from_value::<GatewayControlPlaneRevision>(invalid.clone()).is_err()
+            );
+            assert!(!validator.is_valid(&invalid));
+        }
+    }
+}

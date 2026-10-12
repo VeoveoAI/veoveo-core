@@ -1,0 +1,64 @@
+//! Domain-neutral certification for a running Veoveo hosted MCP server.
+
+pub mod catalog;
+pub mod knowledge_probes;
+mod knowledge_source;
+pub mod naming;
+pub mod requirements;
+pub mod schema_evidence;
+
+mod profile;
+mod report;
+mod runner;
+mod tool_schema;
+
+pub use knowledge_source::{KnowledgeRoute, KnowledgeSourceTarget};
+pub use profile::{
+    HOSTED_MCP_CONTRACT_REVISION, HOSTED_SERVER_PROFILE_SCHEMA, HostedServerConformanceProfile,
+    HostedServerProfileSchema, HttpBoundaryProfile, SurfaceExpectation, SurfaceProfile,
+};
+pub use report::{
+    CONFORMANCE_REPORT_SCHEMA, CheckResult, CheckStatus, ConformanceReport,
+    ConformanceReportSchema, ObservedImplementation,
+};
+pub use runner::run_knowledge_source_conformance;
+pub use runner::{
+    run_hosted_server_conformance, run_hosted_server_conformance_with_evidence,
+    run_hosted_server_conformance_with_probes,
+};
+pub use schema_evidence::{
+    NamingEvidence, OwnerSchemaEvidence, SchemaEvidenceOrigin, SchemaObservation,
+    ToolNameProjection,
+};
+pub use tool_schema::{SchemaStats, validate_tool_input_schema};
+
+#[must_use]
+pub fn hosted_server_conformance_profile_schema() -> schemars::Schema {
+    schemars::schema_for!(HostedServerConformanceProfile)
+}
+
+#[must_use]
+pub fn conformance_report_schema() -> schemars::Schema {
+    schemars::schema_for!(ConformanceReport)
+}
+
+/// Runtime credentials supplied outside the serializable conformance profile.
+#[derive(Clone, Default)]
+pub struct ConformanceCredentials {
+    bearer_token: Option<String>,
+}
+
+impl ConformanceCredentials {
+    pub fn bearer(token: impl Into<String>) -> Self {
+        Self {
+            bearer_token: Some(token.into()),
+        }
+    }
+
+    pub(crate) fn bearer_token(&self) -> Option<&str> {
+        self.bearer_token.as_deref()
+    }
+}
+
+/// Native SDK connection mechanics shared by owner-local utilities.
+pub mod client;

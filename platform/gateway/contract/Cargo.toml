@@ -1,0 +1,19 @@
+[package]
+name = "veoveo-gateway-contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+veoveo-types.workspace = true
+veoveo-modules = { workspace = true, features = ["serialization"] }
+serde.workspace = true
+serde_json.workspace = true
+schemars = { workspace = true, features = ["chrono04"] }
+chrono.workspace = true
+url.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true

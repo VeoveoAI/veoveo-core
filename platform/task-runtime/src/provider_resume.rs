@@ -1,0 +1,82 @@
+//! Explicit domain-authorized recovery under an unchanged observation claim.
+use crate::{ClaimedTask, ProviderCommit, TaskError, TaskRuntime, TaskSnapshot, TaskStatus};
+use chrono::{DateTime, Utc};
+use surrealdb::types::{SurrealValue, Value};
+use veoveo_platform_store::TaskRequestRecord;
+
+impl TaskRuntime {
+    /// Resume a paused provider journal and its Task in one transaction.
+    ///
+    /// The trusted domain body must authorize and durably record an idempotent
+    /// recovery request, compare its paused epoch, and retain its resource fence
+    /// and original dispatch identities. This helper grants no provider effect.
+    /// Cancellation requires the exact pending timestamp; ordinary transitions
+    /// cannot withdraw it. A subsequent cancellation wins normally. Lost database
+    /// replies require looking up the domain request, never blind resubmission.
+    pub async fn resume_provider_journal(
+        &self,
+        claimed: &ClaimedTask,
+        acknowledged_cancellation: Option<DateTime<Utc>>,
+        body: &'static str,
+        mut bindings: Vec<(&'static str, Value)>,
+    ) -> Result<TaskSnapshot, TaskError> {
+        let current = &claimed.snapshot;
+        let pending = (current.status == TaskStatus::CancelRequested)
+            .then_some(current.cancel_requested_at)
+            .flatten();
+        if !matches!(
+            current.status,
+            TaskStatus::Queued
+                | TaskStatus::Running
+                | TaskStatus::Waiting
+                | TaskStatus::CancelRequested
+        ) || current.status == TaskStatus::CancelRequested && pending.is_none()
+            || acknowledged_cancellation != pending
+            || bindings
+                .iter()
+                .any(|(name, _)| name.starts_with("_resume_"))
+        {
+            return Err(TaskError::Conflict(current.task_id.to_string()));
+        }
+        let now = Utc::now();
+        let mut resumed = current.clone();
+        resumed.status = TaskStatus::Waiting;
+        resumed.status_message = Some("Resumed".into());
+        resumed.updated_at = now;
+        // The old cancellation remains historical evidence. Pending intent is
+        // represented by Task status, and a new cancellation records a new epoch.
+        let envelope = TaskRequestRecord {
+            input: current.request.clone(),
+            status_message: resumed.status_message.clone(),
+            ttl_ms: current.ttl_ms,
+            poll_interval_ms: current.poll_interval_ms,
+        }
+        .into_value();
+        bindings.extend([
+            ("_resume_status", current.status.into_value()),
+            ("_resume_updated", current.updated_at.into_value()),
+            (
+                "_resume_cancelled",
+                current.cancel_requested_at.into_value(),
+            ),
+            ("_resume_now", now.into_value()),
+            ("_resume_request", envelope.into_value()),
+            (
+                "_resume_expected_request",
+                TaskRequestRecord::from(current).into_value(),
+            ),
+            (
+                "_resume_owner_context",
+                veoveo_platform_store::TaskOwnerRecord::try_from(&current.owner)?.into_value(),
+            ),
+        ]);
+        let body = include_str!("../queries/provider/resume_body.surql").replacen(
+            "/* domain body */",
+            body,
+            1,
+        );
+        self.commit_provider_body(claimed, ProviderCommit::Observe, &body, bindings)
+            .await?;
+        Ok(resumed)
+    }
+}

@@ -1,0 +1,1 @@
+UPDATE ONLY $task SET owner_context.authority.work_context = 'another-context', request.input = { native: task_json_probe:opaque } RETURN NONE;

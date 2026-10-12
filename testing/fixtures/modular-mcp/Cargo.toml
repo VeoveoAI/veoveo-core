@@ -1,0 +1,26 @@
+[package]
+name = "veoveo-modular-fixture-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+default = ["mcp"]
+contract = ["dep:thiserror", "dep:veoveo-types", "dep:serde", "dep:schemars"]
+mcp = ["contract", "dep:axum", "dep:rmcp", "dep:serde_json", "dep:veoveo-mcp-contract"]
+
+[dependencies]
+thiserror = { workspace = true, optional = true }
+veoveo-types = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+rmcp = { workspace = true, features = ["server"], optional = true }
+serde_json = { workspace = true, optional = true }
+veoveo-mcp-contract = { features = ["runtime"], workspace = true, default-features = false, optional = true }
+
+[[test]]
+name = "contract"
+required-features = ["contract"]

@@ -1,0 +1,20 @@
+[package]
+name = "veoveo-test-fixtures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Shared test fixtures for repositories that consume veoveo-core"
+
+[features]
+store = ["dep:serde", "dep:serde_json", "dep:tokio", "dep:uuid", "dep:veoveo-modules", "dep:veoveo-platform-store"]
+tool-inputs = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["full"], optional = true }
+uuid = { workspace = true, features = ["v7"], optional = true }
+veoveo-modules = { workspace = true, features = ["runner"], optional = true }
+veoveo-platform-store = { path = "../../../platform/store", optional = true }

@@ -1,0 +1,109 @@
+[package]
+name = "veoveo-platform-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "veoveo_platform_store"
+path = "src/lib.rs"
+
+[features]
+default = ["runtime"]
+schema = ["dep:veoveo-modules"]
+runtime = [
+    "schema",
+    "dep:anyhow",
+    "dep:tracing",
+    "dep:veoveo-modules",
+    "dep:schemars",
+    "dep:veoveo-knowledge-contract",
+    "dep:veoveo-embedding-contract",
+    "dep:veoveo-mcp-knowledge-extension",
+    "dep:veoveo-audit-contract",
+    "dep:veoveo-types",
+    "dep:veoveo-task-contract",
+    "dep:veoveo-gateway-contract",
+    "dep:veoveo-artifact-contract",
+    "dep:async-stream",
+    "dep:chrono",
+    "dep:futures",
+    "dep:hex",
+    "dep:secrecy",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:surrealdb",
+    "dep:thiserror",
+    "dep:tokio",
+    "dep:url",
+    "dep:uuid",
+]
+
+[dependencies]
+veoveo-task-contract = { workspace = true, features = ["surreal"], optional = true }
+anyhow = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+veoveo-modules = { workspace = true, default-features = false, optional = true }
+schemars = { workspace = true, optional = true }
+veoveo-knowledge-contract = { workspace = true, optional = true }
+veoveo-embedding-contract = { workspace = true, optional = true }
+veoveo-mcp-knowledge-extension = { workspace = true, features = ["contract"], optional = true }
+veoveo-audit-contract = { workspace = true, optional = true }
+veoveo-types = { workspace = true, optional = true }
+veoveo-gateway-contract = { workspace = true, optional = true }
+veoveo-artifact-contract = { workspace = true, optional = true }
+async-stream = { version = "=0.3.6", optional = true }
+chrono = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+secrecy = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+surrealdb = { version = "=3.3.0", default-features = false, features = ["protocol-ws", "rustls"], optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["time", "rt", "sync"], optional = true }
+url = { workspace = true, optional = true }
+uuid = { workspace = true, features = ["serde", "v5", "v7"], optional = true }
+
+[dev-dependencies]
+veoveo-modules = { workspace = true, features = ["runner"] }
+tokio = { workspace = true, features = ["process", "macros", "rt-multi-thread", "net", "io-util", "sync"] }
+
+[[test]]
+name = "audit"
+required-features = ["runtime"]
+
+[[test]]
+name = "audit_indexing"
+required-features = ["runtime"]
+
+[[test]]
+name = "changefeed_consumers"
+required-features = ["runtime"]
+
+[[test]]
+name = "current_authority"
+required-features = ["runtime"]
+
+[[test]]
+name = "identity_sync"
+required-features = ["runtime"]
+
+[[test]]
+name = "knowledge"
+required-features = ["runtime"]
+
+[[test]]
+name = "resource_changes"
+required-features = ["runtime"]
+
+[[test]]
+name = "surreal_integration"
+required-features = ["runtime"]
+
+[[test]]
+name = "write_cost"
+required-features = ["runtime"]

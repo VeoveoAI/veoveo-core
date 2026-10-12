@@ -1,6 +1,28 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "mcp/apps-extension",
+    "mcp/conformance",
+    "mcp/contract",
+    "mcp/knowledge-extension",
+    "platform/artifacts/contract",
+    "platform/audit",
+    "platform/audit/contract",
+    "platform/gateway/contract",
+    "platform/http",
+    "platform/knowledge/contract",
+    "platform/macros",
+    "platform/modules",
+    "platform/oauth",
+    "platform/policy",
+    "platform/runtimes/embedding/contract",
+    "platform/store",
+    "platform/task-runtime",
+    "platform/task-runtime/contract",
+    "platform/types",
+    "testing/fixtures/library",
+    "testing/fixtures/modular-mcp",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -8,14 +30,72 @@ edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
 repository = "https://github.com/VeoveoAI/veoveo-core"
-publish = false
 
-[workspace.lints.rust]
-unsafe_code = "forbid"
-unused_qualifications = "warn"
-
-[workspace.lints.clippy]
-all = { level = "warn", priority = -1 }
-dbg_macro = "deny"
-todo = "deny"
-unimplemented = "deny"
+[workspace.dependencies]
+veoveo-task-contract = { path = "platform/task-runtime/contract" }
+veoveo-embedding-contract = { path = "platform/runtimes/embedding/contract" }
+veoveo-knowledge-contract = { path = "platform/knowledge/contract" }
+veoveo-mcp-knowledge-extension = { path = "mcp/knowledge-extension", default-features = false }
+veoveo-macros = { path = "platform/macros" }
+veoveo-audit-contract = { path = "platform/audit/contract" }
+anyhow = "=1.0.104"
+axum = "0.8.9"
+axum-server = { version = "0.8.0", features = ["tls-rustls-no-provider"] }
+base64 = "0.23.1"
+chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
+clap = { version = "4.6.6", features = ["derive", "env"] }
+# Rust adapter 1.10505.0 with compatible comfy-table and download-version patches.
+# Core/Spatial 1.5.6 qualification and fork retirement: platform/runtimes/duckdb/DESIGN.md.
+futures = "0.3.34"
+http = "1.5.0"
+iri-string = { version = "=0.7.14", default-features = false, features = ["std"] }
+hex = "=0.4.3"
+jsonschema = "=0.51.0"
+rsa = "=0.9.10"
+jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["rust_crypto", "use_pem"] }
+object_store = { version = "=0.14.1", default-features = false, features = ["aws"] }
+opentelemetry = "0.32.0"
+opentelemetry-appender-tracing = "0.32.0"
+# Rerun's official Redap tests bring `re_perf_telemetry`, which enables the
+# OTLP `hyper-client`. opentelemetry-otlp 0.32.0 cannot compile the combined
+# blocking-reqwest + hyper feature set unless the higher-priority async
+# reqwest client is also enabled.
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-client", "trace", "logs", "metrics"] }
+opentelemetry_sdk = "0.32.1"
+parking_lot = "0.12.5"
+proc-macro2 = "=1.0.107"
+quote = "=1.0.47"
+reqwest = { version = "=0.13.5", default-features = false }
+# This fork pin carries acknowledged MCP 2026-07-28 resource subscriptions,
+# governed resource reads, and request-boundary preflight not yet released upstream.
+rcgen = "0.14.9"
+# Stable RMCP 3.5.0 plus exact Task filters and typed HTTP rejections.
+# Qualification and patch retirement: platform/gateway/DESIGN.md#sdk-transport-profile
+oauth2 = { version = "=5.0.0", default-features = false }
+rmcp = { version = "=3.5.0", git = "https://github.com/rozgo/rust-sdk", rev = "917e7914c93975fc1eddbff8792f1e2de933bc17" }
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
+schemars = "1.2.2"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_path_to_error = "=0.1.20"
+serde_json = "=1.0.151"
+secrecy = "0.10.3"
+sha2 = "=0.11.0"
+syn = "=3.0.6"
+tokio = "1.53.1"
+tokio-util = "0.7.19"
+# Exact qualified stable release.
+thiserror = "=2.0.21"
+tower-http = { version = "0.7.0", features = ["fs", "trace", "cors"] }
+tower = "0.5.3"
+tracing = "0.1.44"
+tracing-opentelemetry = "0.33.0"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+url = "=2.5.8"
+percent-encoding = "=2.3.2"
+uuid = { version = "1.24.1", features = ["serde", "v4", "v5", "v7"] }
+zeroize = "=1.9.0"
+veoveo-mcp-contract = { path = "mcp/contract", default-features = false }
+veoveo-types = { path = "platform/types" }
+veoveo-modules = { path = "platform/modules", default-features = false }
+veoveo-gateway-contract = { path = "platform/gateway/contract" }
+veoveo-artifact-contract = { path = "platform/artifacts/contract" }

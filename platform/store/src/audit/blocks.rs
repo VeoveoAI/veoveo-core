@@ -1,0 +1,520 @@
+//! Fenced sealing and partition-scoped block reads. Request writes never touch a sequence.
+use super::{
+    codec::{self, Row},
+    record_id,
+};
+use crate::{
+    ChangefeedCursor, ChangefeedEntry, PlatformStore, RecordId, StoreError, decode_changefeed_entry,
+};
+use chrono::{DateTime, Utc};
+use surrealdb::types::{Array, SurrealValue, Uuid as SurrealUuid, Value};
+use veoveo_audit_contract::*;
+
+#[derive(Debug, Clone, SurrealValue)]
+pub struct AuditSealLease {
+    pub owner: uuid::Uuid,
+    pub generation: i64,
+    pub cursor: i64,
+    pub lease_until: DateTime<Utc>,
+}
+#[derive(Debug)]
+pub struct AuditCommittedRecords {
+    /// First versionstamp not included in this batch.
+    pub next: AuditVersionstamp,
+    pub records: Vec<(AuditVersionstamp, AuditRecord)>,
+}
+/// The retained interval frozen for an export. A later deletion must fail the
+/// export rather than silently move its first block forward.
+pub struct AuditExportRange {
+    pub checkpoint: Option<AuditCheckpoint>,
+    pub first: Option<AuditBlockSequence>,
+}
+#[derive(SurrealValue)]
+struct ExportRangeRow {
+    checkpoint: Option<Value>,
+    retired: i64,
+}
+#[derive(SurrealValue)]
+pub(super) struct BlockRow {
+    id: RecordId,
+    partition: String,
+    sequence: i64,
+    block: Value,
+    head_hash: String,
+}
+impl BlockRow {
+    pub(super) fn checked(self) -> Result<AuditBlock, StoreError> {
+        let block: AuditBlock = codec::decode(self.block)?;
+        if self.id != block_id(&block.head.partition, block.head.sequence)
+            || self.head_hash != block.head_hash.to_string()
+            || self.partition != block.head.partition.storage_key()
+            || self.sequence as u64 != block.head.sequence.get()
+        {
+            return Err(StoreError::AuditIntegrity);
+        }
+        Ok(block)
+    }
+}
+pub(super) fn block_id(partition: &AuditPartition, sequence: AuditBlockSequence) -> RecordId {
+    RecordId::new(
+        "audit_block",
+        Array::from(vec![
+            (partition.storage_key()).into_value(),
+            (sequence.get() as i64).into_value(),
+        ]),
+    )
+}
+pub(super) fn named_id(table: &'static str, partition: &AuditPartition) -> RecordId {
+    RecordId::new(table, partition.storage_key())
+}
+/// Native sealing row; canonical block/checkpoint JSON is encoded separately.
+#[derive(SurrealValue)]
+struct AuditBlockRecord {
+    partition: String,
+    sequence: i64,
+    first_versionstamp: i64,
+    last_versionstamp: i64,
+    records: Vec<RecordId>,
+    head_hash: codec::NativeText<veoveo_types::Sha256Digest>,
+    block: codec::FrozenDocument<AuditBlock>,
+    sealed_at: DateTime<Utc>,
+}
+#[derive(SurrealValue)]
+struct AuditBlockWrite {
+    id: RecordId,
+    head_id: RecordId,
+    partition: String,
+    sequence: i64,
+    head_hash: codec::NativeText<veoveo_types::Sha256Digest>,
+    previous: Option<codec::NativeText<veoveo_types::Sha256Digest>>,
+    checkpoint: codec::FrozenDocument<AuditCheckpoint>,
+    row: AuditBlockRecord,
+}
+#[derive(SurrealValue)]
+struct AuditSealBinding {
+    owner: SurrealUuid,
+    generation: i64,
+    expected_cursor: i64,
+    next_cursor: i64,
+    blocks: Vec<AuditBlockWrite>,
+}
+fn block_row(block: &AuditBlock) -> AuditBlockRecord {
+    AuditBlockRecord {
+        partition: block.head.partition.storage_key(),
+        sequence: block.head.sequence.get() as i64,
+        first_versionstamp: block.head.first_versionstamp.get() as i64,
+        last_versionstamp: block.head.last_versionstamp.get() as i64,
+        records: block
+            .head
+            .members
+            .iter()
+            .map(|member| record_id(&block.head.partition, member.id))
+            .collect(),
+        head_hash: codec::NativeText(block.head_hash.clone()),
+        block: codec::FrozenDocument(block.clone()),
+        sealed_at: block.head.sealed_at,
+    }
+}
+fn block_write(block: &AuditBlock) -> AuditBlockWrite {
+    AuditBlockWrite {
+        id: block_id(&block.head.partition, block.head.sequence),
+        head_id: named_id("audit_partition_head", &block.head.partition),
+        partition: block.head.partition.storage_key(),
+        sequence: block.head.sequence.get() as i64,
+        head_hash: codec::NativeText(block.head_hash.clone()),
+        previous: block.head.previous.clone().map(codec::NativeText),
+        checkpoint: codec::FrozenDocument(block.checkpoint()),
+        row: block_row(block),
+    }
+}
+impl PlatformStore {
+    pub async fn audit_export_range(
+        &self,
+        scope: &AuditReadScope,
+        partition: &AuditPartition,
+    ) -> Result<AuditExportRange, StoreError> {
+        if !scope.permits(partition) {
+            return Err(StoreError::AuditAccessDenied);
+        }
+        let mut response = self
+            .db
+            .query(include_str!("../queries/audit/export_range.surql"))
+            .bind(("head_id", named_id("audit_partition_head", partition)))
+            .bind(("anchor_id", named_id("audit_retention_anchor", partition)))
+            .await?
+            .check()?;
+        let index = response
+            .num_statements()
+            .checked_sub(2)
+            .ok_or(StoreError::AuditIntegrity)?;
+        let row: Option<ExportRangeRow> = response.take(index)?;
+        let row = row.ok_or(StoreError::AuditIntegrity)?;
+        let checkpoint: Option<AuditCheckpoint> = row.checkpoint.map(codec::decode).transpose()?;
+        let retired = u64::try_from(row.retired).map_err(|_| StoreError::AuditIntegrity)?;
+        if checkpoint
+            .as_ref()
+            .is_some_and(|head| &head.partition != partition || retired > head.sequence.get())
+            || (checkpoint.is_none() && retired != 0)
+        {
+            return Err(StoreError::AuditIntegrity);
+        }
+        let first = checkpoint
+            .as_ref()
+            .filter(|head| retired < head.sequence.get())
+            .map(|_| AuditBlockSequence::new(retired + 1))
+            .transpose()
+            .map_err(|_| StoreError::AuditIntegrity)?;
+        Ok(AuditExportRange { checkpoint, first })
+    }
+    pub async fn acquire_audit_seal_lease(
+        &self,
+        owner: uuid::Uuid,
+    ) -> Result<AuditSealLease, StoreError> {
+        let mut response = self
+            .db
+            .query(include_str!("../queries/audit/lease.surql"))
+            .bind(("owner", SurrealUuid::from(owner)))
+            .await?;
+        if let Some(error) = crate::primary_transaction_error(response.take_errors()) {
+            return Err(control_error(error));
+        }
+        let index = response
+            .num_statements()
+            .checked_sub(2)
+            .ok_or(StoreError::AuditIntegrity)?;
+        let lease: Option<AuditSealLease> = response.take(index)?;
+        lease.ok_or(StoreError::AuditIntegrity)
+    }
+    /// Installation-owned sealer only. It follows the native database feed to avoid
+    /// the table-filter-before-LIMIT hole in SurrealDB 3.3. No UI uses this method.
+    pub async fn audit_committed_records(
+        &self,
+        lease: &AuditSealLease,
+    ) -> Result<AuditCommittedRecords, StoreError> {
+        let cursor =
+            ChangefeedCursor::from_versionstamp(lease.cursor).ok_or(StoreError::AuditIntegrity)?;
+        let batches = self.replay_changes(cursor, 32).await?;
+        let mut next = lease.cursor;
+        let mut records = Vec::new();
+        for batch in batches {
+            let mut batch_records = Vec::new();
+            let versionstamp = AuditVersionstamp::new(batch.versionstamp as u64)
+                .map_err(|_| StoreError::AuditIntegrity)?;
+            for change in batch.changes {
+                let entry = decode_changefeed_entry(&change)?;
+                if entry.table() != Some("audit_record") {
+                    continue;
+                }
+                if let ChangefeedEntry::Upsert(value) = entry {
+                    let row = Row::from_value(value).map_err(|_| StoreError::AuditIntegrity)?;
+                    batch_records.push((versionstamp, row.checked(self.audit_targets())?));
+                }
+            }
+            if batch_records.len() > 4096 {
+                return Err(StoreError::AuditBatchLimit);
+            }
+            if records.len() + batch_records.len() > 4096 {
+                break;
+            }
+            records.extend(batch_records);
+            next = batch
+                .versionstamp
+                .checked_add(1)
+                .ok_or(StoreError::AuditIntegrity)?;
+        }
+        Ok(AuditCommittedRecords {
+            next: AuditVersionstamp::new(next as u64).map_err(|_| StoreError::AuditIntegrity)?,
+            records,
+        })
+    }
+    pub async fn audit_partition_checkpoint(
+        &self,
+        partition: &AuditPartition,
+    ) -> Result<Option<AuditCheckpoint>, StoreError> {
+        let mut response = self
+            .db
+            .query(include_str!(
+                "../queries/audit/blocks/audit_partition_checkpoint.surql"
+            ))
+            .bind(("id", named_id("audit_partition_head", partition)))
+            .await?
+            .check()?;
+        let value: Option<Value> = response.take(0)?;
+        let checkpoint: Option<AuditCheckpoint> = value.map(codec::decode).transpose()?;
+        if checkpoint
+            .as_ref()
+            .is_some_and(|c| &c.partition != partition)
+        {
+            return Err(StoreError::AuditIntegrity);
+        }
+        Ok(checkpoint)
+    }
+    pub async fn commit_audit_blocks(
+        &self,
+        lease: &AuditSealLease,
+        next: AuditVersionstamp,
+        blocks: &[AuditBlock],
+    ) -> Result<(), StoreError> {
+        if next.get() < lease.cursor as u64 || blocks.len() > 4096 {
+            return Err(StoreError::AuditIntegrity);
+        }
+        let mut response = self
+            .db
+            .query(include_str!("../queries/audit/seal.surql"))
+            .bind(AuditSealBinding {
+                owner: SurrealUuid::from(lease.owner),
+                generation: lease.generation,
+                expected_cursor: lease.cursor,
+                next_cursor: next.get() as i64,
+                blocks: blocks.iter().map(block_write).collect(),
+            })
+            .await?;
+        if let Some(error) = crate::primary_transaction_error(response.take_errors()) {
+            return Err(control_error(error));
+        }
+        Ok(())
+    }
+    /// Return blocks in committed partition order, with SQL admission before decoding.
+    pub async fn audit_blocks(
+        &self,
+        scope: &AuditReadScope,
+        partition: &AuditPartition,
+        after: Option<AuditBlockSequence>,
+        limit: u16,
+    ) -> Result<Vec<AuditBlock>, StoreError> {
+        if !scope.permits(partition) {
+            return Err(StoreError::AuditAccessDenied);
+        }
+        if limit == 0 || limit > 100 {
+            return Err(StoreError::AuditBatchLimit);
+        }
+        let mut response = self
+            .db
+            .query(include_str!("../queries/audit/blocks/audit_blocks.surql"))
+            .bind(("partition", partition.storage_key()))
+            .bind(("after", after.map_or(0, |n| n.get() as i64)))
+            .bind(("limit", u32::from(limit)))
+            .await?
+            .check()?;
+        let rows: Vec<BlockRow> = response.take(0)?;
+        rows.into_iter().map(BlockRow::checked).collect()
+    }
+    pub async fn audit_block_records(
+        &self,
+        scope: &AuditReadScope,
+        block: &AuditBlock,
+    ) -> Result<Vec<AuditRecord>, StoreError> {
+        if !scope.permits(&block.head.partition) {
+            return Err(StoreError::AuditAccessDenied);
+        }
+        if block.head.members.len() > 4096 {
+            return Err(StoreError::AuditBatchLimit);
+        }
+        let ids = block
+            .head
+            .members
+            .iter()
+            .map(|m| record_id(&block.head.partition, m.id))
+            .collect::<Vec<_>>();
+        let mut response = self
+            .db
+            .query(include_str!(
+                "../queries/audit/blocks/audit_block_records.surql"
+            ))
+            .bind(("ids", ids))
+            .bind(("partition", block.head.partition.storage_key()))
+            .await?
+            .check()?;
+        let rows: Vec<Row> = response.take(0)?;
+        let mut rows = rows
+            .into_iter()
+            .map(|row| {
+                let record = row.checked(self.audit_targets())?;
+                Ok((record.draft.id(), record))
+            })
+            .collect::<Result<std::collections::BTreeMap<_, _>, StoreError>>()?;
+        block
+            .head
+            .members
+            .iter()
+            .map(|member| rows.remove(&member.id).ok_or(StoreError::AuditIntegrity))
+            .collect()
+    }
+    /// A sealed block supplies a stable set of IDs; every content filter runs in
+    /// SQL. Association with member positions restores native commit order only.
+    pub async fn audit_filtered_block_records(
+        &self,
+        scope: &AuditReadScope,
+        block: &AuditBlock,
+        query: &AuditQuery,
+    ) -> Result<Vec<AuditRecord>, StoreError> {
+        query.validate()?;
+        if let Some(target) = &query.target {
+            self.audit_targets().validate(target)?;
+        }
+        if !scope.permits(&block.head.partition) || query.partition != block.head.partition {
+            return Err(StoreError::AuditAccessDenied);
+        }
+        if block.head.members.len() > 4096 {
+            return Err(StoreError::AuditBatchLimit);
+        }
+        let ids = block
+            .head
+            .members
+            .iter()
+            .map(|m| record_id(&block.head.partition, m.id))
+            .collect::<Vec<_>>();
+        let mut response = self
+            .db
+            .query(include_str!("../queries/audit/block_records.surql"))
+            .bind(("ids", ids))
+            .bind(("partition", query.partition.storage_key()))
+            .bind((
+                "after",
+                query
+                    .cursor
+                    .as_ref()
+                    .map(|c| record_id(&c.partition, c.last_id)),
+            ))
+            .bind(("class", query.class.map(|c| codec::scalar(&c))))
+            .bind(("actor", query.actor.as_ref().map(ToString::to_string)))
+            .bind((
+                "target",
+                query.target.as_ref().map(codec::TargetLookup::new),
+            ))
+            .bind(("outcome", query.outcome.map(|c| codec::scalar(&c))))
+            .bind(("trace", query.trace.as_ref().map(ToString::to_string)))
+            .bind(("from", query.from))
+            .bind(("until", query.until))
+            .await?
+            .check()?;
+        let index = response
+            .num_statements()
+            .checked_sub(2)
+            .ok_or(StoreError::AuditIntegrity)?;
+        let rows: Vec<Row> = response.take(index)?;
+        let order = block
+            .head
+            .members
+            .iter()
+            .enumerate()
+            .map(|(index, member)| (member.id, index))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let mut records = rows
+            .into_iter()
+            .map(|row| row.checked(self.audit_targets()))
+            .collect::<Result<Vec<_>, _>>()?;
+        records.sort_by_key(|record| order.get(&record.draft.id()).copied());
+        Ok(records)
+    }
+    pub async fn retain_audit_block(
+        &self,
+        lease: &AuditSealLease,
+        block: &AuditBlock,
+        cutoff: DateTime<Utc>,
+        destinations: &[AuditDestinationId],
+    ) -> Result<(), StoreError> {
+        let mut response = self
+            .db
+            .query(include_str!("../queries/audit/retention.surql"))
+            .bind(("owner", SurrealUuid::from(lease.owner)))
+            .bind(("generation", lease.generation))
+            .bind(("id", block_id(&block.head.partition, block.head.sequence)))
+            .bind((
+                "anchor_id",
+                named_id("audit_retention_anchor", &block.head.partition),
+            ))
+            .bind(("cutoff", cutoff))
+            .bind((
+                "destinations",
+                destinations
+                    .iter()
+                    .map(|id| id.as_str().to_owned())
+                    .collect::<Vec<_>>(),
+            ))
+            .await?;
+        if let Some(error) = crate::primary_transaction_error(response.take_errors()) {
+            return Err(control_error(error));
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn control_error(error: surrealdb::Error) -> StoreError {
+    if error.is_thrown() {
+        let message = error.message();
+        for (code, mapped) in [
+            ("audit_lease_busy", StoreError::AuditLeaseBusy),
+            ("audit_lease_lost", StoreError::AuditLeaseLost),
+            ("audit_changefeed_gap", StoreError::AuditChangefeedGap),
+            (
+                "audit_retention_not_admitted",
+                StoreError::AuditRetentionNotAdmitted,
+            ),
+            ("audit_block_conflict", StoreError::AuditIntegrity),
+            ("audit_export_rejected", StoreError::AuditExportRejected),
+        ] {
+            if message.contains(code) {
+                return mapped;
+            }
+        }
+    }
+    error.into()
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    #[test]
+    fn native_seal_bindings_preserve_frozen_documents_and_absent_previous() {
+        let digest = veoveo_types::Sha256Digest::from_bytes([9; 32]);
+        let mut block = AuditBlock {
+            head: AuditBlockHead {
+                schema: AuditBlockSchema::V1,
+                partition: AuditPartition::Installation,
+                sequence: AuditBlockSequence::new(1).unwrap(),
+                first_versionstamp: AuditVersionstamp::new(7).unwrap(),
+                last_versionstamp: AuditVersionstamp::new(11).unwrap(),
+                members: vec![],
+                root: digest.clone(),
+                previous: None,
+                key_id: digest.clone(),
+                sealed_at: DateTime::parse_from_rfc3339("2026-01-01T01:02:03.456Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            },
+            head_hash: digest.clone(),
+            signature: AuditSignature::from_bytes([3; 64]),
+        };
+        let Value::Object(first) = block_write(&block).into_value() else {
+            panic!("native write object")
+        };
+        assert_eq!(first.get("previous"), Some(&Value::None));
+        assert_eq!(
+            first.get("id"),
+            Some(&block_id(&block.head.partition, block.head.sequence).into_value())
+        );
+        assert_eq!(
+            first.get("head_hash"),
+            Some(&digest.to_string().into_value())
+        );
+        assert_eq!(
+            first.get("checkpoint"),
+            Some(&codec::scalar(&block.checkpoint()))
+        );
+        let Some(Value::Object(row)) = first.get("row") else {
+            panic!("native block row")
+        };
+        assert_eq!(row.get("block"), Some(&codec::scalar(&block)));
+        assert_eq!(
+            row.get("sealed_at"),
+            Some(&block.head.sealed_at.into_value())
+        );
+        assert_eq!(row.get("first_versionstamp"), Some(&7i64.into_value()));
+        block.head.previous = Some(digest.clone());
+        let Value::Object(next) = block_write(&block).into_value() else {
+            panic!("native write")
+        };
+        assert_eq!(next.get("previous"), Some(&digest.to_string().into_value()));
+    }
+}

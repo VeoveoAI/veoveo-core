@@ -14,6 +14,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
         cargo-hack@0.6.45 \
         cargo-semver-checks@0.51.0 \
         cargo-insta@1.49.0
+# Native Store tests run one SurrealDB server process per fixture; no container runtime enters the sandbox.
+COPY --from=surrealdb/surrealdb:v3.3.0@sha256:681c6c22c287421b5c7d99e0fde79b6e0d32c36c1ddeaab2762a1661cb04cd20 /surreal /usr/local/bin/surreal
 COPY env/profile.d/rust.sh /etc/profile.d/rust.sh
 # A development environment installs toolchains, components and crates, so the sandbox user owns them.
 RUN useradd --create-home --uid 1000 --shell /bin/bash sandbox \

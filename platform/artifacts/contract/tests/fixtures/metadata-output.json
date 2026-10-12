@@ -1,0 +1,36 @@
+{
+  "artifactId": "0197f78e-f2f0-7a6e-8a5d-f41c691e4471",
+  "artifactUri": "artifact://0197f78e-f2f0-7a6e-8a5d-f41c691e4471",
+  "byteLen": 3,
+  "mimeType": "text/plain",
+  "filename": "informe-\u00f1.txt",
+  "downloadUrl": "https://example.test/download",
+  "createdAt": "2026-09-27T00:00:00Z",
+  "releaseState": "private",
+  "compliance": {
+    "classification": "cui",
+    "tenantId": "enterprise",
+    "owner": {
+      "kind": "group",
+      "id": "operators"
+    },
+    "workContext": "operations",
+    "provenance": {
+      "producer": "issuer#worker",
+      "invocationMode": "delegated",
+      "initiator": "issuer#operator",
+      "delegationId": "delegation/17",
+      "policyRevision": "v1"
+    },
+    "dataLabels": [
+      "cui"
+    ],
+    "retentionExpiresAt": "2026-10-27T00:00:00Z"
+  },
+  "metadata": {
+    "producer_annotation": [
+      1,
+      "open metadata"
+    ]
+  }
+}

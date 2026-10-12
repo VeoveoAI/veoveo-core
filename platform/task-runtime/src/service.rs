@@ -1,0 +1,361 @@
+//! Protocol-neutral service boundary for durable official MCP Tasks handlers.
+
+use std::{collections::BTreeSet, pin::Pin};
+
+use futures::{Stream, StreamExt};
+use rmcp::{
+    ErrorData as McpError, RoleServer,
+    model::{
+        CallToolRequestParams, CreateTaskResult, DetailedTask, GetTaskParams, GetTaskResult,
+        RequestMetaObject, UpdateTaskParams,
+    },
+    service::{RequestContext, SubscriptionContext, SubscriptionSendError},
+};
+use veoveo_mcp_contract::{ResourceListObservers, SubscriptionHub};
+
+use crate::{OwnerTaskQuery, TaskError, TaskRetentionPin, TaskSnapshot, project_snapshot};
+
+/// Repository-owned metadata used only to retain internal evidence longer than wire TTL.
+pub const TASK_RETENTION_PIN_META_KEY: &str = "ai.veoveo/task-retention-pin";
+
+pub type DurableTaskUpdateStream =
+    Pin<Box<dyn Stream<Item = Result<DetailedTask, McpError>> + Send + 'static>>;
+
+/// Authorized task updates accepted for one `subscriptions/listen` request.
+pub struct DurableTaskSubscription {
+    pub accepted_task_ids: Vec<String>,
+    pub updates: DurableTaskUpdateStream,
+}
+
+/// Domain adapter used by a server's RMCP `ServerHandler` implementation.
+///
+/// This trait owns no wire parsing, transport, or protocol models. RMCP dispatches the
+/// official methods and the hosted server delegates durable domain work here.
+pub trait DurableTaskService: Send + Sync + 'static {
+    type Caller: Clone + Send + Sync + 'static;
+
+    fn authenticate(&self, context: &RequestContext<RoleServer>) -> Result<Self::Caller, McpError>;
+
+    fn start_tool_task(
+        &self,
+        caller: &Self::Caller,
+        request: CallToolRequestParams,
+    ) -> impl Future<Output = Result<Option<CreateTaskResult>, McpError>> + Send;
+
+    fn get_task(
+        &self,
+        caller: &Self::Caller,
+        request: GetTaskParams,
+    ) -> impl Future<Output = Result<GetTaskResult, McpError>> + Send;
+
+    fn update_task(
+        &self,
+        caller: &Self::Caller,
+        request: UpdateTaskParams,
+    ) -> impl Future<Output = Result<(), McpError>> + Send;
+
+    fn cancel_task(
+        &self,
+        caller: &Self::Caller,
+        task_id: String,
+    ) -> impl Future<Output = Result<(), McpError>> + Send;
+
+    /// Authorize admission and current state on delivery. Native Task adapters use
+    /// `subscribe_durable_tasks`, which selects owner-visible rows in SQL.
+    fn subscribe_tasks(
+        &self,
+        caller: &Self::Caller,
+        task_ids: Vec<String>,
+    ) -> impl Future<Output = Result<DurableTaskSubscription, McpError>> + Send;
+}
+
+/// Extracts the optional internal retention pin from ordinary request metadata.
+pub fn retention_pins(
+    meta: Option<&RequestMetaObject>,
+) -> Result<BTreeSet<TaskRetentionPin>, McpError> {
+    meta.and_then(|meta| meta.get(TASK_RETENTION_PIN_META_KEY))
+        .cloned()
+        .map(serde_json::from_value::<TaskRetentionPin>)
+        .transpose()
+        .map_err(|error| McpError::invalid_params(error.to_string(), None))
+        .map(Option::into_iter)
+        .map(Iterator::collect)
+}
+
+/// Restores the repository-owned retention pin that RMCP exposes through the
+/// request context before a hosted Tasks adapter receives the request params.
+#[doc(hidden)]
+pub fn restore_task_retention_meta(
+    request: &mut CallToolRequestParams,
+    context_meta: &RequestMetaObject,
+) -> Result<(), McpError> {
+    let context_pin = context_meta.get(TASK_RETENTION_PIN_META_KEY);
+    let request_pin = request
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.get(TASK_RETENTION_PIN_META_KEY));
+    if let (Some(context_pin), Some(request_pin)) = (context_pin, request_pin)
+        && context_pin != request_pin
+    {
+        return Err(McpError::invalid_params(
+            "conflicting task retention metadata",
+            None,
+        ));
+    }
+    if let Some(context_pin) = context_pin {
+        request
+            .meta
+            .get_or_insert_with(RequestMetaObject::new)
+            .insert(TASK_RETENTION_PIN_META_KEY.to_owned(), context_pin.clone());
+    }
+    Ok(())
+}
+
+/// Dispatches one Tasks-capable tool call through the shared durable boundary.
+///
+/// Hosted servers use this helper so capability admission, request-context
+/// metadata restoration, caller authentication, and task creation cannot drift
+/// across their otherwise domain-specific `ServerHandler` implementations.
+pub async fn start_durable_tool_task<S: DurableTaskService>(
+    service: &S,
+    request: &mut CallToolRequestParams,
+    context: &RequestContext<RoleServer>,
+) -> Result<Option<CreateTaskResult>, McpError> {
+    restore_task_retention_meta(request, &context.meta)?;
+    if !context
+        .meta
+        .client_capabilities()
+        .is_some_and(|capabilities| capabilities.supports_tasks())
+    {
+        return Ok(None);
+    }
+    let caller = service.authenticate(context)?;
+    service.start_tool_task(&caller, request.clone()).await
+}
+
+/// Converts official heterogeneous input responses to the durable object form.
+pub fn durable_input_responses(
+    request: UpdateTaskParams,
+) -> Result<
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, serde_json::Value>>,
+    McpError,
+> {
+    request
+        .input_responses
+        .into_iter()
+        .map(|(key, value)| {
+            value
+                .as_object()
+                .cloned()
+                .map(|value| (key, value.into_iter().collect()))
+                .ok_or_else(|| {
+                    McpError::invalid_params("task input responses must be objects", None)
+                })
+        })
+        .collect()
+}
+
+/// Loads a first-party durable task and enforces its retained owner on every use.
+pub async fn authorized_snapshot(
+    query: &crate::OwnerTaskQuery,
+    task_id: &str,
+) -> Result<TaskSnapshot, McpError> {
+    let task_id = crate::types::parse_task_id(task_id)
+        .map_err(|_| McpError::invalid_params("unknown task id", None))?;
+    query
+        .get(task_id)
+        .await
+        .map_err(task_error)?
+        .ok_or_else(|| McpError::invalid_params("unknown task id", None))
+}
+
+pub async fn get_durable_task(
+    query: &OwnerTaskQuery,
+    request: GetTaskParams,
+) -> Result<GetTaskResult, McpError> {
+    let snapshot = authorized_snapshot(query, &request.task_id).await?;
+    project_snapshot(&query.runtime, snapshot)
+        .await
+        .map(GetTaskResult::new)
+        .map_err(task_error)
+}
+
+pub async fn update_durable_task(
+    query: &OwnerTaskQuery,
+    request: UpdateTaskParams,
+) -> Result<(), McpError> {
+    let task_id = authorized_snapshot(query, &request.task_id).await?.task_id;
+    let responses = durable_input_responses(request)?;
+    query
+        .submit_input_responses(task_id, responses)
+        .await
+        .map_err(task_error)?;
+    Ok(())
+}
+
+pub async fn cancel_durable_task(query: &OwnerTaskQuery, task_id: String) -> Result<(), McpError> {
+    let task_id = crate::types::parse_task_id(&task_id)
+        .map_err(|_| McpError::invalid_params("unknown task id", None))?;
+    query.cancel(task_id).await.map_err(task_error)?;
+    Ok(())
+}
+
+pub async fn subscribe_durable_tasks(
+    query: &crate::OwnerTaskQuery,
+    task_ids: Vec<String>,
+) -> Result<DurableTaskSubscription, McpError> {
+    let subscription = subscribe_authorized_snapshots(query, task_ids).await?;
+    let runtime = query.runtime.clone();
+    let stream = subscription.updates.then(move |update| {
+        let runtime = runtime.clone();
+        async move {
+            project_snapshot(&runtime, update.map_err(task_error)?.snapshot)
+                .await
+                .map_err(task_error)
+        }
+    });
+    Ok(DurableTaskSubscription {
+        accepted_task_ids: subscription
+            .accepted_task_ids
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+        updates: Box::pin(stream),
+    })
+}
+
+/// Admit native MCP handles and stream current SQL-authorized snapshots.
+/// Domains validate their retained payloads before calling `project_snapshot`.
+/// Operation and Work Context selection follow the supplied query on every update.
+pub async fn subscribe_authorized_snapshots(
+    query: &crate::OwnerTaskQuery,
+    task_ids: Vec<String>,
+) -> Result<crate::OwnerTaskSubscription, McpError> {
+    if task_ids.len() > 256 {
+        return Err(McpError::invalid_params(
+            "at most 256 Task IDs per subscription",
+            None,
+        ));
+    }
+    let ids = task_ids
+        .iter()
+        .filter_map(|id| crate::types::parse_task_id(id).ok())
+        .collect::<Vec<_>>();
+    query.subscribe(&ids).await.map_err(task_error)
+}
+
+fn subscription_send_error(error: SubscriptionSendError) -> McpError {
+    McpError::internal_error(error.to_string(), None)
+}
+
+/// Runs one official Tasks listener, optionally multiplexed with the hosted
+/// server's authorized resource and resource-list update broadcasters.
+///
+/// Every accepted resource URI must be authorized before calling this helper.
+pub async fn listen_durable_subscriptions<S: DurableTaskService>(
+    service: &S,
+    context: SubscriptionContext,
+    resources: Option<&SubscriptionHub>,
+    resource_lists: Option<&ResourceListObservers>,
+) -> Result<(), McpError> {
+    let accepted = context.accepted().clone();
+    let task_ids = accepted.task_ids.clone().unwrap_or_default();
+    let mut tasks: DurableTaskUpdateStream = if task_ids.is_empty() {
+        Box::pin(futures::stream::pending())
+    } else {
+        let caller = service.authenticate(context.request_context())?;
+        service.subscribe_tasks(&caller, task_ids).await?.updates
+    };
+    let mut resource_updates = resources.map(SubscriptionHub::listen);
+    let mut hub_list_changes = resources.map(SubscriptionHub::listen_resource_list_changes);
+    let mut extra_list_changes = resource_lists.map(ResourceListObservers::listen);
+
+    veoveo_mcp_contract::send_resource_update(
+        &context,
+        veoveo_mcp_contract::ResourceUpdate::Reconcile,
+    )
+    .await?;
+
+    if accepted.resources_list_changed == Some(true) {
+        context
+            .sink()
+            .notify_resource_list_changed()
+            .await
+            .map_err(subscription_send_error)?;
+    }
+    loop {
+        tokio::select! {
+            () = context.cancelled() => return Ok(()),
+            update = tasks.next() => {
+                let Some(update) = update else { return Ok(()); };
+                context.sink().notify_task_status(update?).await.map_err(subscription_send_error)?;
+            }
+            uri = veoveo_mcp_contract::receive_resource_update(&mut resource_updates) => {
+                veoveo_mcp_contract::send_resource_update(&context, uri).await?;
+            }
+            () = veoveo_mcp_contract::receive_resource_list_change(&mut hub_list_changes), if accepted.resources_list_changed == Some(true) => {
+                context.sink().notify_resource_list_changed().await.map_err(subscription_send_error)?;
+            }
+            () = veoveo_mcp_contract::receive_resource_list_change(&mut extra_list_changes), if accepted.resources_list_changed == Some(true) => {
+                context.sink().notify_resource_list_changed().await.map_err(subscription_send_error)?;
+            }
+        }
+    }
+}
+
+fn task_error(error: TaskError) -> McpError {
+    match error {
+        TaskError::NotFound(_) | TaskError::WrongServer(_) => {
+            McpError::invalid_params("unknown task id", None)
+        }
+        other => McpError::internal_error(other.to_string(), None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_retention_metadata_is_restored_from_the_request_context() {
+        let pin = TaskRetentionPin::new("agent:test:episode:test").expect("retention pin");
+        let mut context_meta = RequestMetaObject::new();
+        context_meta.insert(
+            TASK_RETENTION_PIN_META_KEY.to_owned(),
+            serde_json::json!(pin),
+        );
+        let mut request = CallToolRequestParams::new("durable_tool");
+
+        restore_task_retention_meta(&mut request, &context_meta).expect("restore retention pin");
+
+        assert_eq!(
+            retention_pins(request.meta.as_ref()).expect("parse retention pin"),
+            BTreeSet::from([pin])
+        );
+    }
+
+    #[test]
+    fn conflicting_task_retention_metadata_is_rejected() {
+        let mut context_meta = RequestMetaObject::new();
+        context_meta.insert(
+            TASK_RETENTION_PIN_META_KEY.to_owned(),
+            serde_json::json!("agent:test:episode:context"),
+        );
+        let mut request = CallToolRequestParams::new("durable_tool");
+        request
+            .meta
+            .get_or_insert_with(RequestMetaObject::new)
+            .insert(
+                TASK_RETENTION_PIN_META_KEY.to_owned(),
+                serde_json::json!("agent:test:episode:params"),
+            );
+
+        let error = restore_task_retention_meta(&mut request, &context_meta)
+            .expect_err("conflicting pins must fail closed");
+        assert!(
+            error
+                .message
+                .contains("conflicting task retention metadata")
+        );
+    }
+}
