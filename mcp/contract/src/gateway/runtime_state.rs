@@ -130,13 +130,3 @@ pub struct GatewayResourceProjection {
     pub gateway_uri: ResourceUri,
     pub upstream_uri: ResourceUri,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct GatewayResourceSubscription {
-    pub profile: GatewayProfileId,
-    pub owner: PrincipalId,
-    pub upstream_server: ServerSlug,
-    pub resource_uri: ResourceUri,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
