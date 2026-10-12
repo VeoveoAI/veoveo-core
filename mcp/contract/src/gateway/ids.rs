@@ -8,7 +8,6 @@ use veoveo_types::{
     identifier_syntax::{ClaimTextProfile, PathIdProfile, TokenTextProfile},
 };
 
-use super::wire::validate_compatibility_helper_id;
 use veoveo_gateway_contract::validate_oauth_authorization_code;
 pub use veoveo_gateway_contract::{
     JwtId, OAuthAuthorizationCode, OAuthStateValue, OidcClientRegistrationId, OidcNonce,
@@ -30,10 +29,6 @@ pub struct PlatformCapabilityId(String);
 /// Policy rule identifier used for decision evidence.
 #[veoveo_types::id(text(TokenTextProfile))]
 pub struct PolicyRuleId(String);
-
-/// Explicit compatibility helper id exposed to limited MCP clients, for example `media.models`.
-#[veoveo_types::id(text(GatewayCompatibilityHelperIdProfile))]
-pub struct CompatibilityHelperId(String);
 
 /// OIDC client id assigned to the gateway by an enterprise identity provider.
 #[veoveo_types::id(text(ClaimTextProfile))]
@@ -85,13 +80,6 @@ pub struct McpMethodName(String);
 
 use veoveo_types::{IdProfile, IdProfileSpec};
 
-#[doc(hidden)]
-pub struct GatewayCompatibilityHelperIdProfile;
-impl IdProfile for GatewayCompatibilityHelperIdProfile {
-    type Error = IdentifierError;
-    const PROFILE: IdProfileSpec<Self::Error> =
-        IdProfileSpec::text(|value, _| validate_compatibility_helper_id(value));
-}
 #[doc(hidden)]
 pub struct GatewayRefreshTokens;
 impl IdProfile for GatewayRefreshTokens {

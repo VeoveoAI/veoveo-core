@@ -2,65 +2,6 @@ use url::{Host, Url};
 
 use super::*;
 
-pub(super) fn validate_gateway_name(value: &str) -> Result<(), IdentifierError> {
-    if value.is_empty() {
-        return Err(IdentifierError::new(value, "must not be empty"));
-    }
-    if !value
-        .bytes()
-        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
-    {
-        return Err(IdentifierError::new(
-            value,
-            "must contain only lowercase ASCII letters, digits, hyphen, or underscore",
-        ));
-    }
-    Ok(())
-}
-
-pub(super) fn validate_compatibility_helper_id(value: &str) -> Result<(), IdentifierError> {
-    let Some((namespace, helper)) = value.split_once('.') else {
-        return Err(IdentifierError::new(
-            value,
-            "must be `{namespace}.{helper}` using gateway-safe identifiers",
-        ));
-    };
-    if namespace.contains('.') || helper.contains('.') {
-        return Err(IdentifierError::new(
-            value,
-            "must contain exactly one dot separator",
-        ));
-    }
-    validate_gateway_name(namespace)?;
-    validate_gateway_name(helper)?;
-    Ok(())
-}
-
-pub(super) fn validate_mount_path(value: &str) -> Result<(), IdentifierError> {
-    if !value.starts_with('/') || value.len() == 1 {
-        return Err(IdentifierError::new(
-            value,
-            "must be an absolute path with at least one segment",
-        ));
-    }
-    if value.ends_with('/') {
-        return Err(IdentifierError::new(value, "must not end with slash"));
-    }
-    if value.contains("//") || value.contains(['?', '#']) {
-        return Err(IdentifierError::new(
-            value,
-            "must not contain empty segments, query, or fragment",
-        ));
-    }
-    if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return Err(IdentifierError::new(
-            value,
-            "must not contain whitespace or control characters",
-        ));
-    }
-    Ok(())
-}
-
 pub(super) fn validate_https_url(value: &str) -> Result<(), IdentifierError> {
     if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(IdentifierError::new(

@@ -6,12 +6,10 @@ use veoveo_mcp_contract::{
     GatewayProfile, GatewayProfileId, McpMethodName, PolicyDecision, PolicyEffect,
     PolicyReasonCode, PolicyRule, PolicyRuleId, PolicyTarget, Principal, TraceId,
 };
-use veoveo_types::{PolicyVersion, ResourceScheme, ScopeName};
+use veoveo_mcp_registration_extension::RequirementTarget;
+use veoveo_types::{PermissionName, PolicyVersion, ResourceScheme, ScopeName};
 
-use crate::{
-    PolicyCatalogView,
-    resource_policy::{ResourcePolicyReference, profile_allows_resource},
-};
+use crate::PolicyCatalogView;
 
 #[derive(Debug, Clone)]
 pub struct PolicyRequest<'a> {
@@ -30,92 +28,143 @@ pub fn mcp_method_name(action: GatewayAction) -> Result<McpMethodName> {
 }
 
 pub fn resource_scheme_from_uri(uri: &str) -> Option<ResourceScheme> {
-    resource_scheme(uri)
-}
-
-pub(crate) fn resource_scheme(uri: &str) -> Option<ResourceScheme> {
     let (scheme, _) = uri.split_once("://")?;
     ResourceScheme::parse(scheme).ok()
 }
 
-pub fn exposure_contains<T: PartialEq>(
-    exposure: &veoveo_mcp_contract::Exposure<T>,
-    item: &T,
-) -> bool {
-    match exposure {
-        veoveo_mcp_contract::Exposure::All => true,
-        veoveo_mcp_contract::Exposure::Listed(items) => items.iter().any(|allowed| allowed == item),
-        veoveo_mcp_contract::Exposure::None => false,
+/// Registered servers' targets are decided by installation roles over the server's
+/// declared permissions. The Gateway's own targets are decided by policy rules.
+pub fn decide(catalog: &impl PolicyCatalogView, request: PolicyRequest<'_>) -> PolicyDecision {
+    if validate_runtime_action(catalog, &request.action, request.target).is_err() {
+        return deny(&request, PolicyReasonCode::PolicyDeny, None);
+    }
+    let Some(profile) = catalog.profile(request.profile) else {
+        return deny(&request, PolicyReasonCode::UnknownProfile, None);
+    };
+    let Some(policy) = catalog.policy(&profile.policy_version) else {
+        return deny(&request, PolicyReasonCode::PolicyDeny, None);
+    };
+    let version = Some(policy.version.clone());
+    if let Err(reason) = validate_principal(catalog, request.principal) {
+        return deny(&request, reason, version);
+    }
+    if !has_required_scopes(&request.principal.scopes, &profile.required_scopes) {
+        return deny(&request, PolicyReasonCode::MissingScope, version);
+    }
+    match registered_target(request.target) {
+        Some((server, requirement)) => {
+            decide_server(catalog, &request, server, requirement, version)
+        }
+        None => decide_by_rules(profile, policy, &request, version),
     }
 }
 
-pub fn decide(catalog: &impl PolicyCatalogView, request: PolicyRequest<'_>) -> PolicyDecision {
-    if validate_runtime_action(catalog, &request.action, request.target).is_err() {
-        return deny(
-            &request,
-            PolicyReasonCode::PolicyDeny,
-            request.target.clone(),
-            None,
-        );
+/// The server a target belongs to, and what it requires: a specific declared target,
+/// or any permission in the server's namespace for server-wide operations and Tasks.
+fn registered_target(
+    target: &PolicyTarget,
+) -> Option<(&veoveo_types::ServerSlug, Option<RequirementTarget<'_>>)> {
+    match target {
+        PolicyTarget::Server { server }
+        | PolicyTarget::Task { server, .. }
+        | PolicyTarget::PlatformTask { server, .. } => Some((server, None)),
+        PolicyTarget::Tool { server, tool } => Some((server, Some(RequirementTarget::Tool(tool)))),
+        PolicyTarget::Resource { server, uri } => {
+            Some((server, Some(RequirementTarget::Resource(uri))))
+        }
+        PolicyTarget::ResourceTemplate { server, uri } => {
+            Some((server, Some(RequirementTarget::ResourceTemplate(uri))))
+        }
+        PolicyTarget::Prompt { server, prompt } => {
+            Some((server, Some(RequirementTarget::Prompt(prompt))))
+        }
+        PolicyTarget::Gateway
+        | PolicyTarget::Artifact { .. }
+        | PolicyTarget::Usage { .. }
+        | PolicyTarget::Owner(_)
+        | PolicyTarget::Unadmitted(_) => None,
     }
-    let Some(profile) = catalog.profile(request.profile) else {
-        return deny(
-            &request,
-            PolicyReasonCode::UnknownProfile,
-            PolicyTarget::Gateway,
-            None,
-        );
+}
+
+fn decide_server(
+    catalog: &impl PolicyCatalogView,
+    request: &PolicyRequest<'_>,
+    server: &veoveo_types::ServerSlug,
+    requirement: Option<RequirementTarget<'_>>,
+    version: Option<PolicyVersion>,
+) -> PolicyDecision {
+    if !matches!(&request.action, PolicyAction::Kernel(action) if action.targets_registered_server())
+    {
+        return deny(request, PolicyReasonCode::PolicyDeny, version);
+    }
+    let Some(declaration) = catalog.server_authorization(server) else {
+        return deny(request, PolicyReasonCode::UnknownServer, version);
     };
-
-    let Some(policy) = catalog.policy(&profile.policy_version) else {
-        return deny(
-            &request,
-            PolicyReasonCode::PolicyDeny,
-            request.target.clone(),
-            None,
-        );
-    };
-
-    if let Err(reason) = validate_principal(catalog, request.principal) {
-        return deny(
-            &request,
-            reason,
-            request.target.clone(),
-            Some(policy.version.clone()),
-        );
-    }
-
-    if let Err(reason) = profile_allows_target(catalog, profile, &request.action, request.target) {
-        return deny(
-            &request,
-            reason,
-            request.target.clone(),
-            Some(policy.version.clone()),
-        );
-    }
-
-    if !has_required_scopes(&request.principal.scopes, &profile.required_scopes) {
-        return deny(
-            &request,
-            PolicyReasonCode::MissingScope,
-            request.target.clone(),
-            Some(policy.version.clone()),
-        );
-    }
-
-    let outcome = evaluate_rules(
-        profile,
-        policy,
+    let granted = crate::granted_permissions(
+        catalog.installation_authorization(),
+        declaration,
         request.principal,
-        &request.action.name(),
-        |rule| matches_target_filters(rule, request.target),
     );
+    let required = match requirement {
+        Some(target) => match declaration.required(target) {
+            Some(required) => Some(required.permission.clone()),
+            None => {
+                let reason = match target {
+                    RequirementTarget::Tool(_) => PolicyReasonCode::UnknownTool,
+                    RequirementTarget::Prompt(_) => PolicyReasonCode::UnknownPrompt,
+                    RequirementTarget::Resource(_) | RequirementTarget::ResourceTemplate(_) => {
+                        PolicyReasonCode::UndeclaredTarget
+                    }
+                };
+                return deny(request, reason, version);
+            }
+        },
+        None => None,
+    };
+    let allowed = match &required {
+        Some(permission) => granted.contains(permission),
+        None => !granted.is_empty(),
+    };
+    let mut decision = decision(
+        request,
+        if allowed {
+            PolicyEffect::Allow
+        } else {
+            PolicyEffect::Deny
+        },
+        if allowed {
+            PolicyReasonCode::PolicyAllow
+        } else {
+            PolicyReasonCode::MissingPermission
+        },
+        version,
+        None,
+    );
+    decision.permission = required;
+    if allowed {
+        decision.granted = granted;
+    }
+    decision
+}
+
+fn decide_by_rules(
+    profile: &GatewayProfile,
+    policy: &veoveo_mcp_contract::PolicySet,
+    request: &PolicyRequest<'_>,
+    version: Option<PolicyVersion>,
+) -> PolicyDecision {
+    if matches!(
+        request.target,
+        PolicyTarget::Owner(_) | PolicyTarget::Unadmitted(_)
+    ) {
+        return deny(request, PolicyReasonCode::PolicyDeny, version);
+    }
+    let outcome = evaluate_rules(profile, policy, request.principal, &request.action.name());
     decision(
-        &request,
+        request,
         outcome.effect,
         outcome.reason,
-        request.target.clone(),
-        Some(policy.version.clone()),
+        version,
         outcome.rule_id,
     )
 }
@@ -154,11 +203,8 @@ pub(crate) fn evaluate_rules(
     policy: &veoveo_mcp_contract::PolicySet,
     principal: &Principal,
     action: &veoveo_types::ActionName,
-    target_matches: impl Fn(&PolicyRule) -> bool,
 ) -> RuleOutcome {
-    let detail = |rule: &PolicyRule| {
-        rule_match_detail(rule, profile, principal, action, target_matches(rule))
-    };
+    let detail = |rule: &PolicyRule| rule_match_detail(rule, profile, principal, action);
     assemble_rule_outcome(policy, detail)
 }
 
@@ -215,121 +261,6 @@ pub fn assemble_rule_outcome(
     }
 }
 
-fn profile_allows_target(
-    catalog: &impl PolicyCatalogView,
-    profile: &GatewayProfile,
-    action: &PolicyAction,
-    target: &PolicyTarget,
-) -> Result<(), PolicyReasonCode> {
-    match target {
-        PolicyTarget::Gateway => Ok(()),
-        PolicyTarget::Server { server } => {
-            if catalog.server(server).is_none() {
-                return Err(PolicyReasonCode::UnknownServer);
-            }
-            profile
-                .servers
-                .iter()
-                .any(|exposure| &exposure.server == server)
-                .then_some(())
-                .ok_or(PolicyReasonCode::PolicyDeny)
-        }
-        PolicyTarget::Tool { server, tool } => {
-            let manifest = catalog
-                .server(server)
-                .ok_or(PolicyReasonCode::UnknownServer)?;
-            if !manifest.tools.is_empty() && !manifest.tools.iter().any(|known| known == tool) {
-                return Err(PolicyReasonCode::UnknownTool);
-            }
-            let exposure = profile
-                .servers
-                .iter()
-                .find(|exposure| &exposure.server == server)
-                .ok_or(PolicyReasonCode::PolicyDeny)?;
-            if exposure_contains(&exposure.tools, tool) {
-                Ok(())
-            } else {
-                Err(PolicyReasonCode::PolicyDeny)
-            }
-        }
-        PolicyTarget::Resource { server, uri }
-        | PolicyTarget::Artifact {
-            server,
-            artifact_uri: uri,
-        }
-        | PolicyTarget::Usage {
-            server,
-            usage_uri: uri,
-        } => {
-            if matches!(
-                action.kernel(),
-                Some(GatewayAction::CompletionComplete | GatewayAction::ResourcesTemplatesList)
-            ) {
-                return Err(PolicyReasonCode::PolicyDeny);
-            }
-            profile_allows_resource(
-                catalog,
-                profile,
-                server,
-                ResourcePolicyReference::Concrete(uri),
-            )
-        }
-        PolicyTarget::ResourceTemplate { server, uri } => {
-            if !matches!(
-                action.kernel(),
-                Some(GatewayAction::CompletionComplete | GatewayAction::ResourcesTemplatesList)
-            ) {
-                return Err(PolicyReasonCode::PolicyDeny);
-            }
-            profile_allows_resource(
-                catalog,
-                profile,
-                server,
-                ResourcePolicyReference::Template(uri),
-            )
-        }
-        PolicyTarget::Prompt { server, prompt } => {
-            let manifest = catalog
-                .server(server)
-                .ok_or(PolicyReasonCode::UnknownServer)?;
-            if !manifest.prompts.is_empty() && !manifest.prompts.iter().any(|p| p == prompt) {
-                return Err(PolicyReasonCode::UnknownPrompt);
-            }
-            let exposure = profile
-                .servers
-                .iter()
-                .find(|exposure| &exposure.server == server)
-                .ok_or(PolicyReasonCode::PolicyDeny)?;
-            if exposure_contains(&exposure.prompts, prompt) {
-                Ok(())
-            } else {
-                Err(PolicyReasonCode::PolicyDeny)
-            }
-        }
-        PolicyTarget::Task { server, .. } | PolicyTarget::PlatformTask { server, .. } => {
-            let _manifest = catalog
-                .server(server)
-                .ok_or(PolicyReasonCode::UnknownServer)?;
-            let exposure = profile
-                .servers
-                .iter()
-                .find(|exposure| &exposure.server == server)
-                .ok_or(PolicyReasonCode::PolicyDeny)?;
-            if exposure.tasks == veoveo_mcp_contract::TaskExposure::Enabled
-                || matches!(
-                    action.kernel(),
-                    Some(GatewayAction::ResourcesList | GatewayAction::ResourcesTemplatesList)
-                )
-            {
-                Ok(())
-            } else {
-                Err(PolicyReasonCode::PolicyDeny)
-            }
-        }
-        PolicyTarget::Owner(_) | PolicyTarget::Unadmitted(_) => Err(PolicyReasonCode::PolicyDeny),
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleMatchDetail {
     Match,
@@ -346,24 +277,15 @@ pub enum RuleMatchDetail {
 fn deny(
     request: &PolicyRequest<'_>,
     reason: PolicyReasonCode,
-    target: PolicyTarget,
     policy_version: Option<PolicyVersion>,
 ) -> PolicyDecision {
-    decision(
-        request,
-        PolicyEffect::Deny,
-        reason,
-        target,
-        policy_version,
-        None,
-    )
+    decision(request, PolicyEffect::Deny, reason, policy_version, None)
 }
 
 fn decision(
     request: &PolicyRequest<'_>,
     effect: PolicyEffect,
     reason: PolicyReasonCode,
-    target: PolicyTarget,
     policy_version: Option<PolicyVersion>,
     rule_id: Option<veoveo_mcp_contract::PolicyRuleId>,
 ) -> PolicyDecision {
@@ -373,11 +295,13 @@ fn decision(
         evaluated_at: chrono::Utc::now(),
         profile: request.profile.clone(),
         action: request.action.name(),
-        target,
+        target: request.target.clone(),
         principal: Some(request.principal.id.clone()),
         tenant: request.principal.tenant.clone(),
         policy_version,
         rule_id,
+        permission: None,
+        granted: BTreeSet::<PermissionName>::new(),
         trace_id: request.trace_id.clone(),
     }
 }
@@ -387,15 +311,11 @@ fn rule_match_detail(
     profile: &GatewayProfile,
     principal: &Principal,
     action: &veoveo_types::ActionName,
-    target_matches: bool,
 ) -> RuleMatchDetail {
     if !rule.actions.contains(action) {
         return RuleMatchDetail::NoMatch;
     }
     if !rule.profiles.is_empty() && !rule.profiles.contains(&profile.id) {
-        return RuleMatchDetail::NoMatch;
-    }
-    if !target_matches {
         return RuleMatchDetail::NoMatch;
     }
     principal_rule_conditions(rule, principal, &principal.data_labels)
@@ -513,53 +433,6 @@ fn missing_requirement_rank(reason: PolicyReasonCode) -> u8 {
     }
 }
 
-fn matches_target_filters(rule: &PolicyRule, target: &PolicyTarget) -> bool {
-    match target {
-        PolicyTarget::Gateway => {
-            rule.servers.is_empty()
-                && rule.tools.is_empty()
-                && rule.resource_schemes.is_empty()
-                && rule.prompts.is_empty()
-        }
-        PolicyTarget::Server { server } => {
-            filter_matches(&rule.servers, server)
-                && rule.tools.is_empty()
-                && rule.resource_schemes.is_empty()
-                && rule.prompts.is_empty()
-        }
-        PolicyTarget::Tool { server, tool } => {
-            filter_matches(&rule.servers, server) && filter_matches(&rule.tools, tool)
-        }
-        PolicyTarget::Resource { server, uri }
-        | PolicyTarget::Artifact {
-            server,
-            artifact_uri: uri,
-        }
-        | PolicyTarget::Usage {
-            server,
-            usage_uri: uri,
-        } => {
-            let Some(scheme) = resource_scheme(uri.as_str()) else {
-                return false;
-            };
-            filter_matches(&rule.servers, server) && filter_matches(&rule.resource_schemes, &scheme)
-        }
-        PolicyTarget::ResourceTemplate { server, uri } => {
-            let Some(scheme) = resource_scheme(uri.as_str()) else {
-                return false;
-            };
-            filter_matches(&rule.servers, server) && filter_matches(&rule.resource_schemes, &scheme)
-        }
-        PolicyTarget::Prompt { server, prompt } => {
-            filter_matches(&rule.servers, server) && filter_matches(&rule.prompts, prompt)
-        }
-        PolicyTarget::Task { server, .. } | PolicyTarget::PlatformTask { server, .. } => {
-            filter_matches(&rule.servers, server)
-        }
-        PolicyTarget::Owner(_) | PolicyTarget::Unadmitted(_) => false,
-    }
-}
-
 pub(crate) fn has_required_scopes(
     principal_scopes: &BTreeSet<veoveo_types::ScopeName>,
     required: &[ScopeName],
@@ -567,10 +440,6 @@ pub(crate) fn has_required_scopes(
     required
         .iter()
         .all(|scope| principal_scopes.contains(scope))
-}
-
-pub(crate) fn filter_matches<T: Ord>(filter: &BTreeSet<T>, value: &T) -> bool {
-    filter.is_empty() || filter.contains(value)
 }
 
 pub fn intersects<T: Ord>(left: &BTreeSet<T>, right: &BTreeSet<T>) -> bool {
@@ -605,24 +474,6 @@ fn validate_runtime_action(
                 return Err(veoveo_types::ExtensionError::new(
                     "action does not support this target",
                 ));
-            }
-            if let Some(requirement) = &descriptor.server {
-                let server = target
-                    .server()
-                    .and_then(|server| catalog.server(server))
-                    .ok_or_else(|| {
-                        veoveo_types::ExtensionError::new("action requires a known server target")
-                    })?;
-                if requirement
-                    .slug
-                    .as_ref()
-                    .is_some_and(|slug| slug != &server.slug)
-                    || (requirement.resources && !server.capabilities.resources)
-                {
-                    return Err(veoveo_types::ExtensionError::new(
-                        "action target does not meet server requirements",
-                    ));
-                }
             }
         }
     }

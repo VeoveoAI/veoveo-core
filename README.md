@@ -13,7 +13,7 @@ revision of this repository.
 | `platform/macros` | `veoveo-macros` | The `id`, `resource_address`, `Vocabulary` and `embedded_document!` macros |
 | `platform/modules` | `veoveo-modules` | Module schema declarations and the migration runner |
 | `platform/store` | `veoveo-platform-store` | SurrealDB access, kernel schemas, change feeds and audit storage |
-| `platform/policy` | `veoveo-policy` | The shared policy evaluator |
+| `platform/policy` | `veoveo-policy` | The shared policy evaluator and role evaluation over registered servers' permissions |
 | `platform/oauth` | `veoveo-oauth-client` | RS256 client-assertion signing |
 | `platform/http` | `veoveo-http` | Shared HTTP admission |
 | `platform/task-runtime` | `veoveo-task-runtime` | Durable Tasks: storage, leases, recovery and subscriptions |
@@ -33,8 +33,11 @@ revision of this repository.
 | `testing/fixtures/modular-mcp` | `veoveo-modular-fixture-mcp` | An independently typed server used as a conformance and Gateway test peer |
 | `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable SurrealDB store and tool-input cases |
 
-Core names no specific server. Servers contribute their own declarations through
-registration with the Gateway.
+Core names no specific server, and neither does an installation's configuration.
+Servers register with the Gateway through the
+[server registration protocol](mcp/registration-extension/DESIGN.md), and the
+installation grants roles that select their declared permissions by access kind and
+risk.
 
 ## Gate
 

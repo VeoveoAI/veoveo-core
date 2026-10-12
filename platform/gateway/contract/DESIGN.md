@@ -29,8 +29,11 @@ owning Rust module; they do not change serialized JSON or schema definition name
 
 A publisher binds one immutable registry before admitting a control-plane revision.
 Action keys carry registry identity and a closed owner vocabulary. Descriptors declare
-all six selector requirements, supported target kinds, server capabilities and audit
-access. Owner sections validate against neutral facts from that revision and return
+their profile and protected-resource selector requirements, supported target kinds
+and audit access. An action with an MCP method targets a registered server and is
+decided by installation roles, so policy rules govern only the Gateway's own actions.
+The registration secret is a Gateway-owned secret reference with purpose
+`registration_secret`. Owner sections validate against neutral facts from that revision and return
 protected-resource and persisted-object descriptors. Target codecs admit an owner
 value and compute its checked server/resource audit address before the core uses it.
 The installation recipe composes these declarations through owner contract features.

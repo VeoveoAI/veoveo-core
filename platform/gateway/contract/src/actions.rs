@@ -22,6 +22,12 @@ pub enum GatewayAction {
 }
 
 impl GatewayAction {
+    /// Actions on a registered server's tools, resources, prompts and Tasks. Installation
+    /// roles grant them through the server's declared permissions; policy rules do not.
+    pub fn targets_registered_server(self) -> bool {
+        self.mcp_method().is_some()
+    }
+
     pub fn mcp_method(self) -> Option<&'static str> {
         match self {
             Self::ToolsList => Some("tools/list"),

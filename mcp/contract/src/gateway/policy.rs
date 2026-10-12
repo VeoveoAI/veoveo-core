@@ -31,14 +31,6 @@ pub struct PolicyRule {
     #[serde(default)]
     pub protected_resources: BTreeSet<ProtectedResourceId>,
     #[serde(default)]
-    pub servers: BTreeSet<ServerSlug>,
-    #[serde(default)]
-    pub tools: BTreeSet<LocalToolName>,
-    #[serde(default)]
-    pub resource_schemes: BTreeSet<ResourceScheme>,
-    #[serde(default)]
-    pub prompts: BTreeSet<PromptName>,
-    #[serde(default)]
     pub principal_ids: BTreeSet<PrincipalId>,
     #[serde(default)]
     pub tenant_ids: BTreeSet<TenantId>,
@@ -210,6 +202,13 @@ pub struct PolicyDecision {
     pub policy_version: Option<PolicyVersion>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rule_id: Option<PolicyRuleId>,
+    /// For a registered server's target: the permission its declaration requires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<veoveo_types::PermissionName>,
+    /// For an allowed server target: every permission the caller holds in that server's
+    /// namespace, forwarded in the signed internal identity.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub granted: BTreeSet<veoveo_types::PermissionName>,
     pub trace_id: TraceId,
 }
 
@@ -232,6 +231,8 @@ impl PolicyDecision {
             tenant: None,
             policy_version: None,
             rule_id: None,
+            permission: None,
+            granted: BTreeSet::new(),
             trace_id,
         }
     }
@@ -267,6 +268,10 @@ pub enum PolicyReasonCode {
     TokenExpired,
     TokenNotYetValid,
     ReplayDetected,
+    /// The target is not in the registered server's declaration.
+    UndeclaredTarget,
+    /// No role the caller holds grants the target's required permission.
+    MissingPermission,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

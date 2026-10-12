@@ -1,8 +1,6 @@
 use schemars::JsonSchema;
 use veoveo_gateway_contract::GatewayToolName;
-use veoveo_mcp_contract::{
-    CompatibilityHelperId, IdentityProviderId, OAuthRefreshToken, PrincipalDisplayName,
-};
+use veoveo_mcp_contract::{IdentityProviderId, OAuthRefreshToken, PrincipalDisplayName};
 use veoveo_types::{Identity, LocalToolName, ServerSlug};
 
 #[test]
@@ -20,8 +18,6 @@ fn gateway_profiles_preserve_owner_admission_and_string_schemas() {
     )
     .unwrap();
     assert_eq!(tool.as_str(), "media__render");
-    assert!(CompatibilityHelperId::parse("media.models").is_ok());
-    assert!(CompatibilityHelperId::parse("media.models.extra").is_err());
 
     let schema = serde_json::to_value(schemars::schema_for!(IdentityProviderId)).unwrap();
     assert_eq!(schema["title"], "IdentityProviderId");

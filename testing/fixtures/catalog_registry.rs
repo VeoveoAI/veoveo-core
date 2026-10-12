@@ -45,6 +45,7 @@ pub fn fresh_registry() -> CatalogRegistry {
     builder.build().expect("kernel catalog registry")
 }
 
+#[allow(dead_code, reason = "Some consumers build a fresh registry per test")]
 pub fn registry() -> CatalogRegistry {
     static REGISTRY: OnceLock<CatalogRegistry> = OnceLock::new();
     REGISTRY.get_or_init(fresh_registry).clone()

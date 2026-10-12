@@ -2,6 +2,7 @@ use super::*;
 use veoveo_gateway_contract::{
     CertificateAuthorityFilePath, GatewayAction, SecretLocator, SecretSource,
 };
+use veoveo_mcp_registration_extension::{Access, Risk};
 
 fn identity_provider() -> IdentityProvider {
     IdentityProvider {
@@ -68,27 +69,47 @@ fn oidc_client_secret() -> SecretReference {
     }
 }
 
-fn tls_client_certificate_secret() -> SecretReference {
+fn registration_secret() -> SecretReference {
     SecretReference {
-        id: SecretReferenceId::parse("media_upstream_tls_client_certificate").unwrap(),
+        id: SecretReferenceId::parse("registration_secret").unwrap(),
         source: SecretSource::Env,
-        purpose: SecretPurpose::TlsClientCertificate,
-        locator: SecretLocator::parse("MEDIA_UPSTREAM_TLS_CLIENT_CERTIFICATE_PEM").unwrap(),
+        purpose: SecretPurpose::RegistrationSecret,
+        locator: SecretLocator::parse("VEOVEO_REGISTRATION_SECRET").unwrap(),
         owner: SecretOwner::Gateway,
         rotation_hint: None,
         metadata: Value::Null,
     }
 }
 
-fn tls_client_private_key_secret() -> SecretReference {
-    SecretReference {
-        id: SecretReferenceId::parse("media_upstream_tls_client_private_key").unwrap(),
-        source: SecretSource::Env,
-        purpose: SecretPurpose::TlsClientPrivateKey,
-        locator: SecretLocator::parse("MEDIA_UPSTREAM_TLS_CLIENT_PRIVATE_KEY_PEM").unwrap(),
-        owner: SecretOwner::Gateway,
-        rotation_hint: None,
-        metadata: Value::Null,
+fn default_authorization() -> InstallationAuthorization {
+    InstallationAuthorization {
+        roles: vec![
+            InstallationRole {
+                name: RoleId::parse("member").unwrap(),
+                access: BTreeSet::from([Access::Read, Access::Write]),
+                risks: BTreeSet::new(),
+            },
+            InstallationRole {
+                name: RoleId::parse("admin").unwrap(),
+                access: BTreeSet::from([Access::Read, Access::Write]),
+                risks: BTreeSet::from([Risk::Destructive, Risk::Administer]),
+            },
+        ],
+        grants: vec![
+            RoleGrant {
+                role: RoleId::parse("member").unwrap(),
+                subject: GrantSubject::Group(GroupId::parse("tenant-members").unwrap()),
+                tenant: Some(TenantId::parse("tenant-a").unwrap()),
+            },
+            RoleGrant {
+                role: RoleId::parse("admin").unwrap(),
+                subject: GrantSubject::Group(GroupId::parse("installation-admins").unwrap()),
+                tenant: None,
+            },
+        ],
+        overrides: vec![PermissionOverride::Deny {
+            permission: veoveo_types::PermissionName::parse("time.admin").unwrap(),
+        }],
     }
 }
 
@@ -96,61 +117,14 @@ fn default_secrets() -> Vec<SecretReference> {
     vec![signing_secret(), oidc_client_secret()]
 }
 
-fn media_manifest() -> ServerManifest {
-    ServerManifest {
-        knowledge: Vec::new(),
-        slug: ServerSlug::parse("media").unwrap(),
-        uri_scheme: ResourceScheme::parse("media").unwrap(),
-        mount_path: MountPath::new("/media").unwrap(),
-        mcp_path: MountPath::new("/media/mcp").unwrap(),
-        upstream: UpstreamEndpoint {
-            transport: UpstreamTransport::StreamableHttp,
-            url: UpstreamUrl::parse("http://media-mcp:8787/media/mcp").unwrap(),
-            health_url: UpstreamUrl::parse("http://media-mcp:8787/media/healthz").unwrap(),
-            security: UpstreamTransportSecurity::ClusterInternalHttp,
-            trusted_certificate_authorities: Vec::new(),
-            client_certificate: None,
-            client_private_key: None,
-        },
-        capabilities: McpSurfaceCapabilities {
-            apps: false,
-            tools: true,
-            resources: true,
-            resource_templates: true,
-            resource_subscriptions: true,
-            prompts: true,
-            completions: true,
-            tasks: true,
-            tools_list_changed: false,
-            prompts_list_changed: false,
-            resources_list_changed: true,
-        },
-        resource_projection: ResourceProjectionMode::Identity,
-        referenced_resource_schemes: BTreeSet::new(),
-        app_resource_dependencies: Vec::new(),
-        app_tool_dependencies: Vec::new(),
-        tools: vec![LocalToolName::parse("run").unwrap()],
-        compatibility_helpers: Vec::new(),
-        prompts: vec![PromptName::parse("model_help").unwrap()],
-        required_scopes: vec![ScopeName::parse("operator:use").unwrap()],
-        owned_routes: vec![OwnedRoute {
-            path: MountPath::new("/media/webhooks").unwrap(),
-            purpose: OwnedRoutePurpose::Webhook,
-        }],
-        metadata: Value::Null,
-    }
-}
-
-fn control_plane_with_server_and_secrets(
-    server: ServerManifest,
-    secrets: Vec<SecretReference>,
-) -> GatewayControlPlane {
+fn control_plane_with_secrets(secrets: Vec<SecretReference>) -> GatewayControlPlane {
     GatewayControlPlane {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![server],
         profiles: vec![default_profile()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         extensions: Default::default(),
         tenants: default_tenants(),
         work_contexts: default_work_contexts(),
@@ -165,8 +139,7 @@ fn control_plane_with_server_and_secrets(
 
 #[test]
 fn control_plane_lists_every_public_file_mount() {
-    let mut control_plane =
-        control_plane_with_server_and_secrets(media_manifest(), default_secrets());
+    let mut control_plane = control_plane_with_secrets(default_secrets());
     control_plane.identity_providers[0].jwks = JwksSource::File {
         path: JwksFilePath::new("/etc/veoveo/gateway/identity-jwks.json").unwrap(),
     };
@@ -201,15 +174,11 @@ fn default_policy() -> PolicySet {
     PolicySet {
         version: PolicyVersion::parse("2026-07-02").unwrap(),
         rules: vec![PolicyRule {
-            id: PolicyRuleId::parse("allow_media_use").unwrap(),
+            id: PolicyRuleId::parse("allow_admin_read").unwrap(),
             effect: PolicyEffect::Allow,
-            actions: BTreeSet::from([GatewayAction::ToolsCall.into()]),
+            actions: BTreeSet::from([GatewayAction::AdminRead.into()]),
             profiles: BTreeSet::from([GatewayProfileId::parse("default").unwrap()]),
             protected_resources: BTreeSet::new(),
-            servers: BTreeSet::from([ServerSlug::parse("media").unwrap()]),
-            tools: BTreeSet::from([LocalToolName::parse("run").unwrap()]),
-            resource_schemes: BTreeSet::new(),
-            prompts: BTreeSet::new(),
             principal_ids: BTreeSet::new(),
             tenant_ids: BTreeSet::new(),
             groups: BTreeSet::new(),
@@ -300,16 +269,6 @@ fn default_profile() -> GatewayProfile {
         ]),
         discovery_failure_mode: DiscoveryFailureMode::Isolate,
         required_scopes: vec![ScopeName::parse("operator:use").unwrap()],
-        servers: vec![ProfileServerExposure {
-            server: ServerSlug::parse("media").unwrap(),
-            tools: Exposure::Listed(vec![LocalToolName::parse("run").unwrap()]),
-            resources: Exposure::Listed(vec![ResourceSelector::Scheme {
-                scheme: ResourceScheme::parse("media").unwrap(),
-            }]),
-            prompts: Exposure::All,
-            completions: CompletionExposure::Enabled,
-            tasks: TaskExposure::Enabled,
-        }],
         metadata: Value::Null,
     }
 }
@@ -317,14 +276,12 @@ fn default_profile() -> GatewayProfile {
 fn default_oauth_clients() -> Vec<OAuthClientRegistration> {
     vec![
         OAuthClientRegistration {
-            knowledge_indexing: None,
             id: OAuthClientId::parse("operator-local-public").unwrap(),
             authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
             default_work_context: WorkContextId::parse("default").unwrap(),
             invocation_mode: veoveo_types::InvocationMode::Direct,
             display_name: Some("Veoveo Operator Local Client".to_string()),
             client_surface: OAuthClientSurface::FullMcp,
-            allowed_compatibility_helpers: BTreeSet::new(),
             direct_task_call_adapter: false,
             allowed_resources: BTreeSet::from([ProtectedResourceId::parse(
                 "https://veoveo.example/mcp/operator",
@@ -350,14 +307,12 @@ fn default_oauth_clients() -> Vec<OAuthClientRegistration> {
             metadata: Value::Null,
         },
         OAuthClientRegistration {
-            knowledge_indexing: None,
             id: OAuthClientId::parse("operator-service").unwrap(),
             authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
             default_work_context: WorkContextId::parse("default").unwrap(),
             invocation_mode: veoveo_types::InvocationMode::Automated,
             display_name: Some("Veoveo Operator Service".to_string()),
             client_surface: OAuthClientSurface::FullMcp,
-            allowed_compatibility_helpers: BTreeSet::new(),
             direct_task_call_adapter: false,
             allowed_resources: BTreeSet::from([ProtectedResourceId::parse(
                 "https://veoveo.example/mcp/operator",
@@ -403,43 +358,11 @@ fn default_oidc_clients() -> Vec<IdentityProviderOidcClientRegistration> {
     }]
 }
 
-fn hosted_compat_oauth_client(
-    helpers: BTreeSet<CompatibilityHelperId>,
-    direct_task_call_adapter: bool,
-) -> OAuthClientRegistration {
-    OAuthClientRegistration {
-        knowledge_indexing: None,
-        id: OAuthClientId::parse("operator-hosted-public").unwrap(),
-        authorization_server: AuthorizationServerId::parse("veoveo").unwrap(),
-        default_work_context: WorkContextId::parse("default").unwrap(),
-        invocation_mode: veoveo_types::InvocationMode::Direct,
-        display_name: Some("Veoveo Operator Hosted Client".to_string()),
-        client_surface: OAuthClientSurface::ToolsCompat,
-        allowed_compatibility_helpers: helpers,
-        direct_task_call_adapter,
-        allowed_resources: BTreeSet::from([ProtectedResourceId::parse(
-            "https://veoveo.example/mcp/operator",
-        )
-        .unwrap()]),
-        grant_types: BTreeSet::from([OAuthGrantType::AuthorizationCodePkce]),
-        auth_methods: BTreeSet::from([OAuthClientAuthMethod::None]),
-        redirect_uris: vec![
-            OAuthRedirectUri::new("https://claude.ai/api/mcp/auth_callback").unwrap(),
-        ],
-        allowed_scopes: BTreeSet::from([ScopeName::parse("operator:use").unwrap()]),
-        credential_secret: None,
-        jwks: None,
-        tenant: None,
-        metadata: Value::Null,
-    }
-}
-
 #[test]
 fn identifiers_reject_invalid_wire_values() {
     assert!(ServerSlug::parse("Media").is_err());
+    assert!(veoveo_types::ResourceScheme::parse("1media").is_err());
     assert!(GatewayProfileId::parse("default/profile").is_err());
-    assert!(ResourceScheme::parse("1media").is_err());
-    assert!(MountPath::new("media").is_err());
     assert!(OAuthRedirectUri::new("https://veoveo.example/oauth/callback").is_ok());
     assert!(OAuthRedirectUri::new("http://127.0.0.1:8789/oauth/callback").is_ok());
     assert!(OAuthRedirectUri::new("http://[::1]:8789/oauth/callback").is_ok());
@@ -459,11 +382,6 @@ fn identifiers_reject_invalid_wire_values() {
     assert!(PrincipalDisplayName::new("x".repeat(257)).is_err());
     assert!(PkceCodeChallenge::parse("A".repeat(43)).is_ok());
     assert!(PkceCodeVerifier::parse("a".repeat(129)).is_err());
-    assert!(UpstreamUrl::parse("http://media-mcp:8787/media/mcp").is_ok());
-    assert!(UpstreamUrl::parse("https://media.example.com/mcp").is_ok());
-    assert!(UpstreamUrl::parse("ftp://media-mcp/media/mcp").is_err());
-    assert!(UpstreamUrl::parse("http://user:pass@media-mcp/media/mcp").is_err());
-    assert!(UpstreamUrl::parse("http://media-mcp/media/mcp?debug=true").is_err());
     assert!(ResourceUri::new("media://artifact/abc").is_ok());
     assert!(ResourceUriTemplate::new("media://model").is_err());
 }
@@ -493,194 +411,6 @@ fn resource_uri_templates_reject_unsupported_expressions() {
     assert!(ResourceUriTemplate::new("media://model/{model_id").is_err());
     assert!(ResourceUriTemplate::new("media://model/model_id}").is_err());
     assert!(ResourceUriTemplate::new("media://model/{left}{right}").is_err());
-}
-
-#[test]
-fn control_plane_validates_upstream_transport_security() {
-    let mut loopback_manifest = media_manifest();
-    loopback_manifest.upstream.url =
-        UpstreamUrl::parse("http://127.0.0.1:18801/media/mcp").unwrap();
-    loopback_manifest.upstream.health_url =
-        UpstreamUrl::parse("http://127.0.0.1:18801/media/healthz").unwrap();
-    loopback_manifest.upstream.security = UpstreamTransportSecurity::LoopbackHttp;
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![loopback_manifest],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    config
-        .validate(&crate::catalog_fixture::registry())
-        .expect("loopback HTTP upstream is valid");
-
-    let mut mesh_manifest = media_manifest();
-    mesh_manifest.upstream.url =
-        UpstreamUrl::parse("http://media-mcp.default.svc.cluster.local/media/mcp").unwrap();
-    mesh_manifest.upstream.health_url =
-        UpstreamUrl::parse("http://media-mcp.default.svc.cluster.local/media/healthz").unwrap();
-    mesh_manifest.upstream.security = UpstreamTransportSecurity::ServiceMeshMtls;
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![mesh_manifest],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    config
-        .validate(&crate::catalog_fixture::registry())
-        .expect("service-mesh internal HTTP upstream is valid");
-
-    let mut public_plaintext_manifest = media_manifest();
-    public_plaintext_manifest.upstream.url =
-        UpstreamUrl::parse("http://media.example.com/media/mcp").unwrap();
-    public_plaintext_manifest.upstream.security = UpstreamTransportSecurity::ServiceMeshMtls;
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![public_plaintext_manifest],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("public plaintext upstream must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ServerUpstreamSecurityMismatch { .. }
-    ));
-}
-
-#[test]
-fn mutual_tls_upstream_requires_typed_client_material() {
-    let mut manifest = media_manifest();
-    manifest.upstream.url = UpstreamUrl::parse("https://media.example.com/media/mcp").unwrap();
-    manifest.upstream.health_url =
-        UpstreamUrl::parse("https://media.example.com/media/healthz").unwrap();
-    manifest.upstream.security = UpstreamTransportSecurity::MutualTls;
-
-    let err = control_plane_with_server_and_secrets(manifest.clone(), default_secrets())
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("mutual TLS requires client certificate and private key references");
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ServerUpstreamTlsSecretRequired {
-            purpose: SecretPurpose::TlsClientCertificate,
-            ..
-        }
-    ));
-
-    manifest.upstream.client_certificate =
-        Some(SecretReferenceId::parse("media_upstream_tls_client_certificate").unwrap());
-    let err = control_plane_with_server_and_secrets(manifest.clone(), default_secrets())
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("mutual TLS also requires a client private key reference");
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ServerUpstreamTlsSecretRequired {
-            purpose: SecretPurpose::TlsClientPrivateKey,
-            ..
-        }
-    ));
-
-    manifest.upstream.client_private_key =
-        Some(SecretReferenceId::parse("media_upstream_tls_client_private_key").unwrap());
-    let err = control_plane_with_server_and_secrets(manifest.clone(), default_secrets())
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("mutual TLS references must exist in the secret catalog");
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownServerUpstreamTlsSecret { .. }
-    ));
-
-    let mut wrong_purpose = tls_client_private_key_secret();
-    wrong_purpose.purpose = SecretPurpose::OAuthClientSecret;
-    let err = control_plane_with_server_and_secrets(
-        manifest.clone(),
-        vec![
-            signing_secret(),
-            oidc_client_secret(),
-            tls_client_certificate_secret(),
-            wrong_purpose,
-        ],
-    )
-    .validate(&crate::catalog_fixture::registry())
-    .expect_err("mutual TLS secrets must have TLS-specific purposes");
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ServerUpstreamTlsSecretPurposeMismatch {
-            expected: SecretPurpose::TlsClientPrivateKey,
-            ..
-        }
-    ));
-
-    control_plane_with_server_and_secrets(
-        manifest,
-        vec![
-            signing_secret(),
-            oidc_client_secret(),
-            tls_client_certificate_secret(),
-            tls_client_private_key_secret(),
-        ],
-    )
-    .validate(&crate::catalog_fixture::registry())
-    .expect("mutual TLS validates with typed certificate and private key secrets");
-}
-
-#[test]
-fn non_mutual_tls_upstream_rejects_client_material() {
-    let mut manifest = media_manifest();
-    manifest.upstream.client_certificate =
-        Some(SecretReferenceId::parse("media_upstream_tls_client_certificate").unwrap());
-    manifest.upstream.client_private_key =
-        Some(SecretReferenceId::parse("media_upstream_tls_client_private_key").unwrap());
-
-    let err = control_plane_with_server_and_secrets(
-        manifest,
-        vec![
-            signing_secret(),
-            oidc_client_secret(),
-            tls_client_certificate_secret(),
-            tls_client_private_key_secret(),
-        ],
-    )
-    .validate(&crate::catalog_fixture::registry())
-    .expect_err("client TLS material is only meaningful for mutual TLS upstreams");
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ServerUpstreamTlsClientMaterialNotAllowed { .. }
-    ));
 }
 
 #[test]
@@ -718,7 +448,11 @@ fn control_plane_validates_cross_references() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: default_authorization(),
+        registration: Some(RegistrationSettings {
+            secret: SecretReferenceId::parse("registration_secret").unwrap(),
+            lease: LeaseTimings::default(),
+        }),
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -730,17 +464,7 @@ fn control_plane_validates_cross_references() {
         secrets: vec![
             signing_secret(),
             oidc_client_secret(),
-            SecretReference {
-                id: SecretReferenceId::parse("media_provider_key").unwrap(),
-                source: SecretSource::Env,
-                purpose: SecretPurpose::ProviderApiKey,
-                locator: SecretLocator::parse("MEDIA_PROVIDER_API_KEY").unwrap(),
-                owner: SecretOwner::Server {
-                    server: ServerSlug::parse("media").unwrap(),
-                },
-                rotation_hint: None,
-                metadata: Value::Null,
-            },
+            registration_secret(),
         ],
         metadata: Value::Null,
     };
@@ -751,304 +475,6 @@ fn control_plane_validates_cross_references() {
 }
 
 #[test]
-fn control_plane_rejects_unknown_server_reference() {
-    let mut profile = default_profile();
-    profile.servers[0].server = ServerSlug::parse("simulation").unwrap();
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown server must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownServer { .. }
-    ));
-}
-
-#[test]
-fn control_plane_rejects_duplicate_profile_server_reference() {
-    let mut profile = default_profile();
-    profile.servers.push(profile.servers[0].clone());
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("duplicate profile server exposure must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::DuplicateProfileServer { .. }
-    ));
-}
-
-#[test]
-fn control_plane_rejects_unknown_profile_tool() {
-    let mut profile = default_profile();
-    profile.servers[0].tools = Exposure::Listed(vec![LocalToolName::parse("simulate").unwrap()]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown profile tool must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownProfileTool { .. }
-    ));
-}
-
-#[test]
-fn control_plane_rejects_unknown_profile_prompt() {
-    let mut profile = default_profile();
-    profile.servers[0].prompts =
-        Exposure::Listed(vec![PromptName::parse("unknown-prompt").unwrap()]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown profile prompt must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownProfilePrompt { .. }
-    ));
-}
-
-#[test]
-fn control_plane_rejects_profile_resource_scheme_mismatch() {
-    let mut profile = default_profile();
-    profile.servers[0].resources = Exposure::Listed(vec![ResourceSelector::Scheme {
-        scheme: ResourceScheme::parse("simulation").unwrap(),
-    }]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("profile resource selector must stay server-scoped");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ProfileResourceSelectorMismatch { .. }
-    ));
-}
-
-#[test]
-fn control_plane_accepts_server_owned_projected_ui_resources() {
-    let mut chart_server = media_manifest();
-    chart_server.slug = ServerSlug::parse("charts").unwrap();
-    chart_server.uri_scheme = ResourceScheme::parse("charts").unwrap();
-    chart_server.resource_projection = ResourceProjectionMode::ServerOwned;
-
-    let mut profile = default_profile();
-    profile.servers[0].server = ServerSlug::parse("charts").unwrap();
-    profile.servers[0].tools = Exposure::None;
-    profile.servers[0].resources = Exposure::Listed(vec![ResourceSelector::UriPrefix {
-        prefix: ResourceUriPrefix::new("ui://charts/").unwrap(),
-    }]);
-
-    let mut policy = default_policy();
-    policy.rules[0].actions = BTreeSet::from([GatewayAction::ResourcesRead.into()]);
-    policy.rules[0].servers = BTreeSet::from([ServerSlug::parse("charts").unwrap()]);
-    policy.rules[0].tools.clear();
-    policy.rules[0].resource_schemes = BTreeSet::from([ResourceScheme::parse("ui").unwrap()]);
-
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![chart_server],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    config
-        .validate(&crate::catalog_fixture::registry())
-        .expect("server-owned projected UI resources must validate");
-}
-
-#[test]
-fn control_plane_rejects_unregistered_cross_server_resource_scheme() {
-    let mut server = media_manifest();
-    server
-        .referenced_resource_schemes
-        .insert(ResourceScheme::parse("frames").unwrap());
-    let config = control_plane_with_server_and_secrets(server, default_secrets());
-
-    let error = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("cross-server resource schemes must name a registered server");
-
-    assert!(matches!(
-        error,
-        GatewayControlPlaneError::UnknownServerReferencedResourceScheme {
-            server,
-            scheme,
-        } if server.as_str() == "media" && scheme.as_str() == "frames"
-    ));
-}
-
-#[test]
-fn control_plane_rejects_projected_ui_resources_for_other_server_slug() {
-    let mut chart_server = media_manifest();
-    chart_server.slug = ServerSlug::parse("charts").unwrap();
-    chart_server.uri_scheme = ResourceScheme::parse("charts").unwrap();
-    chart_server.resource_projection = ResourceProjectionMode::ServerOwned;
-
-    let mut profile = default_profile();
-    profile.servers[0].server = ServerSlug::parse("charts").unwrap();
-    profile.servers[0].resources = Exposure::Listed(vec![ResourceSelector::UriPrefix {
-        prefix: ResourceUriPrefix::new("ui://other/").unwrap(),
-    }]);
-
-    let mut policy = default_policy();
-    policy.rules[0].servers = BTreeSet::from([ServerSlug::parse("charts").unwrap()]);
-
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![chart_server],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("projected UI resource prefix must belong to the server slug");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ProfileResourceSelectorMismatch { .. }
-    ));
-}
-
-#[test]
-fn control_plane_rejects_disabled_profile_capability() {
-    let mut manifest = media_manifest();
-    manifest.capabilities.tasks = false;
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![manifest],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("profile cannot expose disabled task capability");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::ProfileExposesDisabledCapability {
-            capability: McpSurfaceCapability::Tasks,
-            ..
-        }
-    ));
-}
-
-#[test]
 fn control_plane_rejects_unknown_identity_provider_reference() {
     let mut profile = default_profile();
     profile.identity_provider = IdentityProviderId::parse("missing").unwrap();
@@ -1056,7 +482,8 @@ fn control_plane_rejects_unknown_identity_provider_reference() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1087,7 +514,8 @@ fn control_plane_rejects_unknown_authorization_server_reference() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1118,7 +546,8 @@ fn control_plane_rejects_authorization_server_unknown_identity_provider() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1149,7 +578,8 @@ fn control_plane_rejects_profile_without_auth_modes() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1182,7 +612,8 @@ fn control_plane_rejects_oidc_profile_without_browser_endpoints() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![auth_server],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1215,7 +646,8 @@ fn control_plane_rejects_oidc_profile_without_browser_endpoints() {
         branding: None,
         identity_providers: vec![idp],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1251,7 +683,8 @@ fn control_plane_rejects_extension_auth_modes_without_matching_endpoints() {
         branding: None,
         identity_providers: vec![idp],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1283,7 +716,8 @@ fn control_plane_rejects_unknown_secret_owner_references() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1322,46 +756,8 @@ fn control_plane_rejects_unknown_secret_owner_references() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: vec![
-            signing_secret(),
-            SecretReference {
-                id: SecretReferenceId::parse("server_secret").unwrap(),
-                source: SecretSource::Env,
-                purpose: SecretPurpose::ProviderApiKey,
-                locator: SecretLocator::parse("SERVER_SECRET").unwrap(),
-                owner: SecretOwner::Server {
-                    server: ServerSlug::parse("missing").unwrap(),
-                },
-                rotation_hint: None,
-                metadata: Value::Null,
-            },
-        ],
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown server secret owner must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownSecretOwnerServer { .. }
-    ));
-
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1403,7 +799,8 @@ fn control_plane_rejects_missing_oauth_client_for_auth_mode() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1440,7 +837,8 @@ fn control_plane_allows_service_profile_before_durable_client_admission() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1465,7 +863,8 @@ fn control_plane_rejects_missing_oidc_client_for_browser_auth() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![profile],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1498,7 +897,8 @@ fn control_plane_rejects_oidc_client_without_openid_scope() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1529,7 +929,8 @@ fn control_plane_rejects_public_client_credentials() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1560,7 +961,8 @@ fn control_plane_rejects_private_key_jwt_without_jwks() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1597,7 +999,8 @@ fn control_plane_rejects_unsupported_oauth_client_auth_combinations() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1625,7 +1028,8 @@ fn control_plane_rejects_unsupported_oauth_client_auth_combinations() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1654,7 +1058,8 @@ fn control_plane_rejects_unsupported_oauth_client_auth_combinations() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1687,7 +1092,8 @@ fn control_plane_rejects_unsupported_oauth_client_auth_combinations() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1720,7 +1126,8 @@ fn control_plane_rejects_oauth_client_missing_required_scope() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1744,43 +1151,13 @@ fn control_plane_rejects_oauth_client_missing_required_scope() {
 }
 
 #[test]
-fn control_plane_rejects_duplicate_resource_schemes() {
-    let mut second_server = media_manifest();
-    second_server.slug = ServerSlug::parse("simulation").unwrap();
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest(), second_server],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![default_policy()],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("duplicate resource schemes must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::DuplicateResourceScheme(_)
-    ));
-}
-
-#[test]
 fn control_plane_rejects_duplicate_tenants() {
     let config = GatewayControlPlane {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: vec![
@@ -1821,7 +1198,8 @@ fn control_plane_rejects_duplicate_policy_rule_ids() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1852,7 +1230,8 @@ fn control_plane_rejects_unknown_policy_rule_references() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -1875,126 +1254,14 @@ fn control_plane_rejects_unknown_policy_rule_references() {
     ));
 
     let mut policy = default_policy();
-    policy.rules[0].servers = BTreeSet::from([ServerSlug::parse("missing").unwrap()]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown policy server must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownPolicyRuleServer { .. }
-    ));
-
-    let mut policy = default_policy();
-    policy.rules[0].resource_schemes =
-        BTreeSet::from([ResourceScheme::parse("simulation").unwrap()]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown policy resource scheme must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownPolicyRuleResourceScheme { .. }
-    ));
-
-    let mut policy = default_policy();
-    policy.rules[0].tools = BTreeSet::from([LocalToolName::parse("simulate").unwrap()]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown policy tool must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownPolicyRuleTool { .. }
-    ));
-
-    let mut policy = default_policy();
-    policy.rules[0].prompts = BTreeSet::from([PromptName::parse("unknown-prompt").unwrap()]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("unknown policy prompt must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::UnknownPolicyRulePrompt { .. }
-    ));
-
-    let mut policy = default_policy();
     policy.rules[0].required_data_labels =
         BTreeSet::from([DataLabelId::parse("unknown_label").unwrap()]);
     let config = GatewayControlPlane {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -2022,7 +1289,8 @@ fn control_plane_rejects_unknown_policy_rule_references() {
         branding: None,
         identity_providers: vec![identity_provider()],
         authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest()],
+        authorization: InstallationAuthorization::default(),
+        registration: None,
         profiles: vec![default_profile()],
         extensions: Default::default(),
         tenants: default_tenants(),
@@ -2042,83 +1310,6 @@ fn control_plane_rejects_unknown_policy_rule_references() {
     assert!(matches!(
         err,
         GatewayControlPlaneError::UnknownPolicyRuleTenant { .. }
-    ));
-
-    let mut simulation_server = media_manifest();
-    simulation_server.slug = ServerSlug::parse("simulation").unwrap();
-    simulation_server.uri_scheme = ResourceScheme::parse("simulation").unwrap();
-    simulation_server.mount_path = MountPath::new("/simulation").unwrap();
-    simulation_server.mcp_path = MountPath::new("/simulation/mcp").unwrap();
-    simulation_server.owned_routes.clear();
-    let mut policy = default_policy();
-    policy.rules[0].resource_schemes =
-        BTreeSet::from([ResourceScheme::parse("simulation").unwrap()]);
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![media_manifest(), simulation_server],
-        profiles: vec![default_profile()],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("policy resource scheme outside server scope must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::PolicyRuleResourceSchemeOutsideServerScope { .. }
-    ));
-}
-
-#[test]
-fn control_plane_rejects_policy_action_outside_server_capabilities() {
-    let mut manifest = media_manifest();
-    manifest.capabilities.resource_subscriptions = false;
-    manifest.capabilities.tasks = false;
-    manifest.capabilities.resources_list_changed = false;
-    let mut policy = default_policy();
-    policy.rules[0].actions = BTreeSet::from([GatewayAction::SubscriptionsListen.into()]);
-    policy.rules[0].tools.clear();
-    policy.rules[0].resource_schemes = BTreeSet::from([ResourceScheme::parse("media").unwrap()]);
-    let mut profile = default_profile();
-    profile.servers[0].tasks = TaskExposure::Disabled;
-    let config = GatewayControlPlane {
-        branding: None,
-        identity_providers: vec![identity_provider()],
-        authorization_servers: vec![authorization_server()],
-        servers: vec![manifest],
-        profiles: vec![profile],
-        extensions: Default::default(),
-        tenants: default_tenants(),
-        work_contexts: default_work_contexts(),
-        policies: vec![policy],
-        data_labels: default_data_labels(),
-        oauth_clients: default_oauth_clients(),
-        oidc_clients: default_oidc_clients(),
-        secrets: default_secrets(),
-        metadata: Value::Null,
-    };
-
-    let err = config
-        .validate(&crate::catalog_fixture::registry())
-        .expect_err("policy action outside server capabilities must fail");
-
-    assert!(matches!(
-        err,
-        GatewayControlPlaneError::PolicyRuleActionUnsupportedByServerScope {
-            action,
-            ..
-        } if action == GatewayAction::SubscriptionsListen.into()
     ));
 }
 
@@ -2140,18 +1331,6 @@ fn policy_decision_defaults_to_explicit_deny() {
 }
 
 #[test]
-fn tools_compat_client_accepts_task_projection_without_a_helper_tool() {
-    let mut config = control_plane_with_server_and_secrets(media_manifest(), default_secrets());
-    config
-        .oauth_clients
-        .push(hosted_compat_oauth_client(BTreeSet::new(), true));
-
-    config
-        .validate(&crate::catalog_fixture::registry())
-        .expect("internal task projection should not require a public helper tool");
-}
-
-#[test]
 fn refresh_tokens_are_redacted_from_diagnostics_but_serialize_on_the_wire() {
     let raw = "R".repeat(43);
     let token = OAuthRefreshToken::parse(raw.clone()).unwrap();
@@ -2159,46 +1338,6 @@ fn refresh_tokens_are_redacted_from_diagnostics_but_serialize_on_the_wire() {
     assert_eq!(token.to_string(), "[REDACTED]");
     assert!(!format!("{token:?}").contains(&raw));
     assert_eq!(serde_json::to_value(token).unwrap(), serde_json::json!(raw));
-}
-
-#[test]
-fn app_resource_dependencies_bind_exact_apps_to_registered_resource_families() {
-    let target = media_manifest();
-    let mut owner = media_manifest();
-    owner.slug = ServerSlug::parse("mission").unwrap();
-    owner.uri_scheme = ResourceScheme::parse("mission").unwrap();
-    owner.capabilities.apps = true;
-    owner.resource_projection = ResourceProjectionMode::ServerOwned;
-    owner.app_resource_dependencies = vec![AppResourceDependency {
-        app_resource: ResourceUri::new("ui://mission/operations.html").unwrap(),
-        server: target.slug.clone(),
-        scheme: target.uri_scheme.clone(),
-        uri_prefix: ResourceUriPrefix::new("media://artifact/").unwrap(),
-        required_scope: ScopeName::parse("media:read").unwrap(),
-        operations: BTreeSet::from([AppResourceOperation::Read]),
-        data_labels: BTreeSet::from([DataLabelId::parse("cui").unwrap()]),
-    }];
-    let servers = std::collections::BTreeMap::from([
-        (owner.slug.clone(), &owner),
-        (target.slug.clone(), &target),
-    ]);
-    let labels = BTreeSet::from([DataLabelId::parse("cui").unwrap()]);
-    super::validation::validate_app_resource_dependencies(&owner, &servers, &labels)
-        .expect("exact registered dependency should validate");
-
-    drop(servers);
-    owner.app_resource_dependencies[0].uri_prefix =
-        ResourceUriPrefix::new("recording://artifact/").unwrap();
-    let servers = std::collections::BTreeMap::from([
-        (owner.slug.clone(), &owner),
-        (target.slug.clone(), &target),
-    ]);
-    let error = super::validation::validate_app_resource_dependencies(&owner, &servers, &labels)
-        .expect_err("scheme and prefix mismatch must fail");
-    assert!(matches!(
-        error,
-        GatewayControlPlaneError::InvalidAppResourceDependency { .. }
-    ));
 }
 
 #[test]
@@ -2236,7 +1375,7 @@ fn normalized_identity_and_decision_reject_unknown_fields() {
 
 #[test]
 fn control_plane_refuses_retired_core_keys_in_extension_space() {
-    let control = control_plane_with_server_and_secrets(media_manifest(), default_secrets());
+    let control = control_plane_with_secrets(default_secrets());
     let wire = serde_json::to_value(control).unwrap();
     assert!(serde_json::from_value::<GatewayControlPlane>(wire.clone()).is_ok());
     for key in [
@@ -2267,7 +1406,7 @@ fn revision_wire_refuses_retired_names_instead_of_dropping_them() {
             .with_timezone(&Utc),
         applied_by: PrincipalId::parse("author").unwrap(),
         tenant: None,
-        control_plane: control_plane_with_server_and_secrets(media_manifest(), default_secrets()),
+        control_plane: control_plane_with_secrets(default_secrets()),
     };
     let current = serde_json::to_value(value).unwrap();
     let schema = serde_json::to_value(schemars::schema_for!(GatewayControlPlaneRevision)).unwrap();
@@ -2292,4 +1431,115 @@ fn revision_wire_refuses_retired_names_instead_of_dropping_them() {
             assert!(!validator.is_valid(&invalid));
         }
     }
+}
+
+fn registering_control_plane() -> GatewayControlPlane {
+    let mut secrets = default_secrets();
+    secrets.push(registration_secret());
+    let mut control_plane = control_plane_with_secrets(secrets);
+    control_plane.authorization = default_authorization();
+    control_plane.registration = Some(RegistrationSettings {
+        secret: SecretReferenceId::parse("registration_secret").unwrap(),
+        lease: LeaseTimings::default(),
+    });
+    control_plane
+}
+
+#[test]
+fn a_control_plane_names_no_server() {
+    registering_control_plane()
+        .validate(&crate::catalog_fixture::registry())
+        .unwrap();
+    let mut wire = serde_json::to_value(registering_control_plane()).unwrap();
+    assert!(wire.get("servers").is_none());
+    assert_eq!(wire["registration"]["lease"]["renewEverySeconds"], 10);
+    assert_eq!(
+        wire["authorization"]["grants"][0]["subject"]["group"],
+        "tenant-members"
+    );
+    assert_eq!(wire["authorization"]["overrides"][0]["kind"], "deny");
+    let round_trip: GatewayControlPlane = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(round_trip, registering_control_plane());
+    wire["servers"] = serde_json::json!([]);
+    assert!(serde_json::from_value::<GatewayControlPlane>(wire).is_err());
+}
+
+#[test]
+fn installation_roles_and_grants_are_checked() {
+    let registry = crate::catalog_fixture::registry();
+    let mut config = registering_control_plane();
+    config
+        .authorization
+        .roles
+        .push(config.authorization.roles[0].clone());
+    assert!(matches!(
+        config.validate(&registry),
+        Err(GatewayControlPlaneError::DuplicateRole(_))
+    ));
+
+    let mut config = registering_control_plane();
+    config.authorization.grants[0].role = RoleId::parse("missing").unwrap();
+    assert!(matches!(
+        config.validate(&registry),
+        Err(GatewayControlPlaneError::UnknownGrantRole(_))
+    ));
+
+    let mut config = registering_control_plane();
+    config.authorization.grants[0].tenant = Some(TenantId::parse("missing").unwrap());
+    assert!(matches!(
+        config.validate(&registry),
+        Err(GatewayControlPlaneError::UnknownGrantTenant { .. })
+    ));
+
+    let mut config = registering_control_plane();
+    config
+        .authorization
+        .overrides
+        .push(PermissionOverride::AddRisks {
+            permission: veoveo_types::PermissionName::parse("time.admin").unwrap(),
+            risks: BTreeSet::from([Risk::Billed]),
+        });
+    assert!(matches!(
+        config.validate(&registry),
+        Err(GatewayControlPlaneError::ConflictingPermissionOverride(_))
+    ));
+}
+
+#[test]
+fn registration_settings_require_a_gateway_registration_secret() {
+    let registry = crate::catalog_fixture::registry();
+    let mut config = registering_control_plane();
+    config.registration.as_mut().unwrap().secret = SecretReferenceId::parse("missing").unwrap();
+    assert!(matches!(
+        config.validate(&registry),
+        Err(GatewayControlPlaneError::UnknownRegistrationSecret(_))
+    ));
+
+    let mut config = registering_control_plane();
+    config.registration.as_mut().unwrap().secret = signing_secret().id;
+    assert!(matches!(
+        config.validate(&registry),
+        Err(GatewayControlPlaneError::RegistrationSecretMismatch(_))
+    ));
+
+    let mut config = registering_control_plane();
+    config.registration.as_mut().unwrap().lease = LeaseTimings {
+        renew_every_seconds: 30,
+        expires_after_seconds: 30,
+    };
+    assert!(matches!(
+        config.validate(&registry),
+        Err(GatewayControlPlaneError::InvalidRegistrationSettings(_))
+    ));
+}
+
+#[test]
+fn policy_rules_cannot_grant_registered_server_actions() {
+    let mut config = registering_control_plane();
+    config.policies[0].rules[0].actions = BTreeSet::from([GatewayAction::ToolsCall.into()]);
+    assert!(matches!(
+        config.validate(&crate::catalog_fixture::registry()),
+        Err(GatewayControlPlaneError::PolicyRuleServerAction { .. })
+    ));
+    let _ = (Access::Read, Risk::Physical);
 }

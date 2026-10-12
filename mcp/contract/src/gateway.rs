@@ -1,15 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
-#[cfg(test)]
-use veoveo_gateway_contract::AppResourceOperation;
-use veoveo_gateway_contract::{AppResourceDependency, AppToolDependency};
 use veoveo_gateway_contract::{
     AuthorizationServerId, CertificateAuthoritySource, ProtectedResourceId, ProtectedResourceName,
-    SecretOwner, SecretPurpose, SecretReference, SecretReferenceId, UpstreamTransportSecurity,
-    UpstreamUrl,
+    SecretOwner, SecretPurpose, SecretReference, SecretReferenceId,
 };
 use veoveo_types::{
-    DataLabelId, DelegationId, GroupId, IdentifierError, PolicyVersion, PrincipalId,
-    ResourceScheme, ResourceUri, RoleId, ScopeName, TenantId, WorkContextId,
+    DataLabelId, DelegationId, GroupId, IdentifierError, PolicyVersion, PrincipalId, ResourceUri,
+    RoleId, ScopeName, TenantId, WorkContextId,
 };
 pub use veoveo_types::{ResourceSelector, ResourceUriPrefix, ResourceUriTemplate};
 
@@ -19,21 +15,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use validation::{
-    validate_app_resource_dependencies, validate_app_tool_dependencies,
     validate_oauth_client_registration, validate_oidc_client_registration, validate_policy_set,
-    validate_profile_auth_modes, validate_profile_server_exposure, validate_server_apps,
-    validate_server_capabilities, validate_server_compatibility_helpers, validate_server_upstream,
-    validate_server_upstream_tls_material,
+    validate_profile_auth_modes,
 };
-use wire::{
-    validate_https_url, validate_local_file_path, validate_mount_path, validate_oauth_endpoint_url,
-};
+use wire::{validate_https_url, validate_local_file_path, validate_oauth_endpoint_url};
 
 pub const MCP_ENTERPRISE_MANAGED_AUTHORIZATION_EXTENSION: &str =
     "io.modelcontextprotocol/enterprise-managed-authorization";
 pub const MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION: &str =
     "io.modelcontextprotocol/oauth-client-credentials";
-mod knowledge;
+mod authorization_config;
+pub use authorization_config::*;
 mod policy;
 use veoveo_gateway_contract::GatewayAction;
 mod validation;
@@ -60,8 +52,9 @@ pub const GATEWAY_CORE_FIELDS: &[&str] = &[
     "branding",
     "identityProviders",
     "authorizationServers",
-    "servers",
     "profiles",
+    "authorization",
+    "registration",
     "tenants",
     "workContexts",
     "policies",
@@ -79,8 +72,13 @@ pub struct GatewayControlPlane {
     pub branding: Option<InstallationBranding>,
     pub identity_providers: Vec<IdentityProvider>,
     pub authorization_servers: Vec<ResourceAuthorizationServer>,
-    pub servers: Vec<ServerManifest>,
     pub profiles: Vec<GatewayProfile>,
+    /// Roles, grants and overrides over registered servers' declared permissions.
+    #[serde(default)]
+    pub authorization: InstallationAuthorization,
+    /// Required for a Gateway that admits server registrations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registration: Option<RegistrationSettings>,
     #[serde(flatten)]
     pub extensions: BTreeMap<String, Value>,
     pub tenants: Vec<TenantDefinition>,
@@ -142,11 +140,6 @@ impl GatewayControlPlane {
         self.identity_providers
             .iter()
             .flat_map(|provider| provider.trusted_certificate_authorities.iter())
-            .chain(
-                self.servers
-                    .iter()
-                    .flat_map(|server| server.upstream.trusted_certificate_authorities.iter()),
-            )
             .map(|source| match source {
                 CertificateAuthoritySource::File { path } => path.as_str(),
             })
@@ -228,77 +221,6 @@ impl GatewayControlPlane {
             }
         }
 
-        let mut servers = BTreeMap::new();
-        let mut server_ids = BTreeSet::new();
-        let mut resource_schemes = BTreeSet::new();
-        let mut mount_paths = BTreeMap::new();
-        let mut mcp_paths = BTreeMap::new();
-        let mut gateway_routes = BTreeMap::new();
-        for server in &self.servers {
-            if !server_ids.insert(server.slug.clone()) {
-                return Err(GatewayControlPlaneError::DuplicateServer(
-                    server.slug.clone(),
-                ));
-            }
-            servers.insert(server.slug.clone(), server);
-            if !resource_schemes.insert(server.uri_scheme.clone()) {
-                return Err(GatewayControlPlaneError::DuplicateResourceScheme(
-                    server.uri_scheme.clone(),
-                ));
-            }
-            if let Some(first) = mount_paths.insert(server.mount_path.clone(), server.slug.clone())
-            {
-                return Err(GatewayControlPlaneError::DuplicateMountPath {
-                    path: server.mount_path.clone(),
-                    first,
-                    second: server.slug.clone(),
-                });
-            }
-            if let Some(first) = mcp_paths.insert(server.mcp_path.clone(), server.slug.clone()) {
-                return Err(GatewayControlPlaneError::DuplicateMcpPath {
-                    path: server.mcp_path.clone(),
-                    first,
-                    second: server.slug.clone(),
-                });
-            }
-            for path in std::iter::once(&server.mount_path)
-                .chain(std::iter::once(&server.mcp_path))
-                .chain(server.owned_routes.iter().map(|route| &route.path))
-            {
-                if let Some(first) = gateway_routes.insert(path.clone(), server.slug.clone()) {
-                    return Err(GatewayControlPlaneError::DuplicateGatewayRoute {
-                        path: path.clone(),
-                        first,
-                        second: server.slug.clone(),
-                    });
-                }
-            }
-            if server.resource_projection == ResourceProjectionMode::ServerOwned {
-                resource_schemes
-                    .insert(ResourceScheme::parse("ui").expect("ui is a valid resource scheme"));
-            }
-            validate_server_compatibility_helpers(server)?;
-            validate_server_upstream(server)?;
-            validate_server_apps(server)?;
-            validate_server_capabilities(server)?;
-        }
-        for server in &self.servers {
-            for scheme in &server.referenced_resource_schemes {
-                if !self
-                    .servers
-                    .iter()
-                    .any(|candidate| candidate.uri_scheme == *scheme)
-                {
-                    return Err(
-                        GatewayControlPlaneError::UnknownServerReferencedResourceScheme {
-                            server: server.slug.clone(),
-                            scheme: scheme.clone(),
-                        },
-                    );
-                }
-            }
-        }
-
         let mut policies = BTreeSet::new();
         let mut policy_by_id = BTreeMap::new();
         for policy in &self.policies {
@@ -318,12 +240,6 @@ impl GatewayControlPlane {
                 ));
             }
         }
-        for server in &self.servers {
-            knowledge::validate_knowledge_approvals(server, &data_labels)?;
-            validate_app_resource_dependencies(server, &servers, &data_labels)?;
-            validate_app_tool_dependencies(server, &servers, &data_labels)?;
-        }
-
         let mut tenants = BTreeSet::new();
         for tenant in &self.tenants {
             if !tenants.insert(tenant.id.clone()) {
@@ -439,22 +355,6 @@ impl GatewayControlPlane {
                     policy_version: profile.policy_version.clone(),
                 });
             }
-            let mut profile_servers = BTreeSet::new();
-            for exposure in &profile.servers {
-                if !profile_servers.insert(exposure.server.clone()) {
-                    return Err(GatewayControlPlaneError::DuplicateProfileServer {
-                        profile: profile.id.clone(),
-                        server: exposure.server.clone(),
-                    });
-                }
-                let Some(server) = servers.get(&exposure.server) else {
-                    return Err(GatewayControlPlaneError::UnknownServer {
-                        profile: profile.id.clone(),
-                        server: exposure.server.clone(),
-                    });
-                };
-                validate_profile_server_exposure(profile, exposure, server)?;
-            }
             validate_profile_auth_modes(profile, identity_provider, authorization_server)?;
         }
 
@@ -486,8 +386,6 @@ impl GatewayControlPlane {
                 validation::PolicyValidation {
                     profiles: &profiles,
                     protected_resources: &protected_resources,
-                    servers: &servers,
-                    resource_schemes: &resource_schemes,
                     data_labels: &data_labels,
                     tenants: &tenants,
                     registry,
@@ -520,18 +418,7 @@ impl GatewayControlPlane {
                         });
                     }
                 }
-                SecretOwner::Server { server } => {
-                    if !server_ids.contains(server) {
-                        return Err(GatewayControlPlaneError::UnknownSecretOwnerServer {
-                            secret: secret.id.clone(),
-                            server: server.clone(),
-                        });
-                    }
-                }
             }
-        }
-        for server in &self.servers {
-            validate_server_upstream_tls_material(server, &secret_refs)?;
         }
 
         for authorization_server in &self.authorization_servers {
@@ -584,10 +471,8 @@ impl GatewayControlPlane {
                 &profile_by_id,
                 &contributed_resources,
                 &policy_by_id,
-                &servers,
                 &secret_refs,
             )?;
-            knowledge::validate_indexing_client(client, &profile_by_id, &servers, &policy_by_id)?;
             let Some(context) = work_contexts.get(&client.default_work_context) else {
                 return Err(GatewayControlPlaneError::UnknownOAuthClientWorkContext {
                     client: client.id.clone(),
@@ -668,7 +553,71 @@ impl GatewayControlPlane {
             }
         }
 
+        self.validate_authorization(&tenants)?;
+        if let Some(registration) = &self.registration {
+            let Some(secret) = secret_refs.get(&registration.secret) else {
+                return Err(GatewayControlPlaneError::UnknownRegistrationSecret(
+                    registration.secret.clone(),
+                ));
+            };
+            if secret.purpose != SecretPurpose::RegistrationSecret
+                || secret.owner != SecretOwner::Gateway
+            {
+                return Err(GatewayControlPlaneError::RegistrationSecretMismatch(
+                    registration.secret.clone(),
+                ));
+            }
+            let lease = registration.lease;
+            if lease.renew_every_seconds == 0
+                || lease.expires_after_seconds <= lease.renew_every_seconds
+            {
+                return Err(GatewayControlPlaneError::InvalidRegistrationSettings(
+                    "a lease must expire after more than one renewal interval",
+                ));
+            }
+        }
+
         Ok(sections)
+    }
+
+    fn validate_authorization(
+        &self,
+        tenants: &BTreeSet<TenantId>,
+    ) -> Result<(), GatewayControlPlaneError> {
+        let mut roles = BTreeSet::new();
+        for role in &self.authorization.roles {
+            if !roles.insert(&role.name) {
+                return Err(GatewayControlPlaneError::DuplicateRole(role.name.clone()));
+            }
+        }
+        for grant in &self.authorization.grants {
+            if !roles.contains(&grant.role) {
+                return Err(GatewayControlPlaneError::UnknownGrantRole(
+                    grant.role.clone(),
+                ));
+            }
+            if let Some(tenant) = &grant.tenant
+                && !tenants.contains(tenant)
+            {
+                return Err(GatewayControlPlaneError::UnknownGrantTenant {
+                    role: grant.role.clone(),
+                    tenant: tenant.clone(),
+                });
+            }
+        }
+        let mut overridden = BTreeMap::new();
+        for permission_override in &self.authorization.overrides {
+            let deny = matches!(permission_override, PermissionOverride::Deny { .. });
+            if let Some(previous) =
+                overridden.insert(permission_override.permission().clone(), deny)
+                && (previous || deny)
+            {
+                return Err(GatewayControlPlaneError::ConflictingPermissionOverride(
+                    permission_override.permission().clone(),
+                ));
+            }
+        }
+        Ok(())
     }
 }
 

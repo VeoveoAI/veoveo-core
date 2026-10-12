@@ -26,18 +26,10 @@ fn descriptor(kind: &str) -> ActionDescriptor {
     ActionDescriptor {
         access: ActionAccess::Read,
         target_kinds: BTreeSet::from([name(kind)]),
-        selectors: [
-            RuleSelector::Profiles,
-            RuleSelector::ProtectedResources,
-            RuleSelector::Servers,
-            RuleSelector::Tools,
-            RuleSelector::ResourceSchemes,
-            RuleSelector::Prompts,
-        ]
-        .into_iter()
-        .map(|selector| (selector, SelectorRequirement::Optional))
-        .collect(),
-        server: None,
+        selectors: [RuleSelector::Profiles, RuleSelector::ProtectedResources]
+            .into_iter()
+            .map(|selector| (selector, SelectorRequirement::Optional))
+            .collect(),
     }
 }
 fn make_registry() -> CatalogRegistry {

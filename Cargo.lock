@@ -4851,6 +4851,7 @@ dependencies = [
  "veoveo-knowledge-contract",
  "veoveo-macros",
  "veoveo-mcp-knowledge-extension",
+ "veoveo-mcp-registration-extension",
  "veoveo-types",
 ]
 
@@ -4979,11 +4980,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "schemars",
  "serde",
  "serde_json",
  "veoveo-audit-contract",
  "veoveo-gateway-contract",
  "veoveo-mcp-contract",
+ "veoveo-mcp-registration-extension",
  "veoveo-modules",
  "veoveo-types",
 ]

@@ -3,7 +3,7 @@ use crate::{SecretLocator, SecretReferenceId};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use veoveo_types::{GatewayProfileId, ServerSlug, TenantId};
+use veoveo_types::{GatewayProfileId, TenantId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -45,6 +45,9 @@ pub enum SecretPurpose {
     ObjectStoreCredential,
     TlsClientCertificate,
     TlsClientPrivateKey,
+    /// The installation's registration secret, which servers present as the RFC 7591
+    /// initial access token.
+    RegistrationSecret,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -52,7 +55,6 @@ pub enum SecretPurpose {
 pub enum SecretOwner {
     Gateway,
     Profile { profile: GatewayProfileId },
-    Server { server: ServerSlug },
     Tenant { tenant: TenantId },
 }
 
@@ -63,13 +65,11 @@ impl<'de> Deserialize<'de> for SecretOwner {
         enum Wire {
             Gateway {},
             Profile { profile: GatewayProfileId },
-            Server { server: ServerSlug },
             Tenant { tenant: TenantId },
         }
         Ok(match Wire::deserialize(deserializer)? {
             Wire::Gateway {} => Self::Gateway,
             Wire::Profile { profile } => Self::Profile { profile },
-            Wire::Server { server } => Self::Server { server },
             Wire::Tenant { tenant } => Self::Tenant { tenant },
         })
     }

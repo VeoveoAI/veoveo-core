@@ -6,8 +6,11 @@ struct ControlPlaneWire {
     pub branding: Option<InstallationBranding>,
     pub identity_providers: Vec<IdentityProvider>,
     pub authorization_servers: Vec<ResourceAuthorizationServer>,
-    pub servers: Vec<ServerManifest>,
     pub profiles: Vec<GatewayProfile>,
+    #[serde(default)]
+    pub authorization: InstallationAuthorization,
+    #[serde(default)]
+    pub registration: Option<RegistrationSettings>,
     #[serde(flatten)]
     pub extensions: BTreeMap<String, Value>,
     pub tenants: Vec<TenantDefinition>,
@@ -27,6 +30,7 @@ impl<'de> Deserialize<'de> for GatewayControlPlane {
         let value = veoveo_types::UniqueJsonValue::deserialize(deserializer)?.0;
         // Flattened owner extensions cannot absorb retired core spellings.
         for obsolete in [
+            "servers",
             "identity_providers",
             "authorization_servers",
             "work_contexts",
@@ -46,8 +50,9 @@ impl<'de> Deserialize<'de> for GatewayControlPlane {
             branding: wire.branding,
             identity_providers: wire.identity_providers,
             authorization_servers: wire.authorization_servers,
-            servers: wire.servers,
             profiles: wire.profiles,
+            authorization: wire.authorization,
+            registration: wire.registration,
             extensions: wire.extensions,
             tenants: wire.tenants,
             work_contexts: wire.work_contexts,
@@ -95,9 +100,7 @@ impl GatewayControlPlane {
                     has_jwks: x.jwks.is_some(),
                     has_credential_secret: x.credential_secret.is_some(),
                     has_redirect_uris: !x.redirect_uris.is_empty(),
-                    has_compatibility_helpers: !x.allowed_compatibility_helpers.is_empty(),
                     direct_task_call_adapter: x.direct_task_call_adapter,
-                    has_knowledge_indexing: x.knowledge_indexing.is_some(),
                 })
                 .collect(),
         }

@@ -168,7 +168,7 @@ impl RequirementId {
             ),
             Self::C16 => (
                 RequirementLevel::Must,
-                "The gateway entry is registered in the typed control plane with routes, capabilities, and policy.",
+                "The server registers with the Gateway through `ai.veoveo/registration` and declares the permission every tool, resource template and prompt requires through `ai.veoveo/authorization`.",
                 None,
             ),
             Self::C17 => (

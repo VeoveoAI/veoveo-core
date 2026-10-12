@@ -81,7 +81,7 @@
     {
       "id": "C16",
       "level": "must",
-      "text": "The gateway entry is registered in the typed control plane with routes, capabilities, and policy."
+      "text": "The server registers with the Gateway through `ai.veoveo/registration` and declares the permission every tool, resource template and prompt requires through `ai.veoveo/authorization`."
     },
     {
       "id": "C17",

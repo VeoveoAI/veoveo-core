@@ -1,12 +1,13 @@
 use std::{collections::BTreeMap, sync::Arc};
 use veoveo_mcp_contract::{
     DataLabelDefinition, GatewayControlPlane, GatewayControlPlaneError, GatewayProfile,
-    GatewayProfileId, PolicySet, ServerManifest, ServerSlug, TenantDefinition,
+    GatewayProfileId, InstallationAuthorization, PolicySet, ServerSlug, TenantDefinition,
 };
+use veoveo_mcp_registration_extension::AuthorizationDeclaration;
 use veoveo_types::{DataLabelId, PolicyVersion, TenantId};
 
-/// Implementations expose one validated, immutable control-plane revision. Lookups
-/// must never combine policy or exposure fields from different revisions.
+/// Implementations expose one validated, immutable control-plane revision and one
+/// registration snapshot. Lookups must never combine fields from different revisions.
 pub trait PolicyCatalogView {
     fn registry(&self) -> &veoveo_gateway_contract::CatalogRegistry;
     fn sections(&self) -> &veoveo_gateway_contract::AdmittedCatalogSections;
@@ -14,7 +15,9 @@ pub trait PolicyCatalogView {
     fn policy(&self, id: &PolicyVersion) -> Option<&PolicySet>;
     fn data_label(&self, id: &DataLabelId) -> Option<&DataLabelDefinition>;
     fn tenant(&self, id: &TenantId) -> Option<&TenantDefinition>;
-    fn server(&self, id: &ServerSlug) -> Option<&ServerManifest>;
+    fn installation_authorization(&self) -> &InstallationAuthorization;
+    /// The checked authorization declaration of a currently registered server.
+    fn server_authorization(&self, server: &ServerSlug) -> Option<&AuthorizationDeclaration>;
 }
 
 /// A validated shared snapshot for services that do not need gateway transports.
@@ -27,7 +30,7 @@ pub struct PolicyCatalog {
     policies: BTreeMap<PolicyVersion, usize>,
     labels: BTreeMap<DataLabelId, usize>,
     tenants: BTreeMap<TenantId, usize>,
-    servers: BTreeMap<ServerSlug, usize>,
+    servers: BTreeMap<ServerSlug, Arc<AuthorizationDeclaration>>,
 }
 impl PolicyCatalog {
     pub fn new(
@@ -62,12 +65,7 @@ impl PolicyCatalog {
                 .enumerate()
                 .map(|(i, p)| (p.id.clone(), i))
                 .collect(),
-            servers: control_plane
-                .servers
-                .iter()
-                .enumerate()
-                .map(|(i, p)| (p.slug.clone(), i))
-                .collect(),
+            servers: BTreeMap::new(),
             control_plane: Arc::new(control_plane),
         })
     }
@@ -79,6 +77,16 @@ impl PolicyCatalog {
     }
     pub fn control_plane(&self) -> &GatewayControlPlane {
         &self.control_plane
+    }
+    /// Add one registered server's declaration. The caller has already checked it
+    /// against the namespace pinned to the server's key.
+    pub fn with_server(
+        mut self,
+        server: ServerSlug,
+        declaration: AuthorizationDeclaration,
+    ) -> Self {
+        self.servers.insert(server, Arc::new(declaration));
+        self
     }
 }
 impl PolicyCatalogView for PolicyCatalog {
@@ -108,9 +116,10 @@ impl PolicyCatalogView for PolicyCatalog {
             .get(id)
             .map(|i| &self.control_plane.tenants[*i])
     }
-    fn server(&self, id: &ServerSlug) -> Option<&ServerManifest> {
-        self.servers
-            .get(id)
-            .map(|i| &self.control_plane.servers[*i])
+    fn installation_authorization(&self) -> &InstallationAuthorization {
+        &self.control_plane.authorization
+    }
+    fn server_authorization(&self, server: &ServerSlug) -> Option<&AuthorizationDeclaration> {
+        self.servers.get(server).map(Arc::as_ref)
     }
 }

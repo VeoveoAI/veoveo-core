@@ -17,21 +17,12 @@ use veoveo_types::{
 pub enum RuleSelector {
     Profiles,
     ProtectedResources,
-    Servers,
-    Tools,
-    ResourceSchemes,
-    Prompts,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectorRequirement {
     Optional,
     Required,
     Forbidden,
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServerRequirement {
-    pub slug: Option<veoveo_types::ServerSlug>,
-    pub resources: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionAccess {
@@ -43,7 +34,6 @@ pub struct ActionDescriptor {
     pub access: ActionAccess,
     pub target_kinds: BTreeSet<ExtensionName>,
     pub selectors: BTreeMap<RuleSelector, SelectorRequirement>,
-    pub server: Option<ServerRequirement>,
 }
 impl ActionDescriptor {
     pub fn validate(&self) -> Result<(), ExtensionError> {
@@ -52,7 +42,7 @@ impl ActionDescriptor {
                 "action must declare a supported target",
             ));
         }
-        if self.selectors.len() != 6 {
+        if self.selectors.len() != 2 {
             return Err(ExtensionError::new(
                 "action must declare every rule selector requirement",
             ));
@@ -74,9 +64,7 @@ pub struct OAuthClientFacts {
     pub has_jwks: bool,
     pub has_credential_secret: bool,
     pub has_redirect_uris: bool,
-    pub has_compatibility_helpers: bool,
     pub direct_task_call_adapter: bool,
-    pub has_knowledge_indexing: bool,
 }
 #[derive(Debug, Clone)]
 pub struct WorkContextFacts {

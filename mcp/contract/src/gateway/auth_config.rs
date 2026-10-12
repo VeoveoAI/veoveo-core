@@ -115,9 +115,6 @@ pub enum JwksSource {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthClientRegistration {
-    /// Explicit collection grant for the installation's indexing machine client.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub knowledge_indexing: Option<veoveo_knowledge_contract::KnowledgeIndexingRegistration>,
     pub id: OAuthClientId,
     pub authorization_server: AuthorizationServerId,
     /// Canonical context used when this client does not explicitly select a
@@ -129,8 +126,6 @@ pub struct OAuthClientRegistration {
     pub display_name: Option<String>,
     #[serde(default)]
     pub client_surface: OAuthClientSurface,
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub allowed_compatibility_helpers: BTreeSet<CompatibilityHelperId>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub direct_task_call_adapter: bool,
     pub allowed_resources: BTreeSet<ProtectedResourceId>,

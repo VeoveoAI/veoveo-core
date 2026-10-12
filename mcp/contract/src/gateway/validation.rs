@@ -1,592 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use url::{Host, Url};
-
 use super::*;
-
-pub(super) fn validate_profile_server_exposure(
-    profile: &GatewayProfile,
-    exposure: &ProfileServerExposure,
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    validate_tool_exposure(profile, exposure, server)?;
-    validate_resource_exposure(profile, exposure, server)?;
-    validate_prompt_exposure(profile, exposure, server)?;
-    if matches!(exposure.completions, CompletionExposure::Enabled) {
-        require_server_capability(
-            profile,
-            server,
-            McpSurfaceCapability::Completions,
-            server.capabilities.completions,
-        )?;
-    }
-    if matches!(exposure.tasks, TaskExposure::Enabled) {
-        require_server_capability(
-            profile,
-            server,
-            McpSurfaceCapability::Tasks,
-            server.capabilities.tasks,
-        )?;
-    }
-    Ok(())
-}
-
-pub(super) fn validate_server_compatibility_helpers(
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    for helper in &server.compatibility_helpers {
-        if !server.tools.iter().any(|tool| tool == helper) {
-            return Err(GatewayControlPlaneError::UnknownServerCompatibilityHelper {
-                server: server.slug.clone(),
-                tool: helper.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
-fn validate_tool_exposure(
-    profile: &GatewayProfile,
-    exposure: &ProfileServerExposure,
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    match &exposure.tools {
-        Exposure::None => {}
-        Exposure::All => {
-            require_server_capability(
-                profile,
-                server,
-                McpSurfaceCapability::Tools,
-                server.capabilities.tools,
-            )?;
-        }
-        Exposure::Listed(tools) => {
-            require_server_capability(
-                profile,
-                server,
-                McpSurfaceCapability::Tools,
-                server.capabilities.tools,
-            )?;
-            for tool in tools {
-                if !server.tools.is_empty() && !server.tools.iter().any(|known| known == tool) {
-                    return Err(GatewayControlPlaneError::UnknownProfileTool {
-                        profile: profile.id.clone(),
-                        server: exposure.server.clone(),
-                        tool: tool.clone(),
-                    });
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_resource_exposure(
-    profile: &GatewayProfile,
-    exposure: &ProfileServerExposure,
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    match &exposure.resources {
-        Exposure::None => {}
-        Exposure::All => {
-            require_any_server_capability(
-                profile,
-                exposure,
-                &[
-                    (
-                        McpSurfaceCapability::Resources,
-                        server.capabilities.resources,
-                    ),
-                    (
-                        McpSurfaceCapability::ResourceTemplates,
-                        server.capabilities.resource_templates,
-                    ),
-                ],
-            )?;
-        }
-        Exposure::Listed(selectors) => {
-            for selector in selectors {
-                match selector {
-                    ResourceSelector::Scheme { scheme } => {
-                        require_server_capability(
-                            profile,
-                            server,
-                            McpSurfaceCapability::Resources,
-                            server.capabilities.resources,
-                        )?;
-                        if scheme != &server.uri_scheme {
-                            return Err(
-                                GatewayControlPlaneError::ProfileResourceSelectorMismatch {
-                                    profile: profile.id.clone(),
-                                    server: exposure.server.clone(),
-                                    expected_scheme: server.uri_scheme.clone(),
-                                    selector: selector.clone(),
-                                },
-                            );
-                        }
-                    }
-                    ResourceSelector::UriPrefix { prefix } => {
-                        require_server_capability(
-                            profile,
-                            server,
-                            McpSurfaceCapability::Resources,
-                            server.capabilities.resources,
-                        )?;
-                        if !resource_text_belongs_to_server(prefix.as_str(), server) {
-                            return Err(
-                                GatewayControlPlaneError::ProfileResourceSelectorMismatch {
-                                    profile: profile.id.clone(),
-                                    server: exposure.server.clone(),
-                                    expected_scheme: server.uri_scheme.clone(),
-                                    selector: selector.clone(),
-                                },
-                            );
-                        }
-                    }
-                    ResourceSelector::Template { uri_template } => {
-                        require_server_capability(
-                            profile,
-                            server,
-                            McpSurfaceCapability::ResourceTemplates,
-                            server.capabilities.resource_templates,
-                        )?;
-                        if !resource_text_belongs_to_server(uri_template.as_str(), server) {
-                            return Err(
-                                GatewayControlPlaneError::ProfileResourceSelectorMismatch {
-                                    profile: profile.id.clone(),
-                                    server: exposure.server.clone(),
-                                    expected_scheme: server.uri_scheme.clone(),
-                                    selector: selector.clone(),
-                                },
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_prompt_exposure(
-    profile: &GatewayProfile,
-    exposure: &ProfileServerExposure,
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    match &exposure.prompts {
-        Exposure::None => {}
-        Exposure::All => {
-            require_server_capability(
-                profile,
-                server,
-                McpSurfaceCapability::Prompts,
-                server.capabilities.prompts,
-            )?;
-        }
-        Exposure::Listed(prompts) => {
-            require_server_capability(
-                profile,
-                server,
-                McpSurfaceCapability::Prompts,
-                server.capabilities.prompts,
-            )?;
-            for prompt in prompts {
-                if !server.prompts.is_empty() && !server.prompts.iter().any(|known| known == prompt)
-                {
-                    return Err(GatewayControlPlaneError::UnknownProfilePrompt {
-                        profile: profile.id.clone(),
-                        server: exposure.server.clone(),
-                        prompt: prompt.clone(),
-                    });
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn require_server_capability(
-    profile: &GatewayProfile,
-    server: &ServerManifest,
-    capability: McpSurfaceCapability,
-    enabled: bool,
-) -> Result<(), GatewayControlPlaneError> {
-    if enabled {
-        Ok(())
-    } else {
-        Err(GatewayControlPlaneError::ProfileExposesDisabledCapability {
-            profile: profile.id.clone(),
-            server: server.slug.clone(),
-            capability,
-        })
-    }
-}
-
-fn require_any_server_capability(
-    profile: &GatewayProfile,
-    exposure: &ProfileServerExposure,
-    capabilities: &[(McpSurfaceCapability, bool)],
-) -> Result<(), GatewayControlPlaneError> {
-    if capabilities.iter().any(|(_, enabled)| *enabled) {
-        Ok(())
-    } else {
-        Err(GatewayControlPlaneError::ProfileExposesDisabledCapability {
-            profile: profile.id.clone(),
-            server: exposure.server.clone(),
-            capability: capabilities
-                .first()
-                .map(|(capability, _)| *capability)
-                .unwrap_or(McpSurfaceCapability::Resources),
-        })
-    }
-}
-
-pub(super) fn validate_server_apps(
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    if server.capabilities.apps
-        && !(server.capabilities.resources
-            && server.resource_projection == ResourceProjectionMode::ServerOwned)
-    {
-        return Err(GatewayControlPlaneError::ServerAppsRequireOwnedResources(
-            server.slug.clone(),
-        ));
-    }
-    Ok(())
-}
-
-pub(super) fn validate_app_resource_dependencies(
-    server: &ServerManifest,
-    servers: &BTreeMap<ServerSlug, &ServerManifest>,
-    known_data_labels: &BTreeSet<DataLabelId>,
-) -> Result<(), GatewayControlPlaneError> {
-    let mut unique = BTreeSet::new();
-    for dependency in &server.app_resource_dependencies {
-        let invalid = |reason: &str| GatewayControlPlaneError::InvalidAppResourceDependency {
-            server: server.slug.clone(),
-            app_resource: dependency.app_resource.clone(),
-            reason: reason.to_owned(),
-        };
-        if !server.capabilities.apps {
-            return Err(invalid("the owning server does not declare Apps"));
-        }
-        let expected_app_prefix = format!("ui://{}/", server.slug);
-        let app_suffix = dependency
-            .app_resource
-            .as_str()
-            .strip_prefix(&expected_app_prefix);
-        if !app_suffix.is_some_and(|suffix| {
-            !suffix.is_empty() && !suffix.contains(['?', '#']) && !suffix.contains("..")
-        }) {
-            return Err(invalid(
-                "the App resource must be one exact projected ui:// URI owned by the server",
-            ));
-        }
-        if dependency.server == server.slug {
-            return Err(invalid(
-                "cross-server dependencies cannot target the owning server",
-            ));
-        }
-        let Some(target) = servers.get(&dependency.server) else {
-            return Err(invalid("the target server is not registered"));
-        };
-        if target.uri_scheme != dependency.scheme {
-            return Err(invalid(
-                "the target server does not own the declared URI scheme",
-            ));
-        }
-        let expected_resource_prefix = format!("{}://", dependency.scheme);
-        if !dependency
-            .uri_prefix
-            .as_str()
-            .strip_prefix(&expected_resource_prefix)
-            .is_some_and(|suffix| !suffix.is_empty() && !suffix.contains(".."))
-        {
-            return Err(invalid(
-                "the URI prefix must be a non-root family under the declared scheme",
-            ));
-        }
-        if dependency.operations.is_empty() {
-            return Err(invalid(
-                "at least one resource operation must be explicitly permitted",
-            ));
-        }
-        if !dependency.data_labels.is_subset(known_data_labels) {
-            return Err(invalid("the dependency references an unknown data label"));
-        }
-        if !unique.insert(dependency) {
-            return Err(invalid("the dependency is declared more than once"));
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn validate_app_tool_dependencies(
-    server: &ServerManifest,
-    servers: &BTreeMap<ServerSlug, &ServerManifest>,
-    known_data_labels: &BTreeSet<DataLabelId>,
-) -> Result<(), GatewayControlPlaneError> {
-    let mut aliases = BTreeSet::new();
-    for dependency in &server.app_tool_dependencies {
-        let invalid = |reason: &str| GatewayControlPlaneError::InvalidAppResourceDependency {
-            server: server.slug.clone(),
-            app_resource: dependency.app_resource.clone(),
-            reason: reason.to_owned(),
-        };
-        let expected = format!("ui://{}/", server.slug);
-        if !server.capabilities.apps || !dependency.app_resource.as_str().starts_with(&expected) {
-            return Err(invalid("the App resource is not owned by the Apps server"));
-        }
-        if dependency.server == server.slug {
-            return Err(invalid(
-                "cross-server dependencies cannot target the owning server",
-            ));
-        }
-        let Some(target) = servers.get(&dependency.server) else {
-            return Err(invalid("the target server is not registered"));
-        };
-        if !target.capabilities.tools || dependency.tools.is_empty() {
-            return Err(invalid("the target must expose at least one tool"));
-        }
-        if !dependency.data_labels.is_subset(known_data_labels) {
-            return Err(invalid("the dependency references an unknown data label"));
-        }
-        for import in &dependency.tools {
-            if import.name.as_str().is_empty()
-                || import.name.as_str().contains("__")
-                || server
-                    .tools
-                    .iter()
-                    .any(|tool| tool.as_str() == import.name.as_str())
-                || !aliases.insert((dependency.app_resource.clone(), import.name.clone()))
-                || import.target_tool.as_str().is_empty()
-            {
-                return Err(invalid(
-                    "tool aliases and target names must be nonempty and unique",
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn validate_server_capabilities(
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    let invalid = if server.capabilities.tools_list_changed && !server.capabilities.tools {
-        Some("tools_list_changed requires tools")
-    } else if server.capabilities.prompts_list_changed && !server.capabilities.prompts {
-        Some("prompts_list_changed requires prompts")
-    } else if server.capabilities.resources_list_changed && !server.capabilities.resources {
-        Some("resources_list_changed requires resources")
-    } else if server.capabilities.resource_subscriptions && !server.capabilities.resources {
-        Some("resource_subscriptions requires resources")
-    } else {
-        None
-    };
-    match invalid {
-        Some(reason) => Err(GatewayControlPlaneError::InvalidServerCapabilities {
-            server: server.slug.clone(),
-            reason,
-        }),
-        None => Ok(()),
-    }
-}
-
-pub(super) fn validate_server_upstream(
-    server: &ServerManifest,
-) -> Result<(), GatewayControlPlaneError> {
-    for url in [&server.upstream.url, &server.upstream.health_url] {
-        if !upstream_security_allows_url(server.upstream.security, url) {
-            return Err(GatewayControlPlaneError::ServerUpstreamSecurityMismatch {
-                server: server.slug.clone(),
-                security: server.upstream.security,
-                url: url.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn validate_server_upstream_tls_material(
-    server: &ServerManifest,
-    secrets: &BTreeMap<SecretReferenceId, &SecretReference>,
-) -> Result<(), GatewayControlPlaneError> {
-    let has_client_material = server.upstream.client_certificate.is_some()
-        || server.upstream.client_private_key.is_some();
-    if server.upstream.security != UpstreamTransportSecurity::MutualTls {
-        if has_client_material {
-            return Err(
-                GatewayControlPlaneError::ServerUpstreamTlsClientMaterialNotAllowed {
-                    server: server.slug.clone(),
-                    security: server.upstream.security,
-                },
-            );
-        }
-        return Ok(());
-    }
-
-    validate_server_upstream_tls_secret(
-        server,
-        server.upstream.client_certificate.as_ref(),
-        SecretPurpose::TlsClientCertificate,
-    )?;
-    validate_server_upstream_tls_secret(
-        server,
-        server.upstream.client_private_key.as_ref(),
-        SecretPurpose::TlsClientPrivateKey,
-    )?;
-
-    for (secret_id, expected) in [
-        (
-            server
-                .upstream
-                .client_certificate
-                .as_ref()
-                .expect("client certificate required by prior validation"),
-            SecretPurpose::TlsClientCertificate,
-        ),
-        (
-            server
-                .upstream
-                .client_private_key
-                .as_ref()
-                .expect("client private key required by prior validation"),
-            SecretPurpose::TlsClientPrivateKey,
-        ),
-    ] {
-        let Some(secret) = secrets.get(secret_id) else {
-            return Err(GatewayControlPlaneError::UnknownServerUpstreamTlsSecret {
-                server: server.slug.clone(),
-                secret: secret_id.clone(),
-            });
-        };
-        if secret.purpose != expected {
-            return Err(
-                GatewayControlPlaneError::ServerUpstreamTlsSecretPurposeMismatch {
-                    server: server.slug.clone(),
-                    secret: secret_id.clone(),
-                    actual: secret.purpose,
-                    expected,
-                },
-            );
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_server_upstream_tls_secret(
-    server: &ServerManifest,
-    secret: Option<&SecretReferenceId>,
-    purpose: SecretPurpose,
-) -> Result<(), GatewayControlPlaneError> {
-    if secret.is_some() {
-        Ok(())
-    } else {
-        Err(GatewayControlPlaneError::ServerUpstreamTlsSecretRequired {
-            server: server.slug.clone(),
-            purpose,
-        })
-    }
-}
-
-fn upstream_security_allows_url(security: UpstreamTransportSecurity, url: &UpstreamUrl) -> bool {
-    let Ok(parsed) = url.parsed() else {
-        return false;
-    };
-    match security {
-        UpstreamTransportSecurity::LoopbackHttp => {
-            parsed.scheme() == "http" && url_host_is_loopback(&parsed)
-        }
-        UpstreamTransportSecurity::ClusterInternalHttp => {
-            parsed.scheme() == "http" && url_host_is_single_label_service_name(&parsed)
-        }
-        UpstreamTransportSecurity::Tls | UpstreamTransportSecurity::MutualTls => {
-            parsed.scheme() == "https"
-        }
-        UpstreamTransportSecurity::ServiceMeshMtls => match parsed.scheme() {
-            "https" => true,
-            "http" => url_host_is_mesh_internal_name(&parsed),
-            _ => false,
-        },
-    }
-}
-
-fn url_host_is_loopback(url: &Url) -> bool {
-    match url.host() {
-        Some(Host::Domain(host)) => host == "localhost",
-        Some(Host::Ipv4(addr)) => addr.is_loopback(),
-        Some(Host::Ipv6(addr)) => addr.is_loopback(),
-        None => false,
-    }
-}
-
-fn url_host_is_single_label_service_name(url: &Url) -> bool {
-    match url.host() {
-        Some(Host::Domain(host)) => {
-            host != "localhost"
-                && !host.contains('.')
-                && host.bytes().all(|byte| {
-                    byte.is_ascii_lowercase()
-                        || byte.is_ascii_digit()
-                        || matches!(byte, b'-' | b'_')
-                })
-        }
-        Some(Host::Ipv4(_)) | Some(Host::Ipv6(_)) | None => false,
-    }
-}
-
-fn url_host_is_mesh_internal_name(url: &Url) -> bool {
-    if url_host_is_single_label_service_name(url) {
-        return true;
-    }
-    match url.host() {
-        Some(Host::Domain(host)) => {
-            host.ends_with(".svc")
-                || host.ends_with(".svc.cluster.local")
-                || host.ends_with(".internal")
-        }
-        Some(Host::Ipv4(_)) | Some(Host::Ipv6(_)) | None => false,
-    }
-}
-
-fn resource_text_uses_scheme(text: &str, scheme: &ResourceScheme) -> bool {
-    text.starts_with(&format!("{}://", scheme.as_str()))
-}
-
-fn resource_text_belongs_to_server(text: &str, server: &ServerManifest) -> bool {
-    resource_text_uses_scheme(text, &server.uri_scheme)
-        || (server.resource_projection == ResourceProjectionMode::ServerOwned
-            && text.starts_with(&format!("ui://{}/", server.slug.as_str())))
-}
-
-fn server_owns_policy_resource_scheme(server: &ServerManifest, scheme: &ResourceScheme) -> bool {
-    scheme == &server.uri_scheme
-        || (server.resource_projection == ResourceProjectionMode::ServerOwned
-            && scheme.as_str() == "ui")
-}
-
-pub(super) fn resource_selector_description(selector: &ResourceSelector) -> String {
-    match selector {
-        ResourceSelector::Scheme { scheme } => format!("scheme `{scheme}`"),
-        ResourceSelector::UriPrefix { prefix } => format!("URI prefix `{prefix}`"),
-        ResourceSelector::Template { uri_template } => {
-            format!("URI template `{uri_template}`")
-        }
-    }
-}
 
 pub(super) struct PolicyValidation<'a> {
     pub profiles: &'a BTreeSet<GatewayProfileId>,
     pub protected_resources: &'a BTreeSet<ProtectedResourceId>,
-    pub servers: &'a BTreeMap<ServerSlug, &'a ServerManifest>,
-    pub resource_schemes: &'a BTreeSet<ResourceScheme>,
     pub data_labels: &'a BTreeSet<DataLabelId>,
     pub tenants: &'a BTreeSet<TenantId>,
     pub registry: &'a veoveo_gateway_contract::CatalogRegistry,
 }
 
+/// Rules govern the Gateway's own actions. Roles grant registered servers' actions.
 pub(super) fn validate_policy_set(
     policy: &PolicySet,
     context: PolicyValidation<'_>,
@@ -594,8 +18,6 @@ pub(super) fn validate_policy_set(
     let PolicyValidation {
         profiles,
         protected_resources,
-        servers,
-        resource_schemes,
         data_labels,
         tenants,
         registry,
@@ -628,61 +50,7 @@ pub(super) fn validate_policy_set(
                 );
             }
         }
-        for server in &rule.servers {
-            if !servers.contains_key(server) {
-                return Err(GatewayControlPlaneError::UnknownPolicyRuleServer {
-                    policy: policy.version.clone(),
-                    rule: rule.id.clone(),
-                    server: server.clone(),
-                });
-            }
-        }
-        let server_scope = policy_rule_server_scope(rule, servers);
-        validate_policy_rule_actions(policy, rule, &server_scope, registry)?;
-        for scheme in &rule.resource_schemes {
-            if !resource_schemes.contains(scheme) {
-                return Err(GatewayControlPlaneError::UnknownPolicyRuleResourceScheme {
-                    policy: policy.version.clone(),
-                    rule: rule.id.clone(),
-                    scheme: scheme.clone(),
-                });
-            }
-            if !rule.servers.is_empty()
-                && !server_scope
-                    .iter()
-                    .any(|server| server_owns_policy_resource_scheme(server, scheme))
-            {
-                return Err(
-                    GatewayControlPlaneError::PolicyRuleResourceSchemeOutsideServerScope {
-                        policy: policy.version.clone(),
-                        rule: rule.id.clone(),
-                        scheme: scheme.clone(),
-                    },
-                );
-            }
-        }
-        for tool in &rule.tools {
-            if !server_scope.iter().any(|server| {
-                server.tools.is_empty() || server.tools.iter().any(|known| known == tool)
-            }) {
-                return Err(GatewayControlPlaneError::UnknownPolicyRuleTool {
-                    policy: policy.version.clone(),
-                    rule: rule.id.clone(),
-                    tool: tool.clone(),
-                });
-            }
-        }
-        for prompt in &rule.prompts {
-            if !server_scope.iter().any(|server| {
-                server.prompts.is_empty() || server.prompts.iter().any(|known| known == prompt)
-            }) {
-                return Err(GatewayControlPlaneError::UnknownPolicyRulePrompt {
-                    policy: policy.version.clone(),
-                    rule: rule.id.clone(),
-                    prompt: prompt.clone(),
-                });
-            }
-        }
+        validate_policy_rule_actions(policy, rule, registry)?;
         for label in &rule.required_data_labels {
             if !data_labels.contains(label) {
                 return Err(GatewayControlPlaneError::UnknownPolicyRuleDataLabel {
@@ -708,7 +76,6 @@ pub(super) fn validate_policy_set(
 fn validate_policy_rule_actions(
     policy: &PolicySet,
     rule: &PolicyRule,
-    server_scope: &[&ServerManifest],
     registry: &veoveo_gateway_contract::CatalogRegistry,
 ) -> Result<(), GatewayControlPlaneError> {
     use veoveo_gateway_contract::{RuleSelector, SelectorRequirement};
@@ -718,100 +85,41 @@ fn validate_policy_rule_actions(
             .actions()
             .resolve(action)
             .map_err(GatewayControlPlaneError::CatalogAdmission)?;
-        let unsupported = || GatewayControlPlaneError::PolicyRuleActionUnsupportedByServerScope {
-            policy: policy.version.clone(),
-            rule: rule.id.clone(),
-            action: action.clone(),
-        };
-        let supports_server: Box<dyn Fn(&ServerManifest) -> bool + '_> =
-            if let Some(kernel) = GatewayAction::from_wire(action.as_str()) {
-                Box::new(move |server| server_supports_gateway_action(server, kernel))
-            } else {
-                let descriptor = registry.descriptor(action).ok_or_else(|| {
-                    GatewayControlPlaneError::CatalogAdmission(veoveo_types::ExtensionError::new(
-                        "owner action descriptor is unbound",
-                    ))
-                })?;
-                for (selector, empty) in [
-                    (RuleSelector::Profiles, rule.profiles.is_empty()),
-                    (
-                        RuleSelector::ProtectedResources,
-                        rule.protected_resources.is_empty(),
-                    ),
-                    (RuleSelector::Servers, rule.servers.is_empty()),
-                    (RuleSelector::Tools, rule.tools.is_empty()),
-                    (
-                        RuleSelector::ResourceSchemes,
-                        rule.resource_schemes.is_empty(),
-                    ),
-                    (RuleSelector::Prompts, rule.prompts.is_empty()),
-                ] {
-                    match descriptor.selectors[&selector] {
-                        SelectorRequirement::Required if empty => return Err(unsupported()),
-                        SelectorRequirement::Forbidden if !empty => return Err(unsupported()),
-                        _ => {}
-                    }
-                }
-                let Some(requirement) = &descriptor.server else {
-                    continue;
-                };
-                Box::new(move |server| {
-                    requirement
-                        .slug
-                        .as_ref()
-                        .is_none_or(|slug| slug == &server.slug)
-                        && (!requirement.resources || server.capabilities.resources)
-                })
-            };
-        let supported = if rule.servers.is_empty() {
-            server_scope.iter().any(|server| supports_server(server))
-        } else {
-            server_scope.iter().all(|server| supports_server(server))
-        };
-        if !supported {
-            return Err(unsupported());
+        if let Some(kernel) = GatewayAction::from_wire(action.as_str()) {
+            if kernel.targets_registered_server() {
+                return Err(GatewayControlPlaneError::PolicyRuleServerAction {
+                    policy: policy.version.clone(),
+                    rule: rule.id.clone(),
+                    action: action.clone(),
+                });
+            }
+            continue;
+        }
+        let descriptor = registry.descriptor(action).ok_or_else(|| {
+            GatewayControlPlaneError::CatalogAdmission(veoveo_types::ExtensionError::new(
+                "owner action descriptor is unbound",
+            ))
+        })?;
+        for (selector, empty) in [
+            (RuleSelector::Profiles, rule.profiles.is_empty()),
+            (
+                RuleSelector::ProtectedResources,
+                rule.protected_resources.is_empty(),
+            ),
+        ] {
+            match descriptor.selectors[&selector] {
+                SelectorRequirement::Required if empty => {}
+                SelectorRequirement::Forbidden if !empty => {}
+                _ => continue,
+            }
+            return Err(GatewayControlPlaneError::PolicyRuleUnsupportedAction {
+                policy: policy.version.clone(),
+                rule: rule.id.clone(),
+                action: action.clone(),
+            });
         }
     }
     Ok(())
-}
-
-fn server_supports_gateway_action(server: &ServerManifest, action: GatewayAction) -> bool {
-    match action {
-        GatewayAction::ToolsList | GatewayAction::ToolsCall => server.capabilities.tools,
-        GatewayAction::ResourcesList | GatewayAction::ResourcesRead => {
-            server.capabilities.resources
-        }
-        GatewayAction::ResourcesTemplatesList => server.capabilities.resource_templates,
-        GatewayAction::SubscriptionsListen => {
-            server.capabilities.resource_subscriptions
-                || server.capabilities.tasks
-                || server.capabilities.tools_list_changed
-                || server.capabilities.prompts_list_changed
-                || server.capabilities.resources_list_changed
-        }
-        GatewayAction::PromptsList | GatewayAction::PromptsGet => server.capabilities.prompts,
-        GatewayAction::CompletionComplete => server.capabilities.completions,
-        GatewayAction::TasksGet | GatewayAction::TasksUpdate | GatewayAction::TasksCancel => {
-            server.capabilities.tasks
-        }
-        GatewayAction::ArtifactRead | GatewayAction::UsageRead => server.capabilities.resources,
-        GatewayAction::ArtifactUpload => true,
-        GatewayAction::AdminRead | GatewayAction::AdminWrite => true,
-    }
-}
-
-fn policy_rule_server_scope<'a>(
-    rule: &PolicyRule,
-    servers: &'a BTreeMap<ServerSlug, &ServerManifest>,
-) -> Vec<&'a ServerManifest> {
-    if rule.servers.is_empty() {
-        servers.values().copied().collect()
-    } else {
-        rule.servers
-            .iter()
-            .filter_map(|server| servers.get(server).copied())
-            .collect()
-    }
 }
 
 pub(super) fn validate_profile_auth_modes(
@@ -901,7 +209,6 @@ pub(super) fn validate_oauth_client_registration(
         &veoveo_gateway_contract::ProtectedResourceDescriptor,
     >,
     policies: &BTreeMap<PolicyVersion, &PolicySet>,
-    servers: &BTreeMap<ServerSlug, &ServerManifest>,
     secrets: &BTreeMap<SecretReferenceId, &SecretReference>,
 ) -> Result<(), GatewayControlPlaneError> {
     if !authorization_servers.contains_key(&client.authorization_server) {
@@ -927,7 +234,7 @@ pub(super) fn validate_oauth_client_registration(
             client.id.clone(),
         ));
     }
-    validate_oauth_client_surface(client, servers)?;
+    validate_oauth_client_surface(client)?;
 
     for resource_id in &client.allowed_resources {
         let profile = profiles
@@ -1084,62 +391,13 @@ pub(super) fn validate_oauth_client_registration(
 
 fn validate_oauth_client_surface(
     client: &OAuthClientRegistration,
-    servers: &BTreeMap<ServerSlug, &ServerManifest>,
 ) -> Result<(), GatewayControlPlaneError> {
-    if client.client_surface == OAuthClientSurface::FullMcp
-        && (!client.allowed_compatibility_helpers.is_empty() || client.direct_task_call_adapter)
-    {
+    if client.client_surface == OAuthClientSurface::FullMcp && client.direct_task_call_adapter {
         return Err(
             GatewayControlPlaneError::OAuthClientFullMcpWithCompatibility {
                 client: client.id.clone(),
             },
         );
-    }
-    for helper in &client.allowed_compatibility_helpers {
-        let Some((server_slug, tool_name)) = helper.as_str().split_once('.') else {
-            return Err(
-                GatewayControlPlaneError::UnknownOAuthClientCompatibilityHelper {
-                    client: client.id.clone(),
-                    helper: helper.clone(),
-                },
-            );
-        };
-        let Ok(server_slug) = ServerSlug::parse(server_slug) else {
-            return Err(
-                GatewayControlPlaneError::UnknownOAuthClientCompatibilityHelper {
-                    client: client.id.clone(),
-                    helper: helper.clone(),
-                },
-            );
-        };
-        let Ok(tool_name) = LocalToolName::parse(tool_name) else {
-            return Err(
-                GatewayControlPlaneError::UnknownOAuthClientCompatibilityHelper {
-                    client: client.id.clone(),
-                    helper: helper.clone(),
-                },
-            );
-        };
-        let Some(server) = servers.get(&server_slug) else {
-            return Err(
-                GatewayControlPlaneError::UnknownOAuthClientCompatibilityHelper {
-                    client: client.id.clone(),
-                    helper: helper.clone(),
-                },
-            );
-        };
-        if !server
-            .compatibility_helpers
-            .iter()
-            .any(|declared| declared == &tool_name)
-        {
-            return Err(
-                GatewayControlPlaneError::UnknownOAuthClientCompatibilityHelper {
-                    client: client.id.clone(),
-                    helper: helper.clone(),
-                },
-            );
-        }
     }
     Ok(())
 }
