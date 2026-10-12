@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use veoveo_types::{OAuthClientId, ResourceScheme, ServerSlug, TokenIssuer};
 
 use crate::{
-    AuthorizationDeclaration, DeclarationError, Ed25519JwkSet, ModuleDeclaration,
-    RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerKeySet, ServerPublicKey,
-    ServerVersion, authorization::AuthorizationDocument, registration::http_url,
+    AuthorizationDeclaration, DeclarationError, Ed25519JwkSet, RegistrationDeclaration,
+    ResourceIndicator, ServerEndpoint, ServerKeySet, ServerPublicKey, ServerVersion,
+    authorization::AuthorizationDocument, registration::http_url,
 };
 
 /// RFC 7591 `token_endpoint_auth_method`. A server authenticates with RFC 7523 JWTs
@@ -59,8 +59,6 @@ pub struct ClientMetadata {
     pub response_types: Vec<ResponseType>,
     pub registration: RegistrationDeclaration,
     pub authorization: AuthorizationDeclaration,
-    /// Absent for a server without its own tables.
-    pub module: Option<ModuleDeclaration>,
 }
 
 /// The members of [`ClientMetadata`] as RFC 7591 names them.
@@ -77,8 +75,6 @@ struct ClientMetadataWire {
     veoveo_uri_scheme: ResourceScheme,
     veoveo_mcp_endpoint: ServerEndpoint,
     veoveo_authorization: AuthorizationDocument,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    veoveo_module: Option<ModuleDeclaration>,
 }
 
 impl From<ClientMetadataWire> for ClientMetadata {
@@ -95,7 +91,6 @@ impl From<ClientMetadataWire> for ClientMetadata {
                 endpoint: wire.veoveo_mcp_endpoint,
             },
             authorization: wire.veoveo_authorization.into(),
-            module: wire.veoveo_module,
         }
     }
 }
@@ -111,7 +106,6 @@ impl From<ClientMetadata> for ClientMetadataWire {
             veoveo_uri_scheme: metadata.registration.uri_scheme,
             veoveo_mcp_endpoint: metadata.registration.endpoint,
             veoveo_authorization: metadata.authorization.into(),
-            veoveo_module: metadata.module,
         }
     }
 }
@@ -122,7 +116,6 @@ impl ClientMetadata {
         key: ServerPublicKey,
         registration: RegistrationDeclaration,
         authorization: AuthorizationDeclaration,
-        module: Option<ModuleDeclaration>,
     ) -> Result<Self, DeclarationError> {
         let metadata = Self {
             jwks: ServerKeySet::new(key),
@@ -131,7 +124,6 @@ impl ClientMetadata {
             response_types: Vec::new(),
             registration,
             authorization,
-            module,
         };
         metadata.check()?;
         Ok(metadata)
@@ -159,11 +151,7 @@ impl ClientMetadata {
             ));
         }
         self.authorization
-            .check(slug, &self.registration.uri_scheme)?;
-        if let Some(module) = &self.module {
-            module.check(slug)?;
-        }
-        Ok(())
+            .check(slug, &self.registration.uri_scheme)
     }
 
     pub fn slug(&self) -> &ServerSlug {
@@ -258,7 +246,7 @@ pub struct ClientInformation {
     pub lease: RegistrationLease,
     #[serde(rename = "veoveo_access_tokens")]
     pub access_tokens: AccessTokenTrust,
-    /// The server's own database user. Present when the server registered a module.
+    /// The server's own PostgreSQL login, present when the installation grants one.
     #[serde(
         rename = "veoveo_database",
         default,
@@ -351,14 +339,13 @@ pub fn issuer_url(issuer: &TokenIssuer) -> Result<(), DeclarationError> {
     http_url(&url, "issuer")
 }
 
-/// `veoveo_database`: a database user the Gateway created for one server.
+/// `veoveo_database`: the PostgreSQL login the Gateway created for one registration.
+/// The login is a member of the server's group role, which owns the server's schema.
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DatabaseGrant {
-    #[schemars(with = "url::Url")]
-    pub endpoint: url::Url,
-    pub namespace: DatabaseIdentifier,
-    pub database: DatabaseIdentifier,
+    /// The installation database, without credentials.
+    pub url: DatabaseUrl,
     pub username: DatabaseIdentifier,
     #[serde(serialize_with = "expose")]
     #[schemars(with = "String")]
@@ -368,34 +355,93 @@ pub struct DatabaseGrant {
 impl fmt::Debug for DatabaseGrant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DatabaseGrant")
-            .field("endpoint", &self.endpoint.as_str())
-            .field("namespace", &self.namespace)
-            .field("database", &self.database)
+            .field("url", &self.url.as_str())
             .field("username", &self.username)
             .field("password", &"[REDACTED]")
             .finish()
     }
 }
 
-/// A SurrealDB namespace, database or user name: ASCII letters, digits and underscore.
+/// A `postgres://` or `postgresql://` URL that names a host and one database. It carries
+/// no user, password or fragment; query parameters such as `sslmode` are connection
+/// options.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(try_from = "String", into = "String")]
+#[schemars(with = "url::Url")]
+pub struct DatabaseUrl(url::Url);
+
+impl DatabaseUrl {
+    pub fn new(url: url::Url) -> Result<Self, DeclarationError> {
+        if !matches!(url.scheme(), "postgres" | "postgresql") {
+            return Err(DeclarationError::invalid(
+                "veoveo_database",
+                "the URL scheme must be postgres or postgresql",
+            ));
+        }
+        if url.host_str().is_none_or(str::is_empty) {
+            return Err(DeclarationError::invalid(
+                "veoveo_database",
+                "the URL must name a host",
+            ));
+        }
+        if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+            return Err(DeclarationError::invalid(
+                "veoveo_database",
+                "the URL carries no user, password or fragment",
+            ));
+        }
+        let database = url.path().strip_prefix('/').unwrap_or_default();
+        if database.is_empty() || database.contains('/') {
+            return Err(DeclarationError::invalid(
+                "veoveo_database",
+                "the URL path names exactly one database",
+            ));
+        }
+        Ok(Self(url))
+    }
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+    pub fn as_url(&self) -> &url::Url {
+        &self.0
+    }
+}
+impl TryFrom<String> for DatabaseUrl {
+    type Error = DeclarationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let url = url::Url::parse(&value)
+            .map_err(|_| DeclarationError::invalid("veoveo_database", "must be a URL"))?;
+        Self::new(url)
+    }
+}
+impl From<DatabaseUrl> for String {
+    fn from(value: DatabaseUrl) -> Self {
+        value.0.into()
+    }
+}
+
+/// A PostgreSQL role name: a lowercase letter or underscore followed by up to 62
+/// lowercase letters, digits or underscores, so it fits the 63-byte identifier limit
+/// without quoting.
 #[derive(
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(try_from = "String", into = "String")]
-pub struct DatabaseIdentifier(String);
+pub struct DatabaseIdentifier(#[schemars(regex(pattern = r"^[a-z_][a-z0-9_]{0,62}$"))] String);
 
 impl DatabaseIdentifier {
     pub fn new(value: impl Into<String>) -> Result<Self, DeclarationError> {
         let value = value.into();
-        if value.is_empty()
-            || value.len() > 128
-            || !value
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        {
+        let mut bytes = value.bytes();
+        let admitted = bytes
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase() || first == b'_')
+            && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            && value.len() <= 63;
+        if !admitted {
             return Err(DeclarationError::invalid(
                 "database identifier",
-                "1..=128 ASCII letters, digits or underscore",
+                "a lowercase letter or underscore, then up to 62 lowercase letters, digits or underscores",
             ));
         }
         Ok(Self(value))

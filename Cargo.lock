@@ -4702,7 +4702,6 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "veoveo-modules",
  "veoveo-types",
 ]
 

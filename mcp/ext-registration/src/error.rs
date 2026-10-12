@@ -29,18 +29,10 @@ pub enum DeclarationError {
         field: &'static str,
         reason: &'static str,
     },
-    #[error("invalid module declaration: {0}")]
-    Module(String),
 }
 
 impl DeclarationError {
     pub(crate) fn invalid(field: &'static str, reason: &'static str) -> Self {
         Self::Invalid { field, reason }
-    }
-}
-
-impl From<veoveo_modules::DeclarationError> for DeclarationError {
-    fn from(error: veoveo_modules::DeclarationError) -> Self {
-        Self::Module(error.to_string())
     }
 }

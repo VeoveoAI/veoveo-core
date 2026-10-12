@@ -109,10 +109,8 @@ fn information(
         .insert(client_id.to_owned(), (token.clone(), metadata.clone()));
     let grant = || {
         serde_json::from_value(json!({
-            "endpoint": "ws://surrealdb:8000/",
-            "namespace": "veoveo",
-            "database": "platform",
-            "username": format!("{}_runtime", metadata.slug()),
+            "url": "postgres://postgres.internal:5432/veoveo",
+            "username": format!("{}_0b6f", metadata.slug()),
             "password": "issued-password"
         }))
         .unwrap()
@@ -123,7 +121,7 @@ fn information(
         registration_access_token: RegistrationAccessToken::new(token),
         registration_client_uri: url::Url::parse(&format!("{}/register/{client_id}", gateway.base))
             .unwrap(),
-        database: (database && metadata.module.is_some()).then(grant),
+        database: database.then(grant),
         access_tokens: AccessTokenTrust {
             issuer: TokenIssuer::parse("https://gateway.example").unwrap(),
             jwks: Ed25519JwkSet::new(vec![Ed25519Jwk::new(ServerPublicKey::from_bytes([9; 32]))])
@@ -265,17 +263,6 @@ fn http() -> reqwest::Client {
     reqwest::Client::new()
 }
 
-fn module() -> ModuleDeclaration {
-    ModuleDeclaration::new(
-        serde_json::from_value(json!({
-            "name": "clock",
-            "ownership": [{"kind": "table_prefix", "name": "clock_"}],
-            "migrations": [{"version": 0, "name": "current", "sql": "DEFINE TABLE clock_event;"}]
-        }))
-        .unwrap(),
-    )
-}
-
 fn client(endpoint: &url::Url, key: ServerKeyPair, secret: &str) -> RegistrationClient {
     let metadata = ClientMetadata::new(
         *key.public_key(),
@@ -290,7 +277,6 @@ fn client(endpoint: &url::Url, key: ServerKeyPair, secret: &str) -> Registration
             permissions: Vec::new(),
             requirements: Requirements::default(),
         },
-        Some(module()),
     )
     .unwrap();
     RegistrationClient::new(
@@ -334,7 +320,11 @@ async fn registers_reads_renews_and_deregisters() {
     let client = client(&endpoint, ServerKeyPair::generate().unwrap(), SECRET);
     let mut registration = client.register().await.unwrap();
     let database = registration.database().unwrap();
-    assert_eq!(database.username.as_str(), "clock_runtime");
+    assert_eq!(database.username.as_str(), "clock_0b6f");
+    assert_eq!(
+        database.url.as_str(),
+        "postgres://postgres.internal:5432/veoveo"
+    );
     assert_eq!(
         registration.access_tokens().issuer.as_str(),
         "https://gateway.example"

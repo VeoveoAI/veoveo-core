@@ -221,7 +221,6 @@ mod tests {
                 permissions: Vec::new(),
                 requirements: Requirements::default(),
             },
-            None,
         )
         .unwrap()
     }

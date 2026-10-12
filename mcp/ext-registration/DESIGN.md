@@ -30,17 +30,17 @@ verified by `veoveo-mcp-contract`, described under [Forwarded Identity](#forward
 | Authorization server metadata, RFC 8414 | A server reads `issuer` and `registration_endpoint` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`. |
 | MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
 | JSON Schema 2020-12 | Schemas for every request, response and declaration are generated from the Rust types by Schemars 1.2. |
-| Veoveo module manifests | `veoveo_module` is the `veoveo-modules` manifest, admitted exactly as a compiled module declaration. |
+| PostgreSQL connection URIs and role names | `veoveo_database` names the installation database as a `postgres://` URL and the server's login as an unquoted PostgreSQL role name. The [database design](../../docs/DATABASE.md) describes the roles and schemas. |
 
 Every Veoveo addition uses the extension point of the standard it extends:
 
 | Extension point | Names |
 |---|---|
-| RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization`, `veoveo_module` |
+| RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization` |
 | RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_lease`, `veoveo_access_tokens`, `veoveo_database` |
 | RFC 9396 authorization details type | `https://veoveo.ai/oauth/permissions` |
 | JWT public claims, RFC 7519 §4.2 collision-resistant names | `https://veoveo.ai/claims/invocation`, `https://veoveo.ai/claims/resource-invocation`, `https://veoveo.ai/claims/artifact-upload` |
-| MCP `capabilities.extensions` | `ai.veoveo/registration`, `ai.veoveo/authorization`, `ai.veoveo/module` |
+| MCP `capabilities.extensions` | `ai.veoveo/registration`, `ai.veoveo/authorization` |
 
 Following RFC 7591, a receiver ignores client metadata it does not understand. Each
 Veoveo member admits only its own declared fields and refuses unknown ones. OAuth
@@ -113,43 +113,15 @@ A target the declaration omits is denied. An exact resource entry takes preceden
 over templates, and a URI matched by templates that require different permissions
 requires none and is denied.
 
-### Module
-
-`veoveo_module` is the module manifest for a server that owns tables. A server without
-tables omits it.
-
-```json
-{
-  "name": "time",
-  "ownership": [
-    { "kind": "table_prefix", "name": "time_" },
-    { "kind": "function_prefix", "name": "fn::time::" }
-  ],
-  "requires": [{ "module": "identity" }],
-  "migrations": [
-    { "version": 0, "name": "current", "sql": "DEFINE TABLE time_event SCHEMAFULL;" }
-  ]
-}
-```
-
-The module is named after the slug. Its table, table-prefix and analyzer claims start
-with `{slug}_` and its function claims with `fn::{slug}::`, writing each hyphen in the
-slug as an underscore. The Gateway rebuilds the manifest with
-`ModuleManifest::admit`, which applies the checked constructors and
-`ModuleSetup::builder` that compiled declarations use. A server builds its manifest
-from its compiled declaration with `ModuleManifest::from_setup`.
-
-MCP Discover advertises `ModuleSummary` under `ai.veoveo/module` instead of the full
-manifest: the name, the latest migration version and the SHA-256 of the manifest's
-JSON form. Discover advertises the identity and authorization declarations in full, so
-the Gateway compares what a server registered with what it serves.
+Discover advertises the identity and authorization declarations in full, so the
+Gateway compares what a server registered with what it serves.
 
 ## Namespace Claims
 
 The first registration of a slug claims its namespace and pins the server's public
 key to it. For slug `time` the namespace is the slug itself, the `time://` scheme, the
-`ui://time/` App prefix, tables starting `time_`, functions under `fn::time::` and
-permissions and resource types under `time.`. Every later registration of that slug,
+`ui://time/` App prefix, the database schema `time` with its group role `server_time`,
+and permissions and resource types under `time.`. Every later registration of that slug,
 including a new server version, must be signed by the pinned key. A registration signed
 by another key is rejected with `unapproved_software_statement`. Releasing a namespace
 is an administrative action outside this protocol.
@@ -175,7 +147,6 @@ Content-Type: application/json
   "veoveo_uri_scheme": "time",
   "veoveo_mcp_endpoint": "https://time.internal.example/mcp",
   "veoveo_authorization": { "permissions": [], "requirements": {} },
-  "veoveo_module": { "name": "time", "ownership": [], "migrations": [] },
   "software_statement": "eyJ0eXAiOiJKV1QiLCJhbGciOiJFZERTQSIsImtpZCI6Ii4uLiJ9.eyIuLi4iOiIuLi4ifQ.c2ln"
 }
 ```
@@ -189,14 +160,14 @@ Gateway admits a request in this order and stops at the first failure:
 1. The bearer is the installation's registration secret, or the answer is HTTP 401
    with `WWW-Authenticate: Bearer`.
 2. The body decodes into `ClientRegistrationRequest`.
-3. `ClientMetadata::check` passes: empty grant and response types, the authorization
-   declaration within the namespace, and the module within its prefixes.
+3. `ClientMetadata::check` passes: empty grant and response types and the
+   authorization declaration within the namespace.
 4. `statement::verify_statement` passes against the pinned key, if the namespace has
    one, and the registration endpoint URL.
-5. The module manifest passes `ModuleManifest::admit`.
 
-The Gateway then pins the namespace, applies the module's migrations with its own
-database credentials, creates the server's database user and answers HTTP 201:
+The Gateway then pins the namespace, calls `kernel.ensure_server` for the server's
+group role and schema, creates a login for this registration with
+`kernel.create_server_login` and answers HTTP 201:
 
 ```json
 {
@@ -213,7 +184,6 @@ database credentials, creates the server's database user and answers HTTP 201:
   "veoveo_uri_scheme": "time",
   "veoveo_mcp_endpoint": "https://time.internal.example/mcp",
   "veoveo_authorization": { "...": "..." },
-  "veoveo_module": { "...": "..." },
   "software_statement": "<as sent>",
   "veoveo_lease": { "expires_at": 1791763230, "renew_every_seconds": 10 },
   "veoveo_access_tokens": {
@@ -222,19 +192,22 @@ database credentials, creates the server's database user and answers HTTP 201:
     "resource": "https://time.internal.example/mcp"
   },
   "veoveo_database": {
-    "endpoint": "ws://surrealdb:8000/",
-    "namespace": "veoveo",
-    "database": "platform",
-    "username": "time_runtime",
+    "url": "postgres://postgres.internal.example:5432/veoveo",
+    "username": "time_0b6f",
     "password": "<secret>"
   }
 }
 ```
 
 The response repeats the registered metadata unchanged, and the registration client
-rejects a response that differs from what it sent. `veoveo_database` appears when the
-server registered a module and the Gateway issued its user. The user has database-wide
-access and never administrator rights. `veoveo_access_tokens` names the issuer, keys
+rejects a response that differs from what it sent. `veoveo_database` carries the
+installation database URL, which names a host and one database and holds no
+credentials, and the login role created for this registration with its password. The
+role name is a lowercase letter or underscore followed by at most 62 lowercase letters,
+digits or underscores. The login is a member of the server's group role
+`server_<server>`, which owns the schema named after the slug with `-` replaced by
+`_`. The server runs its own migrations in that schema after `SET ROLE
+server_<server>`; deregistration drops the login. `veoveo_access_tokens` names the issuer, keys
 and audience of the access tokens the Gateway forwards to this server. The issuer is
 the Gateway's issuer URL, the value its RFC 8414 metadata announces, and the
 audience is the registered MCP endpoint. Every URL here uses `https`, or `http` on a
@@ -393,7 +366,6 @@ let metadata = ClientMetadata::new(
     AuthorizationBuilder::<TimePermission>::new()
         .tool(LocalToolName::parse("resolve_time")?, TimePermission::Read)
         .build(&slug, &scheme)?,
-    Some(ModuleDeclaration::new(ModuleManifest::from_setup(&time_module())?)),
 )?;
 let client = RegistrationClient::new(http, endpoint, registration_secret, key, metadata)?;
 let registration = client.register().await?;

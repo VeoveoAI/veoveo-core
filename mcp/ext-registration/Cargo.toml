@@ -17,7 +17,6 @@ mcp = ["dep:rmcp"]
 
 [dependencies]
 veoveo-types.workspace = true
-veoveo-modules = { workspace = true, features = ["schema"] }
 base64.workspace = true
 chrono.workspace = true
 schemars = { workspace = true, features = ["chrono04", "url2"] }

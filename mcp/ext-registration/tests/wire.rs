@@ -1,4 +1,4 @@
-//! Wire format, schema and admission checks for the three registration declarations.
+//! Wire format, schema and admission checks for the registration declarations and grants.
 use serde_json::json;
 use veoveo_mcp_ext_registration::*;
 use veoveo_types::{
@@ -345,25 +345,8 @@ fn server_keys_are_jwks_identified_by_their_thumbprint() {
     assert!(serde_json::from_value::<Ed25519JwkSet>(json!({"keys": [named]})).is_err());
 }
 
-fn module() -> ModuleDeclaration {
-    ModuleDeclaration::new(
-        serde_json::from_value(json!({
-            "name": "clock",
-            "ownership": [{"kind": "table_prefix", "name": "clock_"}],
-            "migrations": [{"version": 0, "name": "current", "sql": "DEFINE TABLE clock_event;"}]
-        }))
-        .unwrap(),
-    )
-}
-
 fn metadata() -> ClientMetadata {
-    ClientMetadata::new(
-        rfc8037_key(),
-        registration(),
-        authorization(),
-        Some(module()),
-    )
-    .unwrap()
+    ClientMetadata::new(rfc8037_key(), registration(), authorization()).unwrap()
 }
 
 const STATEMENT: &str = "eyJhbGciOiJFZERTQSJ9.eyJpc3MiOiJjbG9jayJ9.c2lnbmF0dXJl";
@@ -399,16 +382,7 @@ fn registration_requests_are_rfc7591_client_metadata() {
         .unwrap();
     snake["requirements"]["resource_templates"] = templates;
     assert_eq!(wire["veoveo_authorization"], snake);
-    assert_eq!(wire["veoveo_module"]["name"], "clock");
-    assert_eq!(
-        wire["veoveo_module"]["ownership"][0]["kind"],
-        "table_prefix"
-    );
-    for member in [
-        "ai.veoveo/registration",
-        "ai.veoveo/authorization",
-        "ai.veoveo/module",
-    ] {
+    for member in ["ai.veoveo/registration", "ai.veoveo/authorization"] {
         assert!(wire.get(member).is_none(), "{member}");
     }
     assert_eq!(
@@ -439,43 +413,9 @@ fn client_metadata_checks_every_declaration() {
     granted.grant_types = vec![GrantType::ClientCredentials];
     assert!(granted.check().is_err());
 
-    let foreign = ModuleDeclaration::new(
-        serde_json::from_value(json!({
-            "name": "clock",
-            "ownership": [{"kind": "table_prefix", "name": "map_"}],
-            "migrations": [{"version": 0, "name": "current", "sql": "DEFINE TABLE map_layer;"}]
-        }))
-        .unwrap(),
-    );
-    assert!(
-        ClientMetadata::new(
-            rfc8037_key(),
-            registration(),
-            authorization(),
-            Some(foreign)
-        )
-        .is_err()
-    );
-    let renamed = ModuleDeclaration::new(
-        serde_json::from_value(json!({
-            "name": "calendar",
-            "ownership": [{"kind": "table_prefix", "name": "clock_"}],
-            "migrations": []
-        }))
-        .unwrap(),
-    );
-    assert!(
-        ClientMetadata::new(
-            rfc8037_key(),
-            registration(),
-            authorization(),
-            Some(renamed)
-        )
-        .is_err()
-    );
     let mut elsewhere = registration();
     elsewhere.slug = ServerSlug::parse("map").unwrap();
-    assert!(ClientMetadata::new(rfc8037_key(), elsewhere, authorization(), None).is_err());
+    assert!(ClientMetadata::new(rfc8037_key(), elsewhere, authorization()).is_err());
 }
 
 fn information() -> serde_json::Value {
@@ -507,10 +447,8 @@ fn information() -> serde_json::Value {
         (
             "veoveo_database",
             json!({
-                "endpoint": "ws://surrealdb:8000/",
-                "namespace": "veoveo",
-                "database": "platform",
-                "username": "clock_runtime",
+                "url": "postgres://postgres.internal:5432/veoveo?sslmode=verify-full",
+                "username": "clock_0b6f",
                 "password": "hunter2"
             }),
         ),
@@ -559,6 +497,35 @@ fn client_information_carries_lease_keys_and_database_user() {
         .remove("veoveo_database");
     let received: ClientInformation = serde_json::from_value(without_database).unwrap();
     assert!(received.database.is_none());
+}
+
+#[test]
+fn database_grants_name_one_postgres_database_and_role() {
+    let received: ClientInformation = serde_json::from_value(information()).unwrap();
+    let database = received.database.unwrap();
+    assert_eq!(database.username.as_str(), "clock_0b6f");
+    assert_eq!(database.url.as_url().path(), "/veoveo");
+    for (member, value) in [
+        ("url", json!("ws://surrealdb:8000/")),
+        ("url", json!("postgres://postgres.internal:5432/")),
+        ("url", json!("postgres://postgres.internal/veoveo/extra")),
+        ("url", json!("postgres://clock:secret@postgres.internal/veoveo")),
+        ("url", json!("postgres://postgres.internal/veoveo#fragment")),
+        ("username", json!("Clock")),
+        ("username", json!("0clock")),
+        ("username", json!("clock-0b6f")),
+        ("username", json!("c".repeat(64))),
+        ("namespace", json!("veoveo")),
+    ] {
+        let mut wire = information();
+        wire["veoveo_database"][member] = value;
+        assert!(
+            serde_json::from_value::<ClientInformation>(wire).is_err(),
+            "{member}"
+        );
+    }
+    assert!(DatabaseIdentifier::new("_".repeat(63)).is_ok());
+    assert!(DatabaseUrl::try_from("postgresql://[::1]:5432/veoveo".to_owned()).is_ok());
 }
 
 #[test]
@@ -622,21 +589,6 @@ fn granted_permissions_are_an_rfc9396_detail() {
 }
 
 #[test]
-fn module_summary_identifies_the_manifest() {
-    let summary = module().summary();
-    let wire = serde_json::to_value(&summary).unwrap();
-    assert_eq!(wire["name"], "clock");
-    assert_eq!(wire["latest"], 0);
-    assert!(wire["sha256"].as_str().unwrap().starts_with("sha256:"));
-    assert_eq!(module().summary(), summary);
-    assert_eq!(
-        serde_json::to_value(module()).unwrap(),
-        serde_json::to_value(module().manifest()).unwrap(),
-        "the module member is the manifest itself"
-    );
-}
-
-#[test]
 fn published_schemas_admit_the_wire_examples() {
     fn validator<T: schemars::JsonSchema>() -> jsonschema::Validator {
         let schema = serde_json::to_value(schemars::schema_for!(T)).unwrap();
@@ -661,10 +613,6 @@ fn published_schemas_admit_the_wire_examples() {
         ),
         (validator::<ClientInformation>(), information()),
         (
-            validator::<ModuleSummary>(),
-            serde_json::to_value(module().summary()).unwrap(),
-        ),
-        (
             validator::<PermissionsDetail>(),
             serde_json::to_value(PermissionsDetail::new(
                 [PermissionName::parse("clock.read").unwrap()].into(),
@@ -684,8 +632,6 @@ fn published_schemas_admit_the_wire_examples() {
             "/veoveo_authorization/permissions/0/access",
             json!("execute"),
         ),
-        ("/veoveo_module/migrations/0/version", json!(-1)),
-        ("/veoveo_module/ownership/0/name", json!("Clock_")),
         ("/jwks/keys/0/kty", json!("RSA")),
         ("/token_endpoint_auth_method", json!("client_secret_basic")),
     ] {
@@ -698,17 +644,10 @@ fn published_schemas_admit_the_wire_examples() {
 #[test]
 fn advertised_declarations_round_trip_through_capabilities() {
     let mut capabilities = rmcp::model::ServerCapabilities::default();
-    let summary = module().summary();
-    mcp::advertise(
-        &mut capabilities,
-        &registration(),
-        &authorization(),
-        Some(&summary),
-    );
+    mcp::advertise(&mut capabilities, &registration(), &authorization());
     let advertised = mcp::advertised(&capabilities).unwrap().unwrap();
     assert_eq!(advertised.registration, registration());
     assert_eq!(advertised.authorization, authorization());
-    assert_eq!(advertised.module, Some(summary));
     assert_eq!(
         mcp::advertised(&rmcp::model::ServerCapabilities::default()).unwrap(),
         None

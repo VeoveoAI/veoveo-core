@@ -557,12 +557,12 @@ session locality is never a reason for singleton deployment.
 
 A server ships as an OCI image and registers itself with the Gateway at startup
 through the [server registration protocol](../ext-registration/DESIGN.md), an
-RFC 7591 and RFC 7592 profile. Its client metadata carries three declarations:
-`ai.veoveo/registration` states the slug, URI scheme, version and endpoint,
+RFC 7591 and RFC 7592 profile. Its client metadata carries two declarations:
+`ai.veoveo/registration` states the slug, URI scheme, version and endpoint, and
 `ai.veoveo/authorization` lists the server's permissions and the permission every
-tool, resource template and prompt requires, and `ai.veoveo/module` carries its
-tables and migrations. The server renews the registration as a lease and removes it
-on shutdown.
+tool, resource template and prompt requires. The registration response grants the
+server a PostgreSQL login for its own schema, where the server applies its own
+migrations. The server renews the registration as a lease and removes it on shutdown.
 
 The installation configuration names no server. Its `authorization` section declares
 roles, grants and overrides. A role selects declared permissions by access kind and

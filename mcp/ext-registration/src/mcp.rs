@@ -6,22 +6,18 @@ use veoveo_types::LocalToolName;
 
 use crate::{
     AUTHORIZATION_EXTENSION_ID, Access, AuthorizationDeclaration, DeclarationError,
-    MODULE_EXTENSION_ID, ModuleSummary, REGISTRATION_EXTENSION_ID, RegistrationDeclaration, Risk,
+    REGISTRATION_EXTENSION_ID, RegistrationDeclaration, Risk,
 };
 
-/// Advertise the declarations. A server with a module advertises its summary.
+/// Advertise the declarations.
 pub fn advertise(
     capabilities: &mut ServerCapabilities,
     registration: &RegistrationDeclaration,
     authorization: &AuthorizationDeclaration,
-    module: Option<&ModuleSummary>,
 ) {
     let extensions = capabilities.extensions.get_or_insert_default();
     extensions.insert(REGISTRATION_EXTENSION_ID.into(), object(registration));
     extensions.insert(AUTHORIZATION_EXTENSION_ID.into(), object(authorization));
-    if let Some(module) = module {
-        extensions.insert(MODULE_EXTENSION_ID.into(), object(module));
-    }
 }
 
 fn object(value: &impl serde::Serialize) -> JsonObject {
@@ -36,7 +32,6 @@ fn object(value: &impl serde::Serialize) -> JsonObject {
 pub struct Advertised {
     pub registration: RegistrationDeclaration,
     pub authorization: AuthorizationDeclaration,
-    pub module: Option<ModuleSummary>,
 }
 
 pub fn advertised(
@@ -49,13 +44,11 @@ pub fn advertised(
         read(extensions, REGISTRATION_EXTENSION_ID, "registration")?;
     let authorization: Option<AuthorizationDeclaration> =
         read(extensions, AUTHORIZATION_EXTENSION_ID, "authorization")?;
-    let module: Option<ModuleSummary> = read(extensions, MODULE_EXTENSION_ID, "module")?;
     match (registration, authorization) {
-        (None, None) if module.is_none() => Ok(None),
+        (None, None) => Ok(None),
         (Some(registration), Some(authorization)) => Ok(Some(Advertised {
             registration,
             authorization,
-            module,
         })),
         _ => Err(DeclarationError::invalid(
             "capabilities",
