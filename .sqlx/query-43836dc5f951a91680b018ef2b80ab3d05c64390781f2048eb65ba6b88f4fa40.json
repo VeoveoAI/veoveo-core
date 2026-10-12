@@ -1,0 +1,57 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n    generation,\n    consumed_at,\n    replay_detected_at,\n    delivery_envelope IS NOT NULL AS \"delivered!\"\nFROM gateway.refresh_token\nORDER BY generation\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "generation",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_token",
+            "name": "generation"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "consumed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_token",
+            "name": "consumed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "replay_detected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_token",
+            "name": "replay_detected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "delivered!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "43836dc5f951a91680b018ef2b80ab3d05c64390781f2048eb65ba6b88f4fa40"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE gateway.registration\nSET live_at = now()\nWHERE client_id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c976a3d2bcf78cda4aaf1a41cd2a7ca6e80bf02d3a5acc9dced29970ab6d2622"
+}

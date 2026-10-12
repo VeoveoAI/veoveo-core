@@ -50,6 +50,16 @@ pub enum StoreError {
     },
     #[error("existing {entity} identity conflicts with canonical key {key}")]
     IdentityConflict { entity: &'static str, key: String },
+    #[error("the stored {column} is not an admitted value")]
+    InvalidStoredValue { column: &'static str },
+    #[error("invalid refresh-token transition: {reason}")]
+    InvalidRefreshTransition { reason: &'static str },
+    #[error("another control-plane revision became active first")]
+    ControlRevisionChanged,
+    #[error("the control-plane revision already exists")]
+    ControlRevisionExists,
+    #[error("records appended with the change failed: {0}")]
+    Append(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl StoreError {

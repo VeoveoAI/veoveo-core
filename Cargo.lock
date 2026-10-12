@@ -3745,6 +3745,8 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "veoveo-gateway-contract",
+ "veoveo-mcp-contract",
  "veoveo-types",
 ]
 

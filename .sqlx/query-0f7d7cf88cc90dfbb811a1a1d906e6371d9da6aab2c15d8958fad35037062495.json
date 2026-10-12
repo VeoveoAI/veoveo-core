@@ -1,0 +1,45 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n    control_plane_digest AS \"control_plane_digest!\",\n    policy_revision AS \"policy_revision!\",\n    context_digest AS \"context_digest!\",\n    profile_policy_digest\nFROM gateway.artifact_upload_authority($1, $2)\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "control_plane_digest!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "policy_revision!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "context_digest!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "profile_policy_digest",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "0f7d7cf88cc90dfbb811a1a1d906e6371d9da6aab2c15d8958fad35037062495"
+}

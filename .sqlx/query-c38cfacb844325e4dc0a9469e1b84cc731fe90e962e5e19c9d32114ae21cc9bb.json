@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM gateway.refresh_family\nWHERE expires_at <= $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c38cfacb844325e4dc0a9469e1b84cc731fe90e962e5e19c9d32114ae21cc9bb"
+}

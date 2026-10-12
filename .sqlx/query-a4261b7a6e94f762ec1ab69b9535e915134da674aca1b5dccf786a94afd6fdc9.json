@@ -1,0 +1,172 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Every change to a family's tokens holds this lock, so presentations of one token\n-- serialize across replicas.\nSELECT\n    f.id, f.authorization_server, f.profile, f.oauth_client_id, f.work_context,\n    f.principal AS \"principal: Json<Principal>\", f.principal_display_name, f.scopes,\n    f.current_generation, f.issued_at, f.expires_at, f.revoked_at,\n    f.revocation_reason AS \"revocation_reason: RefreshRevocation\"\nFROM gateway.refresh_family AS f\nWHERE f.id = (SELECT t.family FROM gateway.refresh_token AS t WHERE t.token_digest = $1)\nFOR UPDATE\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "authorization_server",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "authorization_server"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "profile",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "profile"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "oauth_client_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "oauth_client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "work_context",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "work_context"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "principal: Json<Principal>",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "principal"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "principal_display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "principal_display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "current_generation",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "current_generation"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "issued_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "issued_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "revoked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "revoked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "revocation_reason: RefreshRevocation",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.refresh_family",
+            "name": "revocation_reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "a4261b7a6e94f762ec1ab69b9535e915134da674aca1b5dccf786a94afd6fdc9"
+}

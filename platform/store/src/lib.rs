@@ -5,6 +5,8 @@
 
 mod config;
 mod error;
+#[cfg(feature = "gateway")]
+pub mod gateway;
 mod identity;
 mod instance;
 mod names;

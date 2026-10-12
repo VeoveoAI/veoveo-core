@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gateway.namespace_claim (server, key_thumbprint, claimed_at)\nVALUES ($1, $2, now())\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7a100eace2660aa840c1f08416841a7aa1ea6af9a17addebfbe516cb901feefd"
+}

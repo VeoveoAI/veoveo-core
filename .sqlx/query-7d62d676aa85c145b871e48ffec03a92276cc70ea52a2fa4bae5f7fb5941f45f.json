@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gateway.refresh_token (\n    id, family, token_digest, generation, issued_at, expires_at, delivery_envelope,\n    delivery_expires_at\n)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int8",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7d62d676aa85c145b871e48ffec03a92276cc70ea52a2fa4bae5f7fb5941f45f"
+}

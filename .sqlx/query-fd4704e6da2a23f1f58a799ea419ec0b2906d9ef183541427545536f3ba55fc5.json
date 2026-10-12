@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE gateway.refresh_token\nSET delivery_envelope = NULL, delivery_expires_at = NULL\nWHERE delivery_expires_at <= $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fd4704e6da2a23f1f58a799ea419ec0b2906d9ef183541427545536f3ba55fc5"
+}

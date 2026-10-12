@@ -1,0 +1,209 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM gateway.authorization_request\nWHERE idp_state = $1 AND expires_at > $2\nRETURNING\n    idp_state, profile, oauth_client_id, work_context, oidc_client, redirect_uri,\n    client_state, requested_scopes, code_challenge, code_challenge_method,\n    idp_code_verifier, idp_code_challenge, idp_code_challenge_method, nonce,\n    created_at, expires_at\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "idp_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "idp_state"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "profile",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "profile"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "oauth_client_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "oauth_client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "work_context",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "work_context"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "oidc_client",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "oidc_client"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "redirect_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "redirect_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "client_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "client_state"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "requested_scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "requested_scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "code_challenge",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "code_challenge"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "code_challenge_method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "code_challenge_method"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "idp_code_verifier",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "idp_code_verifier"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "idp_code_challenge",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "idp_code_challenge"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "idp_code_challenge_method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "idp_code_challenge_method"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "nonce",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.authorization_request",
+            "name": "expires_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "22386dcaef8ef5fa56d81e62e10c86472569330188ad7571d796c15cbbb96246"
+}

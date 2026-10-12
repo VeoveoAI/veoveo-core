@@ -1,0 +1,91 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT profile, issuer, jwt_id, revoked_at, expires_at, reason\nFROM gateway.jwt_revocation\nWHERE profile = $1 AND issuer = $2 AND jwt_id = $3 AND expires_at > $4\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "profile",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.jwt_revocation",
+            "name": "profile"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "issuer",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.jwt_revocation",
+            "name": "issuer"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "jwt_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.jwt_revocation",
+            "name": "jwt_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "revoked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.jwt_revocation",
+            "name": "revoked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gateway.jwt_revocation",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gateway.jwt_revocation",
+            "name": "reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "9e8fb5e4dff7d4e8207bd4c90d4469444efae99fe2559acb4df2083f347e32cb"
+}

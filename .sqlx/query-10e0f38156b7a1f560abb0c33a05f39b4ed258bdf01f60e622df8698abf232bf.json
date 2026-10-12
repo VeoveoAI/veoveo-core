@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE gateway.control_active\nSET revision = $1, updated_at = $2\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "10e0f38156b7a1f560abb0c33a05f39b4ed258bdf01f60e622df8698abf232bf"
+}
