@@ -45,15 +45,24 @@ the owning suites; the fixtures provide no policy decisions or installation cred
 
 `store/server.rs` runs one `surreal` process per fixture on a loopback port, with memory
 storage or RocksDB in a fixture-owned temporary directory. Development environments
-install the SurrealDB 3.3.0 binary from the image that `veoveo-template-installation` pins, so tests
-need no container runtime. A missing binary fails the fixture with that requirement
-in the diagnostic. Startup has 30 seconds and fails early when the process exits.
-Diagnostics identify the stage, fixture name and exit code or I/O category, and omit
-arguments, environment and child output.
+install the SurrealDB 3.3.0 binary from the image that `veoveo-template-installation`
+pins, so tests need no container runtime. A missing binary fails the fixture with that
+requirement in the diagnostic.
+
+The fixture picks a free port and releases it before `surreal` binds it, so another
+process can take the port in between. A new server is ready only when the fixture's own
+child is still running and an HTTP sign-in with the fixture's generated credentials
+succeeds; a listener that belongs to another process never passes. When the child exits
+during startup, the fixture starts again on a fresh port, up to five ports, and then
+fails with every exit recorded. Each attempt has 30 seconds. Diagnostics identify the
+stage, fixture name and exit code or I/O category, and omit arguments, environment and
+child output.
 
 The guard transfers to `TestDb` after setup succeeds. Restart stops the process and
-starts it on the same port and data directory. Drop kills the process and removes the
-directory.
+starts it on its data directory, on the same port when it is free and otherwise on a
+fresh one, and returns the endpoint. A restarted server is ready once its child is
+running and SurrealDB reports healthy, because a test may have replaced the credentials
+the fixture started with. Drop kills the process and removes the directory.
 
 Migration/readiness has 60 seconds. Runtime credential creation and each client
 connection have ten seconds. Domain tests can put setup before their SQL assertion

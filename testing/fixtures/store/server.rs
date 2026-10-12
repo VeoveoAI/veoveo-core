@@ -3,19 +3,36 @@
 //! Each fixture runs its own `surreal` server on a loopback port, so tests stay isolated
 //! without a container runtime. Development environments install the pinned SurrealDB
 //! 3.3.0 binary as `surreal` on `PATH`.
+//!
+//! A port chosen by binding port 0 is released before `surreal` binds it, so another
+//! process can take it in between. The fixture therefore accepts a new server only when
+//! its own child is still running and an HTTP sign-in with the fixture's generated
+//! credentials succeeds, and it starts again on a fresh port when the child exits. A
+//! restarted persistent server may hold credentials that a test replaced, so a restart
+//! accepts the server once its own child is running and SurrealDB reports healthy.
 use std::{
     fmt,
     net::{Ipv4Addr, TcpListener},
     path::PathBuf,
     process::Stdio,
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicU16, Ordering},
+    },
     time::Duration,
 };
-use tokio::process::{Child, Command};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::{Child, Command},
+};
 use uuid::Uuid;
 
 const PROGRAM: &str = "surreal";
 const STARTUP: Duration = Duration::from_secs(30);
+const USERNAME: &str = "fixture_admin";
+/// Ports tried before startup fails; each exit during startup moves to a fresh port.
+const PORT_ATTEMPTS: usize = 5;
+const PROBE: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy)]
 pub enum Storage {
@@ -51,26 +68,41 @@ pub struct Server {
     storage: Storage,
     directory: PathBuf,
     password: String,
-    port: u16,
+    port: AtomicU16,
     child: Mutex<Option<Child>>,
+}
+
+/// One launch attempt either yields a ready child, or the child exited during startup
+/// (usually because another process holds the port), or the fixture cannot proceed.
+enum Launch {
+    Ready(Child),
+    Exited(Option<i32>),
+}
+
+/// What the fixture requires before it accepts a running child as ready.
+#[derive(Clone, Copy)]
+enum Readiness {
+    /// The fixture's generated credentials sign in.
+    SignIn,
+    /// SurrealDB answers its health endpoint.
+    Health,
 }
 
 impl Server {
     pub async fn start(storage: Storage, password: &str) -> Result<(Self, String), Failure> {
         let name = format!("veoveo-native-store-test-{}", Uuid::now_v7().simple());
         let directory = std::env::temp_dir().join(&name);
-        let mut server = Self {
+        let server = Self {
             name,
             storage,
             directory,
             password: password.to_owned(),
-            port: 0,
+            port: AtomicU16::new(0),
             child: Mutex::new(None),
         };
         std::fs::create_dir_all(&server.directory)
             .map_err(|error| server.failure("data directory", format!("I/O {:?}", error.kind())))?;
-        server.port = free_port().map_err(|error| server.failure("port selection", error))?;
-        let child = server.spawn().await?;
+        let child = server.launch(false, Readiness::SignIn).await?;
         *server.child.lock().expect("fixture child lock") = Some(child);
         let endpoint = server.endpoint();
         Ok((server, endpoint))
@@ -104,7 +136,8 @@ impl Server {
             })
     }
 
-    /// Restart only this guard's server on the same port and data directory.
+    /// Restart only this guard's server on its data directory, on the same port when it is
+    /// still free and otherwise on a fresh one; the returned endpoint names the port.
     #[allow(
         dead_code,
         reason = "Only retained-store qualification restarts its server"
@@ -117,16 +150,39 @@ impl Server {
                 .await
                 .map_err(|error| self.failure("server stop", format!("I/O {:?}", error.kind())))?;
         }
-        let child = self.spawn().await?;
+        let child = self.launch(true, Readiness::Health).await?;
         *self.child.lock().expect("fixture child lock") = Some(child);
         Ok(self.endpoint())
     }
 
-    fn endpoint(&self) -> String {
-        format!("ws://127.0.0.1:{}", self.port)
+    fn port(&self) -> u16 {
+        self.port.load(Ordering::SeqCst)
     }
 
-    async fn spawn(&self) -> Result<Child, Failure> {
+    fn endpoint(&self) -> String {
+        format!("ws://127.0.0.1:{}", self.port())
+    }
+
+    /// Start the server, moving to a fresh port whenever the child exits during startup.
+    async fn launch(&self, keep_port: bool, readiness: Readiness) -> Result<Child, Failure> {
+        let mut exits = Vec::new();
+        for attempt in 0..PORT_ATTEMPTS {
+            if attempt > 0 || !keep_port {
+                let port = free_port().map_err(|error| self.failure("port selection", error))?;
+                self.port.store(port, Ordering::SeqCst);
+            }
+            match self.spawn(readiness).await? {
+                Launch::Ready(child) => return Ok(child),
+                Launch::Exited(code) => exits.push(format!("port {} exit {code:?}", self.port())),
+            }
+        }
+        Err(self.failure(
+            "server exited during startup",
+            format!("on {PORT_ATTEMPTS} ports: {}", exits.join(", ")),
+        ))
+    }
+
+    async fn spawn(&self, readiness: Readiness) -> Result<Launch, Failure> {
         let storage = match self.storage {
             Storage::Memory => "memory".to_owned(),
             Storage::RocksDb => format!("rocksdb:{}", self.directory.join("data").display()),
@@ -138,10 +194,10 @@ impl Server {
                 "--log",
                 "error",
                 "--bind",
-                &format!("127.0.0.1:{}", self.port),
+                &format!("127.0.0.1:{}", self.port()),
                 &storage,
             ])
-            .env("SURREAL_USER", "fixture_admin")
+            .env("SURREAL_USER", USERNAME)
             .env("SURREAL_PASS", &self.password)
             .env("SURREAL_ROCKSDB_BLOCK_CACHE_SIZE", "67108864")
             .env("SURREAL_ROCKSDB_WRITE_BUFFER_SIZE", "16777216")
@@ -163,21 +219,21 @@ impl Server {
         let deadline = tokio::time::Instant::now() + STARTUP;
         loop {
             if let Ok(Some(status)) = child.try_wait() {
-                return Err(
-                    self.failure("server start", format!("exited with {:?}", status.code()))
-                );
+                return Ok(Launch::Exited(status.code()));
             }
-            if tokio::net::TcpStream::connect((Ipv4Addr::LOCALHOST, self.port))
-                .await
-                .is_ok()
-            {
-                return Ok(child);
+            // Only our own server accepts the generated credentials, and the child must
+            // still be running afterwards, so a listener started by another process on a
+            // reused port is never mistaken for the fixture's server.
+            let ready = match readiness {
+                Readiness::SignIn => signs_in(self.port(), &self.password).await,
+                Readiness::Health => healthy(self.port()).await,
+            };
+            if ready && matches!(child.try_wait(), Ok(None)) {
+                return Ok(Launch::Ready(child));
             }
             if tokio::time::Instant::now() >= deadline {
                 let _ = child.kill().await;
-                return Err(
-                    self.failure("server start", format!("not listening within {STARTUP:?}"))
-                );
+                return Err(self.failure("server start", format!("not ready within {STARTUP:?}")));
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -199,6 +255,54 @@ impl Drop for Server {
         }
         let _ = std::fs::remove_dir_all(&self.directory);
     }
+}
+
+/// Sign in over SurrealDB's HTTP endpoint with the fixture's credentials.
+async fn signs_in(port: u16, password: &str) -> bool {
+    let body = format!(
+        "{{\"user\":\"{}\",\"pass\":\"{}\"}}",
+        json_escape(USERNAME),
+        json_escape(password)
+    );
+    answers_ok(port, "POST", "/signin", &body).await
+}
+
+/// SurrealDB's health endpoint answers once the server accepts requests.
+async fn healthy(port: u16) -> bool {
+    answers_ok(port, "GET", "/health", "").await
+}
+
+async fn answers_ok(port: u16, method: &str, path: &str, body: &str) -> bool {
+    let probe = async {
+        let mut stream = tokio::net::TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .ok()?;
+        let request = format!(
+            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: application/json\r\n\
+             Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(request.as_bytes()).await.ok()?;
+        let mut status = [0u8; 12];
+        stream.read_exact(&mut status).await.ok()?;
+        Some(status.starts_with(b"HTTP/1.1 200"))
+    };
+    matches!(tokio::time::timeout(PROBE, probe).await, Ok(Some(true)))
+}
+
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            control if control.is_control() => {
+                escaped.push_str(&format!("\\u{:04x}", u32::from(control)))
+            }
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 fn free_port() -> Result<u16, String> {
