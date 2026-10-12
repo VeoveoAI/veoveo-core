@@ -21,6 +21,7 @@ revision of this repository.
 | `platform/audit` | `veoveo-audit` | Audit records, signing, indexing and export |
 | `platform/audit/contract` | `veoveo-audit-contract` | Audit record, target and detail types |
 | `platform/artifacts/contract` | `veoveo-artifact-contract` | Artifact identities, metadata and release states |
+| `platform/artifacts/client` | `veoveo-artifact-client` | HTTP client for the Artifact plane: objects, streamed transfers, write capabilities, grants, share links, release states and access requests |
 | `platform/knowledge/contract` | `veoveo-knowledge-contract` | Knowledge source and retrieval types |
 | `platform/runtimes/embedding/contract` | `veoveo-embedding-contract` | Embedding request and profile types |
 | `platform/gateway/contract` | `veoveo-gateway-contract` | Gateway catalog registry, actions and admission types |

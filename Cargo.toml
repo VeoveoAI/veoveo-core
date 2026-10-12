@@ -5,6 +5,7 @@ members = [
     "mcp/conformance",
     "mcp/contract",
     "mcp/knowledge-extension",
+    "platform/artifacts/client",
     "platform/artifacts/contract",
     "platform/audit",
     "platform/audit/contract",
@@ -100,4 +101,5 @@ veoveo-mcp-contract = { path = "mcp/contract", default-features = false }
 veoveo-types = { path = "platform/types" }
 veoveo-modules = { path = "platform/modules", default-features = false }
 veoveo-gateway-contract = { path = "platform/gateway/contract" }
+veoveo-artifact-client = { path = "platform/artifacts/client" }
 veoveo-artifact-contract = { path = "platform/artifacts/contract" }
