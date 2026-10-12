@@ -1,18 +1,30 @@
--- The tasks schema holds durable MCP Tasks and their input exchanges.
+-- Tasks schema: durable MCP Tasks and the inputs they request.
+
 CREATE SCHEMA tasks;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA tasks REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
 GRANT USAGE ON SCHEMA tasks TO veoveo_server;
 
 -- A Task key, retention pin, input method or idempotency key: 1 to 256 UTF-8 bytes
--- without a control character (Unicode category Cc).
-CREATE FUNCTION tasks.is_valid_key(value text) RETURNS boolean
+-- without a control character of Unicode category Cc.
+CREATE FUNCTION tasks.valid_key(value text) RETURNS boolean
 LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
-RETURN octet_length(value) BETWEEN 1 AND 256 AND value !~ '[\u0001-\u001f\u007f-\u009f]';
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT octet_length(valid_key.value) BETWEEN 1 AND 256
+        AND valid_key.value !~ '[\u0001-\u001f\u007f-\u009f]'
+$$;
 
 -- Retention pins are distinct valid keys.
-CREATE FUNCTION tasks.is_valid_pin_set(pins text[]) RETURNS boolean
+CREATE FUNCTION tasks.valid_pins(pins text[]) RETURNS boolean
 LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
-BEGIN ATOMIC
-    SELECT coalesce(bool_and(tasks.is_valid_key(pin)), true)
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT coalesce(bool_and(tasks.valid_key(pin)), true)
         AND count(*) = count(DISTINCT pin)
-    FROM unnest(pins) AS pin;
-END;
+    FROM unnest(valid_pins.pins) AS pin
+$$;
+
+-- Check constraints call these functions as the writing role.
+GRANT EXECUTE ON FUNCTION tasks.valid_key(text), tasks.valid_pins(text[]) TO veoveo_server;

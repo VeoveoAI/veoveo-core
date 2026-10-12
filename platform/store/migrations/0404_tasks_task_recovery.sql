@@ -1,9 +1,11 @@
--- A Task loses its owner when the owner's instance row is deleted. Unfinished work
--- then moves to the state its recovery class declares: a pending cancellation
--- completes, resumable work returns to the queue, and work whose effects may have
+-- A Task loses its owner when the reaper deletes the owner's instance row. Unfinished
+-- work then moves to the state its recovery class declares: a requested cancellation
+-- completes, resumable work returns to the queue, and work whose effect may have
 -- partly happened fails.
 CREATE FUNCTION tasks.task_recovery() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
 BEGIN
     IF NEW.status = 'cancel_requested' THEN
         NEW.status := 'cancelled';
@@ -24,7 +26,7 @@ BEGIN
         NEW.completed_at := now();
     END IF;
     RETURN NEW;
-END;
+END
 $$;
 
 CREATE TRIGGER task_recovery BEFORE UPDATE OF owner_instance ON tasks.task

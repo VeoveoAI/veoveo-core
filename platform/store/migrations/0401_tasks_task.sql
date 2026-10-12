@@ -1,13 +1,15 @@
--- One durable MCP Task. Columns used in predicates are typed; the request input,
--- result, failure details and the invocation authority snapshot are JSON.
+-- One durable MCP Task. Columns that queries filter on are typed; the request input,
+-- the result, failure details and the invocation authority snapshot are JSON.
 CREATE TABLE tasks.task (
     id uuid PRIMARY KEY,
     server text NOT NULL,
-    -- The owner's tenant, or `installation` for an installation-wide owner.
+    -- The owner's tenant key: its explicit claim, or `installation` without one.
     tenant text NOT NULL,
-    -- The owner's explicit tenant claim; absent for an installation-wide owner.
+    tenant_id uuid NOT NULL REFERENCES identity.tenant (id),
+    -- The owner's explicit tenant claim; absent for an installation-wide principal.
     owner_tenant text,
     owner_principal text NOT NULL,
+    principal_id uuid NOT NULL REFERENCES identity.principal (id),
     owner_kind text NOT NULL,
     owner_issuer text NOT NULL,
     owner_subject text NOT NULL,
@@ -45,6 +47,7 @@ CREATE TABLE tasks.task (
     CONSTRAINT task_id_v7 CHECK (
         uuid_extract_version(id) = 7 AND substr(id::text, 20, 1) IN ('8', '9', 'a', 'b')
     ),
+    CONSTRAINT task_server CHECK (server ~ '^[a-z][a-z0-9-]{0,47}$'),
     CONSTRAINT task_owner_kind CHECK (owner_kind IN ('user', 'service')),
     CONSTRAINT task_owner_tenant CHECK (owner_tenant IS NULL OR owner_tenant = tenant),
     CONSTRAINT task_authority CHECK (
@@ -63,7 +66,7 @@ CREATE TABLE tasks.task (
         )
     ),
     CONSTRAINT task_idempotency_key CHECK (
-        idempotency_key IS NULL OR tasks.is_valid_key(idempotency_key)
+        idempotency_key IS NULL OR tasks.valid_key(idempotency_key)
     ),
     CONSTRAINT task_ttl CHECK (ttl_ms >= 0),
     CONSTRAINT task_poll_interval CHECK (poll_interval_ms >= 0),
@@ -84,21 +87,25 @@ CREATE TABLE tasks.task (
     CONSTRAINT task_cancel_requested CHECK (
         status <> 'cancel_requested' OR cancel_requested_at IS NOT NULL
     ),
-    CONSTRAINT task_retention_pins CHECK (tasks.is_valid_pin_set(retention_pins)),
+    CONSTRAINT task_retention_pins CHECK (tasks.valid_pins(retention_pins)),
     CONSTRAINT task_revision CHECK (revision >= 1)
 );
 
+-- A repeated creation with one key returns the existing Task; pruning releases the key.
 CREATE UNIQUE INDEX task_idempotency ON tasks.task (
     server, tenant, owner_principal, profile, idempotency_key
 ) WHERE idempotency_key IS NOT NULL;
 
+-- Owner reads, pages and subscriptions.
 CREATE INDEX task_owner_page ON tasks.task (
     server, tenant, owner_principal, profile, created_at, id
 );
 
+-- Claims take the oldest queued Task of a server.
 CREATE INDEX task_queued ON tasks.task (server, created_at, id)
 WHERE status = 'queued';
 
+-- Reaping an instance clears ownership through this index.
 CREATE INDEX task_owner_instance ON tasks.task (owner_instance)
 WHERE owner_instance IS NOT NULL;
 
@@ -107,7 +114,8 @@ WHERE status IN ('succeeded', 'failed', 'cancelled') AND retention_pins = '{}';
 
 ALTER TABLE tasks.task ENABLE ROW LEVEL SECURITY;
 
--- The scalar subquery evaluates the caller's servers once per statement.
+-- A registered server reads and writes the Tasks of its own servers. The scalar
+-- subquery runs once per statement.
 CREATE POLICY task_server ON tasks.task TO veoveo_server
 USING (server = ANY ((SELECT kernel.current_servers())::text[]))
 WITH CHECK (server = ANY ((SELECT kernel.current_servers())::text[]));
