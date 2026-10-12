@@ -22,10 +22,6 @@ Implemented in this workspace.
 | Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. Gateway dependency metadata uses camelCase fields and unchanged snake_case operation values. |
 | [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/) | Linked tool arguments and structured results use the same canonical schemas exposed outside the app. |
 | HTML iframe sandbox and Content Security Policy | HTML runs in an opaque-origin `sandbox="allow-scripts"` frame. The default CSP denies remote network access while permitting local `data:` fetches; a live-data App may declare exact origins through `_meta.ui.csp`, which the host validates before adding them. Cookies, storage, and same-origin privilege remain absent. |
-| WHATWG URL | The Workbench uses the browser URL and URLSearchParams APIs to encode opaque continuation cursors under configured resource roots. |
-
-The browser MCP SDK packages use exact stable version `2.3.1`, verified against the
-[official release](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.3.1).
 
 ## The rule
 
@@ -71,14 +67,6 @@ A server shipping a view (see `servers/timeseries-mcp` and
    scope (e.g. `map:admin`) exactly like any other scoped tool; resources
   carry the scope their data warrants.
 
-Servers whose operator surface is primarily structured resource inspection and
-typed tool invocation may render `WorkbenchApp` from this crate. The server still
-owns every title, resource URI, tool name, and starter argument. The shared shell
-only implements the MCP Apps bridge, task observation, resource subscriptions,
-theme projection, and generic JSON presentation; it has no domain catalog and no
-authority of its own. A purpose-built App remains appropriate when the domain
-requires maps, charts, video, spatial interaction, or another specialized visual.
-
 ### Packaged App Assets
 
 `AppHtml` reads an image-owned HTML file into an immutable startup snapshot. It
@@ -86,37 +74,8 @@ requires a regular, nonempty UTF-8 file within the Console's 2 MiB limit. Missin
 invalid assets fail startup. The server applies the same resource authorization to
 these bytes as to an embedded document; the loader creates no route or permission.
 
-Map and Stream package their App HTML outside the Rust binary. Their Cargo metadata
-declares `image-asset-inputs`, which the image planner places in a separate named
-context and excludes from compiler mounts. Runtime assembly copies those exact bytes
-into the image. Presentation edits therefore retain the compiler action. A local
-server accepts an explicit asset path and reads it on each process start; its file
-does not change the running snapshot. Deployments obtain new bytes through a new
-immutable image digest.
-
-## Workbench Collection Pages
-
-Continuation URIs use the browser's `URL` and `URLSearchParams` builders. The App
-sets the `cursor` query parameter as an opaque value; reserved characters cannot
-introduce another parameter or fragment. The configured root supplies the scheme,
-authority and path.
-
-The shared operational workbench recognizes JSON collection pages with an `items`
-array, a positive integral `limit`, and a `next_cursor` string or null. Knowledge
-collections instead use at most 100 URI-bearing `items` and an optional `nextCursor`. The pager recognizes these two current domain contracts and tracks
-the selected resource and cursor together. The item
-count cannot exceed the declared limit. This presentation profile uses the current
-resource's configured root and a `cursor` query parameter; it accepts no replacement
-resource URL from the payload. Domains that use another page shape own their page
-navigation in their App.
-
-Previous and Next fetch one page per action. Refresh and root notifications reload
-the current cursor. Resource selection and tool completion return to the first page.
-Each read has a generation number, which prevents a late response from replacing a
-newer selection. The browser test in
-[`workbench-pagination.test.mjs`](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/apps/console/web/tests/workbench-pagination.test.mjs)
-qualifies navigation and stale-response handling headlessly. Visual acceptance uses
-the repository's headed hardware browser requirements.
+A server packages its App HTML in its own image and passes the file path at startup.
+The loader reads the file on each process start, so new bytes arrive with a new image.
 
 ## Host obligations
 
@@ -323,36 +282,6 @@ operation journal and rechecks admission during dispatch and App recovery.
 subscription bridge. Each host supplies fixed browser routes and authenticated
 transport functions. Workspace's client design declares its supported subset of
 Console extensions rather than implying full Console host parity.
-
-## Browser Validation And Asset Builds
-
-`browser/admission.js` admits official tool, Task and resource envelopes using the
-pinned MCP core schemas. Its owner-schema parser uses the maintained CfWorker
-validator without dynamic code generation. Each purpose-built App supplies its
-own generated bundle and selects roots beside its tool and resource consumers.
-Only the tooling composition enumerates these bundles; another server can reuse
-the browser parser without changing this crate.
-
-`browser/build.mjs` bundles scripts and validators into local HTML. It rejects
-remote executable asset references and documents larger than 2 MiB. Map retains
-its MapLibre worker build and image asset context. Stream retains its separate
-image asset context. Browser queue state and provider payloads do not enter the
-shared schema vocabulary.
-
-The Workbench admits its generated configuration and official protocol envelopes.
-Generic tool output and resource bodies stay open. Its existing named Recording
-projection adapter validates the actual Recording contract handle before requesting
-a transfer. Pagination keeps the selected resource root, opaque cursor and response
-generation together; an invalid response does not replace the retained value.
-
-The shared browser Task adapter generates seed and detail schemas from the pinned Rust
-SDK's final flat Task declarations. Its schema adapter preserves the SDK's custom
-status-to-payload decoder checks. Synchronous tool and resource envelopes use the
-maintained browser SDK admission. Workbench configuration and Recording projection
-requests use generated owner declarations; the Recording adapter checks request
-identity, timeline, sample grid, units, frame references and limits before requesting
-a stream. It verifies the admitted byte length and payload SHA-256 before presenting
-stream integrity. Message listeners accept only their parent window.
 
 ## Generic Declaration Dependencies
 
