@@ -1,11 +1,9 @@
 # Veoveo MCP Server Contract
 
 This document is the normative contract for every hosted MCP server and every
-domain workload registered with a Veoveo installation. It consolidates the protocol,
-schema, runtime, packaging, documentation, and self-description requirements
-that were previously stated across `AGENTS.md`, `docs/TECH_DESIGN.md`, and
-`docs/ENTERPRISE_DEPLOYMENT.md`; those documents now point here. The crate in
-this directory, `veoveo_mcp_contract`, implements the shared mechanics that
+domain workload registered with a Veoveo installation. It states the protocol,
+schema, runtime, packaging, documentation, and self-description requirements. The
+crate in this directory, `veoveo_mcp_contract`, implements the shared mechanics that
 make most of the contract hold by construction.
 
 **Contract revision: 4.** The crate exports the numeric revision as
@@ -27,78 +25,43 @@ in its crate documents and in its contract resource.
 | JSON Schema 2020-12 | ordinary SDK and Pydantic generation with bounded references and composition; gateway configuration, deployment and provenance schemas remain typed |
 | RFC 6570 URI Templates | Checked MCP setup uses the foundational ASCII-template profile and iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses. Gateway policy selectors retain their documented restricted matching language. |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
-| OAuth 2.0, RFC 8414, RFC 9207, RFC 8707, RFC 9728, and OpenID Connect Discovery 1.0 | private-installation profile with installation or governed managed-client registrations, exact issuer and resource binding, step-up scopes, and `private_key_jwt`; OAuth Dynamic Client Registration is excluded |
+| OAuth 2.0, RFC 8414, RFC 9207, RFC 8707, RFC 9728, and OpenID Connect Discovery 1.0 | private-installation profile with installation or governed managed-client registrations, exact issuer and resource binding, step-up scopes, and `private_key_jwt`; end-user clients do not use Dynamic Client Registration |
+| OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, renew and remove themselves through the profile in [the server registration protocol](../registration-extension/DESIGN.md) |
 | Veoveo resumable artifact HTTP upload | repository-owned JSON admission/completion and raw part PUT contract, UUIDv7 idempotency, SHA-256 integrity, and bounded browser-safe 64-bit counters; independent of MCP methods |
-| `veoveo.ai/gateway-internal-assertion/v2` and `veoveo.ai/gateway-request-context/v2` | EdDSA gateway-to-server invocation assertion and required typed request-context marker; unsupported profiles reject, and changes require a coordinated gateway/server drain. Checked execution attribution preserves the frozen audit contract. |
-| Veoveo upload assertion | EdDSA JWT with `artifact-upload` audience and signed control-plane/context digests; restricted to the HTTP upload service |
+| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `aud` is the server slug, with granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail and the actor, authority and request context in the `ai.veoveo/invocation` claim; specified in [the server registration protocol](../registration-extension/DESIGN.md#forwarded-identity) |
+| Veoveo upload token | the same access token with `artifact-upload` audience and signed control-plane and context digests in the `ai.veoveo/artifact-upload` claim; restricted to the HTTP upload service |
 | Veoveo access-token `session_family` | Signed UUIDv7 refresh-family binding for browser tokens; current family revocation is enforced by the gateway, and absence supplies no renewable session authority |
-| Veoveo internal `request_context` | Signed source principal, verified access-token metadata and required audit request correlation; includes OAuth client, optional session family and managed-agent execution metadata; contains no bearer value and grants no independent renewal permission |
-| Computers `computer_attach` policy action | The Computers contract registers interactive access to an exact `computer://computers/{id}` resource; evaluation also requires current resource-read permission. |
-| `ai.veoveo/app-resource-dependencies` | deterministic gateway projection of exact cross-server App resource-read requirements admitted under active profile and actor authority |
+| Veoveo `request_context` | Signed source principal, verified access-token metadata and required audit request correlation; includes OAuth client, optional session family and managed-agent execution metadata; contains no bearer value and grants no independent renewal permission |
 | `ai.veoveo/knowledge-source` | Veoveo extension that declares resource collections as knowledge, with typed read observations and conditional reads; specified in [the knowledge source extension](../knowledge-extension/DESIGN.md) |
 
-Each hosted server manifest declares separate typed upstream URLs for MCP and
-health traffic. The health URL is an unauthenticated HTTP `GET` endpoint whose
-successful response means the process can serve traffic. The gateway never
-uses an MCP request, an authentication failure, or a method rejection as a
-health signal.
+A hosted server declares its MCP endpoint when it registers with the Gateway and
+renews its registration lease while it can serve traffic. The Gateway never uses an
+MCP request, an authentication failure, or a method rejection as a health signal.
 
 ## Domain Contract Ownership
 
-Recording’s [domain contract](../../platform/recordings/contract/DESIGN.md) owns its
-public models and addresses below Hub and the MCP server. The server library exposes
-those types through its isolated `contract` feature, which the gateway’s Recording
-adapter imports. MCP core owns neither those models nor a dependency on either package.
-
-UAV's library owns the `veoveo.ai/live-view/v4` models for logical cameras, encoded
-products and viewer authorizations. Consumers import its `contract` feature with
-default features disabled. The [UAV design](../../servers/uav-sim-mcp/DESIGN.md#library-features)
-defines that profile and its dependency boundary. Shared MCP mechanics do not depend
-on the UAV library or enumerate its camera and resource vocabulary.
+A server's library owns its public models and addresses and exposes them through an
+isolated `contract` feature that builds with default features disabled. Consumers
+import that feature. MCP core owns no domain models and depends on no server library.
 
 ## Scope And Discovery
 
 The [Gateway contract](../../platform/gateway/contract/DESIGN.md#console-bootstrap-and-health)
 owns the closed Console bootstrap DTOs in `src/console.rs`. This HTTP projection
-carries authenticated session presentation and branding. The
-[Console BFF contract](../../apps/console/bff/DESIGN.md#installation-snapshot-and-events)
-owns administrator inventory and its entity events. These browser contracts are
-independent of MCP transports. The [gateway projection design](../../platform/gateway/composition/src/bin/gateway/console/DESIGN.md)
-defines their authority boundary. Browser models are generated with
-`cargo xtask release client-types`; Rust remains the wire source of truth.
+carries authenticated session presentation and branding and is independent of MCP
+transports. Rust remains the wire source of truth for generated browser models.
 
-The contract governs the servers in `servers/*-mcp/` and any independently
-deployed domain server whose gateway entry joins an installation's catalog.
+The contract governs every server that registers with a Veoveo Gateway, in any
+implementation language. Checks are generic over the Gateway's registration catalog
+and never enumerate servers by hand. Adding a server means the checks find it once it
+registers. No conformance manifest, Console page, or documentation index requires
+editing when a server is added.
 
-Checks are generic over a discovered catalog and never enumerate servers by
-hand:
-
-- In the repository, a server is any directory under `servers/` whose name
-  ends in `-mcp`, regardless of implementation language.
-- Against an installation, the server set is the gateway control-plane
-  catalog.
-
-Hosted servers may consume another server's canonical resources when the active
-installation profile and policy expose them. This is the supported integration
-path for reusable domain capabilities such as Map data. An App that performs a
-cross-server read declares a typed App dependency; the gateway projects only
-the caller-authorized declaration. This grants no direct storage, private HTTP,
-renderer, or credential access, and it does not authorize mutations.
-- Transport-invariant checks additionally name the known MCP endpoints that
-  live outside `servers/`: the gateway itself, the bridges, and showcase
-  workloads such as `showcase/sumo/sumo-mcp`.
-
-Adding a server means the checks find it. No conformance manifest, Console
-page, or documentation index requires editing when a server is added.
-
-Hosted server manifests may declare exact cross-server App resource
-dependencies. Each declaration binds one server-owned `ui://` App resource
-to a registered target server, that server's canonical URI scheme, a
-non-root prefix, a required scope, permitted operations, and optional data
-labels. Validation rejects incomplete or mismatched declarations. The
-gateway projects only dependencies admitted by the caller's active profile,
-scopes, and labels; the eventual resource read remains subject to ordinary
-Work Context and resource authority.
+Hosted servers may consume another server's canonical resources when the caller
+holds the permission the owning server declares for them. A server reads them through
+the Gateway with the caller's authority, never through direct storage, private HTTP,
+renderer, or credential access. Registration carries no cross-server App resource
+dependencies, so the Gateway admits none.
 
 ## Typed Scopes And Resource Identities
 
@@ -118,9 +81,7 @@ or resource family. The gateway consumes validated names and registration data w
 a compiled registry of domain enums. Rust cross-server consumers import the owning
 library's public contract with its `contract` feature and default features disabled.
 
-[CE-13](../../docs/CONTRACT_EVOLUTION.md#ce-13-modular-types-and-server-owned-contracts)
-defines the accepted separation of foundational types from MCP integration. The
-foundational names, platform identity types, access subjects, resolved invocation
+The foundational names, platform identity types, access subjects, resolved invocation
 authority and output defaults, reference types, and provenance digests live in `veoveo-types`; consumers import
 them directly. Authentication and authorization still use the existing Principal,
 Work Context membership, and policy implementations. Domain-owned Artifact identity
@@ -142,8 +103,6 @@ domain implementations. The foundation validates concrete references through its
 parser and gives template declarations a separate type. Its component parser and
 builder apply the stricter profile for domain-owned addresses. Network resource
 identities may include ports; constructing a generic reference does not admit a domain route.
-Wider URI builder and checked setup adoption are implementation work in the
-[consolidated plan](../../docs/CONTRACT_CONSISTENCY_PLAN.md#modular-types-and-server-contracts).
 `server_contract::McpServerContract` associates each server's scope and resource types
 with its MCP configuration, documents, descriptors, and templates. A server implements
 this open trait in its MCP feature; its public contract feature needs only the foundational
@@ -169,15 +128,14 @@ their resource parser. The foundational `ResourceSelector`, `ResourceUriPrefix` 
 Their matching semantics are separate from RFC 6570 template expansion. This setup establishes API and declaration consistency;
 hosted conformance and domain tests establish the relevant behavior. Authentication,
 resource visibility, and operation policy stay with their existing owners.
-The [Python SDK](../../sdk/python/DESIGN.md#checked-mcp-setup) implements these associations
+The [Python SDK](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/sdk/python/DESIGN.md#checked-mcp-setup) implements these associations
 as generic protocols and checked setup. Its foundational module has no MCP imports;
-Python owners supply their own scope enum, resource variants and parser. Datasheet
-consumes that setup before starting its dependencies.
+Python owners supply their own scope enum, resource variants and parser.
 Gateway template discovery and resource completion use `PolicyTarget::ResourceTemplate`;
 concrete resource targets use their existing variants. The shared evaluator preserves
 the selector language and checks action/target consistency. Native administration
 uses `PolicyTarget::PlatformTask` with a foundational Task UUID; MCP routes use the
-opaque `PolicyTarget::Task` identity. Both apply the same server exposure and policy.
+opaque `PolicyTarget::Task` identity. Both apply the same role evaluation.
 The gateway converts these targets into the [unified audit contract](../../platform/audit/contract/DESIGN.md).
 
 ### Declaration And Runtime Features
@@ -202,7 +160,7 @@ The Gateway contract owns the discovery degradation DTO. The runtime's
 `GatewayDiscoveryMetadata` trait converts that value to and from MCP `MetaObject`
 without adding transport dependencies to the DTO owner.
 
-The [catalog recipe](../../platform/gateway/catalog/DESIGN.md) supplies owner actions,
+The [catalog recipe](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/gateway/catalog/DESIGN.md) supplies owner actions,
 target codecs and configuration sections. Control-plane decoding leaves contributed
 targets unadmitted until an explicit registry checks them. Schema producers compose
 registered choices through type identities; unrelated schemas with the same display
@@ -313,7 +271,7 @@ invocation provenance. Current access checks apply on every read, update, cancel
 and subscription. Signing in again or changing unrelated scopes does not create a
 different owner. Retained data labels and current domain permissions still constrain
 results and actions. The gateway's persisted transition is specified in
-[`Task Routes`](../../platform/gateway/src/state/task_routes/DESIGN.md).
+[`Task Routes`](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/gateway/src/state/task_routes/DESIGN.md).
 
 A `tools_compat` registration may explicitly enable the direct task-call adapter.
 That adapter supplies the negotiated capability upstream, waits on the canonical
@@ -340,45 +298,36 @@ integrity, and replay rules are validated on each request. Domain sessions such 
 UAV simulation sessions remain application state; they never derive authority or
 lifetime from MCP transport locality.
 
-The gateway signs a fresh internal assertion for every upstream request. Ordinary
-requests have a 60-second maximum assertion lifetime. A `subscriptions/listen` POST
-has a 15-minute maximum, because the source enforces assertion expiry throughout the
-stream. Both lifetimes end at the source access token's expiration when it is earlier.
-This permits a longer bearer lifetime only for assertions minted when opening a
-subscription; those credentials stay on the private gateway-to-server transport.
-Clients renew their own authority and reopen listeners before that deadline.
-Connection reuse depends only on validated transport security and
-catalog generation; request authority stays in the assertion and request metadata.
+The gateway signs a fresh RFC 9068 access token for every upstream request. Ordinary
+requests have a 60-second maximum token lifetime. A `subscriptions/listen` POST has a
+15-minute maximum, because the source enforces token expiry throughout the stream.
+Both lifetimes end at the source access token's expiration when it is earlier. This
+permits a longer bearer lifetime only for tokens minted when opening a subscription;
+those credentials stay on the private gateway-to-server transport. Clients renew their
+own authority and reopen listeners before that deadline. Connection reuse depends only
+on validated transport security and catalog generation; request authority stays in the
+token and request metadata.
 
 Authenticated MCP and HTTP proxy requests include typed `request_context` in the
-`veoveo.ai/gateway-internal-assertion/v2` assertion. The context requires the
-`veoveo.ai/gateway-request-context/v2` marker. Producers and receivers require a
-coordinated drain for this shape; missing and unsupported formats fail verification.
-The old strict context shape rejects the new marker. Access-token metadata carries
-checked `AuditManagedExecution` attribution rather than an owner public claim.
+token's `ai.veoveo/invocation` claim, which refuses unknown fields. Access-token
+metadata carries checked `AuditManagedExecution` attribution rather than an owner
+public claim.
 Attributed requests must match automated service identity, client, tenant and Work
 Context and cannot carry a browser session family. It preserves the JWT-verified principal before delegated actor
 derivation and its access-token metadata. Rust and Python verify the context against
-the actor, tenant, Work Context, scopes and invocation provenance. The assertion's
+the actor, tenant, Work Context, scopes and invocation provenance. The token's
 expiration cannot exceed the source access token's expiration. Every supplied context
 also carries the platform audit contract's checked request, trace and span IDs and
 optional source IP address. Reusing a transport
 never supplies another browser family's request context.
 
-Bootstrap fixtures, reconstructed Task owners and upload-only assertions may omit
-this field. Omission grants no durable or renewable request authority. A consumer
+Bootstrap fixtures, reconstructed Task owners and upload tokens may omit this field. Omission grants no durable or renewable request authority. A consumer
 that admits renewable Computer access or stores current-policy execution authority
 must require this context and perform its own current policy/grant checks. It must
 not infer client identity or family membership from an old Task owner. Accepted
 background work can outlive admission tokens only under its explicit durable
 execution policy, with fresh dispatch authority and separately bounded access.
-
-This optional signed-claim extension uses hosted MCP revision 4. Update gateway
-issuers and selected consumers before admitting the Computers profile. Existing
-short-lived assertions without the field remain usable only for consumers that do
-not require it. The gateway/auth owner must retire those deployment revisions before
-Computers acceptance; rollback cannot admit Computers through an issuer that omits
-the field. Shared direct/delegated/automated fixtures qualify both SDK readers.
+Shared direct, delegated and automated fixtures qualify the Rust reader.
 
 Gateway traffic with the same validated transport-security configuration and
 active catalog revision shares one process-wide HTTP connection pool and one
@@ -415,21 +364,18 @@ counts and the visible-set digest before returning. A warm list evaluates no pol
 A failed fetch becomes eligible on the next explicit
 list call.
 
-Prompt discovery contacts only servers that declare prompts and whose profile
-exposure lists them. A server that fails prompt discovery is left out and named in
+Prompt discovery contacts only registered servers that declare prompts. A server that fails prompt discovery is left out and named in
 the same degradation metadata under the `prompts` surface.
 
 A profile whose work requires a complete tool catalog sets
 `discovery_failure_mode` to `fail_closed`; its tool and prompt lists fail until
-every exposed server is reachable, which prevents an autonomous client from
+every registered server is reachable, which prevents an autonomous client from
 retaining a silently incomplete toolset. Upstream `listChanged` notifications invalidate
 successful per-server entries and wake callers without polling. Direct resource
 reads and tool calls remain fail closed.
 
-Workspace model preparation checks the degradation metadata for the servers of
-its configured tools. An incomplete required surface stops preparation before a
-model request; an unrelated unavailable server does not. Policy-filtered absence
-in a complete surface remains authoritative.
+A client that needs a complete surface checks the degradation metadata for the
+servers it uses. Policy-filtered absence in a complete surface remains authoritative.
 
 Request-scoped subscription delivery invalidates the matching discovery cache before
 forwarding its list-change notification. RMCP routes these notifications separately
@@ -482,7 +428,7 @@ URI conventions, Work Context propagation, and internal identity.
 - Artifact and recording operations present the forwarded short-lived
   internal identity signed by the gateway. Durable Artifact reads may instead
   present an explicitly issued, bounded task-read capability through the dedicated
-  internal routes defined by the [Artifact service](../../platform/artifacts/service/DESIGN.md).
+  internal routes defined by the [Artifact service](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/artifacts/service/DESIGN.md).
   Capability issuance requires that gateway identity; a task capability cannot
   authenticate an ordinary operation or mint another capability.
 - Administrative HTTP, when a server has it, is served only under the
@@ -543,7 +489,7 @@ supplies three things:
 let server = HostedServer::for_domain::<MyDomain>()
     .deployment(&public_deployment, args.allow_loopback_hosts)?
     .allowed_hosts(args.allowed_hosts.iter().cloned())
-    .internal_trust(GatewayInternalTrustBundle::from_json(&args.internal_trust_jwks)?)?
+    .internal_trust(GatewayInternalTrustBundle::from_key_set(&registration.access_tokens().jwks)?)?
     .handler(move || {
         Hosted::new(MyDomain::new(state.clone()))
             .with_tasks(DurableTasks::tasks_only(MyTasks::new(state.clone())))
@@ -559,10 +505,9 @@ domain's handler does not compile. `authenticated_routes`, `admin_routes`,
 `public_routes`, `liveness` and `readiness` add server-specific HTTP. A liveness
 check covers only failures a restart repairs, such as a dead worker process.
 `internal` replaces `deployment` for a server the gateway reaches at an internal
-authority under `/{slug}`, such as Computers. `internal_root` serves a
-cluster-internal server whose gateway upstream and protocol paths are
-root-relative, such as Recording with its Rerun gRPC service. Both admit only the
-internal authorities they are given. `mcp_request_limit` lowers the transport's
+authority under `/{slug}`. `internal_root` serves a cluster-internal server whose
+gateway upstream and protocol paths are root-relative. Both admit only the internal
+authorities they are given. `mcp_request_limit` lowers the transport's
 4 MiB request-body limit, and `request_timeout` answers 504 when an authenticated
 request has not started its response in time; a subscription stream continues
 after its response starts. Admin routes join the
@@ -580,7 +525,7 @@ The host gives every server the same behavior:
 | Behavior | Host rule |
 |---|---|
 | Routes | `{mount}/healthz`, optional `{mount}/readyz`, `{mount}/admin/docs/*` and `{mount}/mcp` |
-| Authentication | Gateway internal assertion on MCP, admin and authenticated routes; the token audience is the server slug |
+| Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes; the token audience is the server slug |
 | Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` after the domain's list hooks, sorted, 100 per page, private, five-second cache |
 | Well-known reads | `{scheme}://docs` routes and `{scheme}://contract` |
@@ -590,13 +535,13 @@ The host gives every server the same behavior:
 | Tools | Durable tasks start first; other calls dispatch through the tool router |
 | Shutdown | SIGTERM or Ctrl-C, cancelling in-flight MCP work |
 
-A new server starts from [`templates/rust-mcp`](../../templates/rust-mcp/README.md).
-`servers/duckdb-mcp` is the reference for a server with durable tasks, and
-`servers/frames-mcp` is the reference for one that also publishes resource changes.
+A new server starts from the
+[`veoveo-template-mcp-rust`](https://github.com/VeoveoAI/veoveo-template-mcp-rust)
+template repository.
 
 The crate's `testing` feature provides `hosting::testing` for a server's
 dev-dependencies. `testing::for_domain` starts the builder on a fixed test deployment
-that trusts a published test key. `TestGateway` signs gateway assertions for a test
+that trusts a published test key. `TestGateway` signs gateway access tokens for a test
 user and sends MCP and HTTP requests through the complete router, so discovery,
 reads, tools and prompts are testable without a deployment.
 
@@ -610,29 +555,42 @@ session locality is never a reason for singleton deployment.
 
 ## Packaging And Registration
 
-Server manifests may approve Knowledge collections through the generic domain types
-in [the Knowledge contract](../../platform/knowledge/contract/DESIGN.md). Each approval
-belongs to the manifest's server and names registered data labels. The manifest must
-offer resources and resource templates. Approvals do not add source-owned vocabulary
-to MCP core.
+A server ships as an OCI image and registers itself with the Gateway at startup
+through the [server registration protocol](../registration-extension/DESIGN.md), an
+RFC 7591 and RFC 7592 profile. Its client metadata carries three declarations:
+`ai.veoveo/registration` states the slug, URI scheme, version and endpoint,
+`ai.veoveo/authorization` lists the server's permissions and the permission every
+tool, resource template and prompt requires, and `ai.veoveo/module` carries its
+tables and migrations. The server renews the registration as a lease and removes it
+on shutdown.
 
-An OAuth client's optional `knowledge_indexing` registration requires a tenant-bound
-automated `private_key_jwt` client using only `client_credentials` and one dedicated
-profile. Every granted collection needs an explicit installation approval and source
-resource exposure. A `catalog-only` approval permits source-contract discovery;
-member reads and root subscriptions require `index` approval at runtime.
-The profile disables tools, prompts, Tasks, completion and Artifact
-upload. Its policy allows only resource discovery, reads and subscriptions.
-The [gateway](../../platform/gateway/DESIGN.md#knowledge-indexing-clients) enforces
-collection and observation admission at runtime.
+The installation configuration names no server. Its `authorization` section declares
+roles, grants and overrides. A role selects declared permissions by access kind and
+risk, a grant gives a role to a group or principal, optionally within one tenant, and
+an override adds risks to a named permission or denies it. Its `registration` section
+names the Gateway-owned registration secret reference and the lease timings, which
+default to renewal every 10 seconds and expiry after 30. A configuration without
+roles, grants or registered servers validates.
 
-A server ships as an OCI image with a versioned Helm chart. Its gateway entry
-is registered in the typed control plane with its routes and capabilities, and
-states the contract revision the server complies with. Developers add hosted servers
-inside their Veoveo fork and update the complete control-plane configuration.
-Installation policy controls exposure and authority. Remote MCP integrations continue
-through the supported gateway and bridge contracts. See
-[`docs/FORK_DEVELOPMENT.md`](../../docs/FORK_DEVELOPMENT.md).
+```json
+{
+  "authorization": {
+    "roles": [
+      { "name": "member", "access": ["read", "write"] },
+      { "name": "admin", "access": ["read", "write"], "risks": ["sensitive", "destructive", "billed", "physical", "administer"] }
+    ],
+    "grants": [
+      { "role": "member", "subject": { "group": "tenant-members" } },
+      { "role": "admin", "subject": { "group": "installation-admins" } }
+    ],
+    "overrides": [{ "kind": "deny", "permission": "time.admin" }]
+  },
+  "registration": {
+    "secret": "registration-secret",
+    "lease": { "renewEverySeconds": 10, "expiresAfterSeconds": 30 }
+  }
+}
+```
 
 ## Well-Known Surface
 
@@ -713,10 +671,9 @@ explanation and a catalog condition; C32 permits it only when Discover does not 
 so C32 is applicable there. The conformance runner checks the observed condition in
 both directions. A source declaration never supplies a runtime test outcome.
 
-`cargo xtask release contract-docs` discovers package owners and reconciles Rust document
-selections. It projects profiles into marked manual sections and exports the catalog
-and JSON Schema. `--check` rejects stale outputs. Source builds embed those manual bytes
-and their digests; runtime loading verifies agreement instead of replacing the body.
+Owner profiles project into marked manual sections, and the catalog and JSON Schema
+are exported to `catalog/`. Source builds embed those manual bytes and their digests;
+runtime loading verifies agreement instead of replacing the body.
 Python and Node package the same generated catalog and schema with their owner profile.
 Their loaders perform the same semantic admission without repository reads.
 
@@ -740,7 +697,7 @@ Their loaders perform the same semantic admission without repository reads.
 | C13 | MUST | No private control database. |
 | C14 | MUST | No private byte route. |
 | C15 | MUST | The server ships as an OCI image with a versioned Helm chart. |
-| C16 | MUST | The gateway entry is registered in the typed control plane with routes, capabilities, and policy. |
+| C16 | MUST | The server registers with the Gateway through `ai.veoveo/registration` and declares the permission every tool, resource template and prompt requires through `ai.veoveo/authorization`. |
 | C17 | MUST | The registration and crate documents state the contract revision. |
 | C18 | MUST | Docs resources are served under `{scheme}://docs`. |
 | C19 | MUST | The contract declaration resource is served at `{scheme}://contract`. |
@@ -780,9 +737,9 @@ rules:
   unauthenticated request at both its index and document bodies. Credentials
   may be sent to the docs projection only when it has the same HTTP origin as
   the MCP endpoint.
-  Internal-assertion verification still proves only the selected boundary
-  checks; forged, expired, and misaddressed assertion cases remain explicit
-  profile or component tests.
+  Forwarded-token verification proves only the selected boundary checks;
+  forged, expired, and misaddressed token cases remain explicit profile or
+  component tests.
 - **Construction** — C03, C10, C18–C21 are inherited by consuming
   `veoveo_mcp_contract`; avoiding them requires bypassing the shared crate,
   which review treats as a contract change.
@@ -796,8 +753,8 @@ rules:
 - **Review** — C05, C06, C09, C13, and C14 are review-enforced boundaries;
   their violation is architectural, not stylistic.
 
-The installation manifest owns allowed and required exposure policy. Discover
-and list methods own runtime observations. Readiness intersects and compares
+The server's authorization declaration and the installation's roles own exposure.
+Discover and list methods own runtime observations. Readiness intersects and compares
 those two surfaces without copying observations into the contract resource.
 
 ### Resource source recovery
@@ -814,8 +771,8 @@ changes when discovery membership or descriptor metadata changes, independently 
 updates to an existing resource's contents.
 Broadcast lag requests reconciliation instead of silently discarding the gap.
 Resource-list lag likewise emits an invalidation. These notifications contain no
-resource content and never grant read authority. Time and Recording share projected
-Store LIVE sources across their local listeners. Source reconnection invalidates
+resource content and never grant read authority. A server shares projected Store LIVE
+sources across its local listeners. Source reconnection invalidates
 accepted identities after a delivery gap. Idle sources do not emit timer-generated
 resource changes: declared resource subscriptions can wake an agent. Client-side
 catalog reconciliation reads authoritative state without invoking a model.

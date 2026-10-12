@@ -4,12 +4,12 @@ The source base is `07f349f2`, with payload separation and the adjusted harness
 committed beside this record. Command and file admissions commit their immutable
 encrypted request into a private payload row. The journal carries a read-only link.
 Payload tables have no changefeed, and parent deletion cascades to the payload.
-The [Computer storage design](../../computers/DESIGN.md#private-request-storage)
+The [Computer storage design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/computers/DESIGN.md#private-request-storage)
 defines the storage and recovery rules.
 
 ## Method
 
-The [journal harness](../../computers/tests/journal_cost.rs) repeats the
+The [journal harness](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/computers/tests/journal_cost.rs) repeats the
 [inline-payload experiment](native-after-2026-10-01.md#encrypted-command-journals):
 real command admission, 1 KiB/64 KiB/1 MiB stdin, 16 metadata-only updates per
 fixture, native-feed and feed-disabled profiles, and three rotated rounds.

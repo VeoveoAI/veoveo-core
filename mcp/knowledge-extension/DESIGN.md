@@ -15,13 +15,13 @@ extension rule; ordinary MCP resources need no knowledge metadata.
 Agents, the Console, and the knowledge service consume the same resources that any
 MCP client reads. The extension adds metadata. It adds no methods, and it never
 replaces a server's resources with a second copy. The
-[knowledge sharing design](../../docs/KNOWLEDGE.md) describes how the audit log records
+[knowledge sharing design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/KNOWLEDGE.md) describes how the audit log records
 knowledge reads and the `knowledge-mcp` catalog and index built on this extension.
 
 The crate `veoveo-mcp-knowledge-extension` in this directory owns the typed
 models, the capability declaration, the read and search helpers, and the shared
 implementation of the well-known docs collection. The
-[implementation plan](../../docs/CONTRACT_CONSISTENCY_PLAN.md) tracks its
+[implementation plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md) tracks its
 delivery.
 
 ## Status
@@ -58,7 +58,7 @@ compilation and emits `include_str!` to track the document as a build input.
 | SHA-256, FIPS 180-4 | `contentSha256` over the exact UTF-8 bytes of each returned text item |
 | [W3C DCAT 3](https://www.w3.org/TR/vocab-dcat-3/) | Collection descriptors map to `dcat:Dataset`; this extension uses DCAT terms for alignment and does not serialize RDF |
 | [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/) | Closed schemas generated from the crate's Rust types for every descriptor and observation |
-| Veoveo Work Context | Access descriptors use the tenant, Work Context, grant, and data-label model in [Work Context governance](../../docs/WORK_CONTEXT_GOVERNANCE.md#output-ownership-and-access) |
+| Veoveo Work Context | Access descriptors use the tenant, Work Context, grant, and data-label model in [Work Context governance](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/WORK_CONTEXT_GOVERNANCE.md#output-ownership-and-access) |
 | `ai.veoveo/indexing-read` | Gateway request metadata selecting an approved collection and source-contract, enumeration or member intent; installation client registration establishes authority |
 
 Veoveo owns and versions this extension outside the MCP SEP process.

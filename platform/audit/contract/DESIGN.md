@@ -79,7 +79,7 @@ that attribution for background expiry and terminal records. Dictation summaries
 an end reason, accepted chunk count and audio duration; they cannot carry transcript text.
 
 Implementation and qualification are in progress under the
-[audit acceptance](../../../docs/CONTRACT_CONSISTENCY_PLAN.md#unified-audit-log).
+[audit acceptance](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#unified-audit-log).
 
 Destination IDs wrap configuration hashes separately from content digests. Export
 intents bind both content and signed-block hashes. Closed rejection codes carry no

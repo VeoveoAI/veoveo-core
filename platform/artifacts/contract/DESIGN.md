@@ -9,7 +9,7 @@
 | JSON Schema 2020-12 | Schemars schemas for identity, metadata, compliance, provenance, release/grant/control values, capabilities, progress, upload policy/limits and transfer notifications. Provenance has mode-specific required attribution; the transfer bundle selects the actual owner declarations. |
 | SHA-256 | `UploadSha256` admits exactly 64 lowercase hexadecimal characters with no prefix. Streaming descriptors and transfer receipts use this bare digest representation; services own hashing, byte-integrity settlement and hash preimages. |
 | Artifact upload and notification declarations | Upload JSON uses camelCase keys and closed state/error vocabularies. Contentless notifications carry `op: "changed"`, canonical `uploadId` and one of six emitted states. Policy, multipart layout, receipts, byte/count limits and header names are pure declarations; notification consumers perform a currently authorized status read. |
-| HTTP and authenticated Artifact service adapters | The [Artifact service](../service/DESIGN.md#standards-and-protocols) owns routes, streaming, credential verification, current policy and provider transport. This library supplies their wire values and limits without implementing HTTP or authentication. |
+| HTTP and authenticated Artifact service adapters | The [Artifact service](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/artifacts/service/DESIGN.md#standards-and-protocols) owns routes, streaming, credential verification, current policy and provider transport. This library supplies their wire values and limits without implementing HTTP or authentication. |
 | Chrono 0.4.45 UTC JSON timestamps | Runtime date/time values keep Chrono Serde and exclude its clock feature. The foundational `ChronoUtcTimestampSchema` declares the padded lexical profile with signed extended years, leap seconds, fractions and standard offsets instead of generic date-time. Calendar/range and owner relationships are admitted by actual decoding. |
 | Veoveo Artifact addresses | Neutral `artifact://{id}` occurrences and server presentations such as `media://artifact/{id}` |
 | [Veoveo concrete resource profile](../../types/DESIGN.md#concrete-resource-components) | URL 2.5.8 parses components and builds addresses; Artifact addresses exclude escapes, queries, fragments, credentials, ports, templates, and additional path segments |
@@ -60,7 +60,7 @@ occurrence. `ArtifactIdError` describes the required version without echoing inp
 
 Public timestamp fields select the shared schema-only carrier explicitly, including the private wires that emit metadata and snapshot schemas. Optional fields select `Option<ChronoUtcTimestampSchema>` and keep their actual omission/null policy. This changes schema admission without changing Rust DateTime storage, serialized bytes, version tags or relationship checks. The existing owner harness serializes creation and retention from twelve typed UTC producer cases, admits those values through their full schemas and decoders, and checks timestamp locations across grants, capabilities, access requests, controls, snapshots and transfer values. Calendar-invalid values still fail actual Chrono decoding even where the lexical schema can match them.
 
-The SDK's immutable timestamp token preserves Artifact wire precision and offers explicit datetime conversion under its [own design](../../../sdk/python/DESIGN.md#artifact-timestamp-values). Its qualified ingress uses emitted padded components, uppercase T/Z or standard numeric offsets, at most nine fractional digits and checked Gregorian/UTC bounds. Schema syntax alone does not authorize a read, settle an operation or establish a timestamp's source.
+The SDK's immutable timestamp token preserves Artifact wire precision and offers explicit datetime conversion under its [own design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/sdk/python/DESIGN.md#artifact-timestamp-values). Its qualified ingress uses emitted padded components, uppercase T/Z or standard numeric offsets, at most nine fractional digits and checked Gregorian/UTC bounds. Schema syntax alone does not authorize a read, settle an operation or establish a timestamp's source.
 
 `ArtifactMetadata` carries the occurrence, byte count, MIME and filename presentation,
 creation time, release state, compliance, and open producer metadata. Its compliance
@@ -88,7 +88,7 @@ agrees with the URI. Internally there is one identity source. The HTTP client an
 service resolution interfaces require `ArtifactUri`; strings enter at HTTP and JSON
 decoding. `TryFrom<Uuid>` checks version and variant when a driver provides a UUID.
 Optional `downloadUrl` typing and remaining access/service contracts are work in the
-[consolidated plan](../../../docs/CONTRACT_CONSISTENCY_PLAN.md#modular-types-and-server-contracts).
+[consolidated plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#modular-types-and-server-contracts).
 
 ## Metadata Snapshots
 

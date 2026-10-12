@@ -119,5 +119,5 @@ where required. Computers keeps its grant-change assertions beside its decoder.
 Dependency checks build declarations without service runtimes; they do not
 substitute for native schema checks.
 
-The [active plan](../../../../docs/CONTRACT_CONSISTENCY_PLAN.md#phase-3-module-ownership-of-persistence-and-queries)
+The [active plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#phase-3-module-ownership-of-persistence-and-queries)
 tracks qualification and the remaining production repository and schema-lane moves.

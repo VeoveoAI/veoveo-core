@@ -30,7 +30,7 @@ database-editor role used by services.
 ## Catalog Registration
 
 `catalog_registry.rs` reuses the production registration source in
-[`platform/gateway/catalog`](../../platform/gateway/catalog/DESIGN.md). Tests therefore
+[`platform/gateway/catalog`](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/gateway/catalog/DESIGN.md). Tests therefore
 exercise the same kernel and owner declarations as installation binaries without
 maintaining another registration list. Source reuse lets an owner test use its own
 library types without a reverse package dependency on the installation recipe.

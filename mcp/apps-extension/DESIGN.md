@@ -114,7 +114,7 @@ Previous and Next fetch one page per action. Refresh and root notifications relo
 the current cursor. Resource selection and tool completion return to the first page.
 Each read has a generation number, which prevents a late response from replacing a
 newer selection. The browser test in
-[`workbench-pagination.test.mjs`](../../apps/console/web/tests/workbench-pagination.test.mjs)
+[`workbench-pagination.test.mjs`](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/apps/console/web/tests/workbench-pagination.test.mjs)
 qualifies navigation and stale-response handling headlessly. Visual acceptance uses
 the repository's headed hardware browser requirements.
 

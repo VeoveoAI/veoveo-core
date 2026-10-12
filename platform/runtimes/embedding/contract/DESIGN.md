@@ -12,7 +12,7 @@
 
 This crate owns embedding-space identity below the runtime client, knowledge domain
 and Store. It has no HTTP, database, MCP or inference dependency. The runtime client
-described in the [embedding design](../DESIGN.md#client) constructs these values from
+described in the [embedding design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/runtimes/embedding/DESIGN.md#client) constructs these values from
 its qualified runtime response and deployment configuration.
 
 An `EmbeddingSpace` contains the model, checkpoint revision, dimension, pooling,

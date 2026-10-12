@@ -240,7 +240,7 @@ selects source paths, including newly staged files, and excludes build outputs.
 The checker matches path, public macro name, Rust entrypoint name and kind, and
 requires one definition for every catalog entry. Adding an entry requires owner
 rationale and parser tests. The policy lives in
-[`tools/xtask/src/commands/macro_policy.rs`](../../tools/xtask/src/commands/macro_policy.rs).
+[`tools/xtask/src/commands/macro_policy.rs`](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/tools/xtask/src/commands/macro_policy.rs).
 Production scalar and error helpers use ordinary owner functions and nominal types;
 test repetition uses generic functions.
 
@@ -258,5 +258,5 @@ empty scopes, invalid declarations and same-named owners. Audit tests compare ev
 migrated enum against its previous Serde/schemars declaration and verify unit-variant
 ordinals. Store and Time compare SDK kinds, conversion, rejection and JSON values
 against their previous declarations. Contract-only consumers qualify dependency
-isolation. The active [plan](../../docs/CONTRACT_CONSISTENCY_PLAN.md#phase-0-core-macros-and-shared-building-blocks)
+isolation. The active [plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#phase-0-core-macros-and-shared-building-blocks)
 tracks owner qualification and the remaining implementation phases.

@@ -254,7 +254,7 @@ those requirements. Documentation-only sources can use this command directly.
 Native fixtures check direct and gateway selection, missing declarations, duplicate
 preservation and gateway tool calls for both ordinary and restricted readers. The
 fault matrix runs under both naming routes. Installed owner harnesses use the
-[shared transport and restart helpers](../../testing/installed/DESIGN.md); their
+[shared transport and restart helpers](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/testing/installed/DESIGN.md); their
 workload, mutation, fixture admission and cleanup remain owner decisions.
 
 ## Authoritative Live-View Profile
@@ -313,7 +313,7 @@ The library,
 `certify` and ordinary MCP commands continue to receive credentials out of band.
 
 Machine-client `gateway-token-exchange` belongs to
-[`gateway-smoke-support`](../../platform/gateway/composition/src/smoke/utility/cli.rs).
+[`gateway-smoke-support`](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/gateway/composition/src/smoke/utility/cli.rs).
 Its installation-owned signing input and client registration are separate from this
 public-client login.
 
@@ -324,7 +324,7 @@ are operator diagnostics on standard error.
 The Gateway's `gateway-smoke-support` utility owns Media generation and its
 request-scoped Task notification drain. It checks the owner result contract and
 Artifact downloads described in the
-[Media design](../../servers/media-mcp/DESIGN.md#catalog-and-result-contracts).
+[Media design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/servers/media-mcp/DESIGN.md#catalog-and-result-contracts).
 
 ## Distribution
 

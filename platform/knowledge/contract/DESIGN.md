@@ -95,7 +95,7 @@ Evaluation cannot authorize index activation or promise quality after source cha
 [Knowledge storage](../../store/src/knowledge/DESIGN.md) owns schema, transactional
 fencing, activation and SQL candidate admission. The service owns source discovery,
 enumeration, change recovery, chunk selection and the final canonical access decision.
-The [service design](../../../servers/knowledge-mcp/DESIGN.md) specifies that service work.
+The [service design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/servers/knowledge-mcp/DESIGN.md) specifies that service work.
 
 ## Value Admission
 

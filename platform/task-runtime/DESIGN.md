@@ -446,7 +446,7 @@ together to establish the SQL selection guarantee across an installation. Prefli
 retained indexed/envelope owner and profile agreement; rejected records stay intact
 for operator review. Rolling back to a version that checks historical event authority
 does not preserve the current-owner notification guarantee. The
-[installed Stream replay](../../examples/bioma/acceptance/DESIGN.md#stream-cross-replica-acceptance)
+[installed Stream replay](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/examples/bioma/acceptance/DESIGN.md#stream-cross-replica-acceptance)
 qualifies shared Task completion and result delivery through separate hosted replicas.
 
 The Python SDK exposes the same owner-query composition through
@@ -462,7 +462,7 @@ Trusted workers can resume native committed states with a checked versionstamp a
 repeat the final transaction in full. Python Task and domain-usage mutations write only
 their domain records. The MCP adapter closes readers when acknowledgement or delivery
 fails, including before their first iteration.
-The [Python SDK guide](../../sdk/python/README.md) documents public and trusted APIs.
+The [Python SDK guide](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/sdk/python/README.md) documents public and trusted APIs.
 
 ## Input Responses
 
@@ -578,7 +578,7 @@ Their typed cursors carry native versionstamps. Resuming repeats the final trans
 including every Task in that transaction; consumers must tolerate repeated states.
 A cursor older than the six-day recovery safety window requests current state instead.
 This stream is internal and does not establish public read permission. Python Task
-observation and the remaining event writers are tracked in the [consolidated plan](../../docs/CONTRACT_CONSISTENCY_PLAN.md).
+observation and the remaining event writers are tracked in the [consolidated plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md).
 
 `tests/subscriptions.rs` owns a disposable real Store and separate connections. It
 qualifies concurrent listeners, cross-replica completion, reconnection, excluded

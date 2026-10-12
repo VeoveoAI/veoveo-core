@@ -74,7 +74,7 @@ expected rows and clean up.
 
 ## Encrypted Command Journals
 
-The [Computer journal harness](../../computers/tests/journal_cost.rs) admits a real
+The [Computer journal harness](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/computers/tests/journal_cost.rs) admits a real
 encrypted command through production policy, grant and queue code, using the full
 schema. It dispatches no provider operation. Each fixture performs 16 sequential
 changes to `updated_at`, leaving the encrypted input unchanged. Input sizes are
