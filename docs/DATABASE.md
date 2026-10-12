@@ -146,7 +146,10 @@ Each audit record stores the `xid8` of the transaction that wrote it. The sealer
 records whose transaction ID is below `pg_snapshot_xmin(pg_current_snapshot())`, ordered
 by transaction ID and then by insertion sequence. No transaction that could still commit
 sorts before that horizon, so sealing never skips a record. The sealer assigns each sealed
-record its gapless position in the partition.
+record its gapless position in the partition. `audit.sealer` holds the transaction ID and
+sequence of the last sealed record, and a record is sealed when its pair is at most that
+one. A write transaction that stays open holds back every record whose transaction ID is
+higher until it ends.
 
 ## Typed Queries
 

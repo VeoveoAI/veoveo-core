@@ -17,7 +17,8 @@ revision of this repository.
 | `platform/http` | `veoveo-http` | Shared HTTP admission |
 | `platform/task-runtime` | `veoveo-task-runtime` | Durable MCP Tasks in PostgreSQL: claims, recovery, owner reads, subscriptions and the hosted Tasks adapter |
 | `platform/task-runtime/contract` | `veoveo-task-contract` | The Task vocabulary |
-| `platform/audit/contract` | `veoveo-audit-contract` | Audit record, target and detail types |
+| `platform/audit` | `veoveo-audit` | The audit log in PostgreSQL: group-committed appends, partition-scoped reads and change streams, the singleton sealer, signed blocks, export, retention and verification |
+| `platform/audit/contract` | `veoveo-audit-contract` | Audit record, target, block and reader types, and the append inside a caller's PostgreSQL transaction |
 | `platform/artifacts/contract` | `veoveo-artifact-contract` | Artifact identities, metadata and release states |
 | `platform/artifacts/client` | `veoveo-artifact-client` | HTTP client for the Artifact plane: objects, streamed transfers, write capabilities, grants, share links, release states and access requests |
 | `platform/knowledge/contract` | `veoveo-knowledge-contract` | Knowledge source and retrieval types |

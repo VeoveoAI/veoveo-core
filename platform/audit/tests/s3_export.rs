@@ -61,7 +61,7 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
     let partition = AuditPartition::Installation;
     let mut expected_ids = Vec::new();
     // Waiting for each delivery makes the second write exercise an idle worker's
-    // LIVE wakeup, and produces two independently verifiable signed blocks.
+    // notification wakeup, and produces two independently verifiable signed blocks.
     for method in [AuditReadMethod::ResourceRead, AuditReadMethod::AuditView] {
         let draft = AuditDraft::builder(
             AuditRequest::background(),

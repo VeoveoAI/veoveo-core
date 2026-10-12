@@ -13,8 +13,8 @@
 ## Configuration And Ownership
 
 The gateway loads at most 64 KiB from `VEOVEO_AUDIT_EXPORT_CONFIG`. The closed JSON
-configuration has optional `s3` and `otlp` destinations. Audit owns their types;
-Store owns SQL and delivery state. S3 bucket names use lowercase letters, digits
+configuration has optional `s3` and `otlp` destinations. Audit owns their types and
+their delivery state in the `audit` schema. S3 bucket names use lowercase letters, digits
 and hyphens. Prefixes contain checked path segments. URL builders encode individual
 segments, and endpoint validation rejects embedded credentials, queries and fragments.
 HTTPS is required unless the installation explicitly selects `allow_http`.
@@ -32,33 +32,28 @@ by the installation when moving to another destination.
 
 ## Delivery And Recovery
 
-The active sealer polls the export future alongside its own LIVE subscription and
-lease renewal. Export opens a separate native LIVE subscription before replaying
-pending blocks. An idle exporter performs no periodic database scan. Each candidate
-query compares partition heads with delivery and retention cursors in SQL before its
-one-block limit. It reads the selected block by compound identity and rotates active
-partitions by last delivery time; it never scans already exported block history. No request
-handler waits for export.
+The replica that holds the `audit.sealer` role runs the exporter as its own task. The
+exporter listens on the `audit` channel before replaying pending blocks and wakes when a
+block is sealed or the listener reconnects; an idle exporter performs no periodic
+database scan. Each candidate query compares partition heads with delivery cursors and
+retention anchors in SQL before its one-block limit. It reads the selected block by
+partition and sequence and rotates partitions by last delivery time; it never scans
+already exported block history. No request handler waits for export.
 
 Before sending data, the exporter checks the block's record root and commits its
-destination and both payload hashes. The sealer lease fences that transaction, the
-delivery acknowledgement and retention. Repeating an intent with different hashes
-fails. A receipt advances the destination's partition cursor and adds its identity
-to the block's delivered set in one transaction. Retention requires every configured
-destination and removes per-block intents with the retired block. The last signed
-retention anchor and each delivery cursor survive deletion.
-
-Store retries an explicitly aborted transaction conflict up to eight times, with
-1, 2, 4, 8, 16, 32 and 64 millisecond waits. Each attempt rechecks the lease and
-preserves the block, destination and payload hashes. The retry covers only intent,
-receipt or rejection persistence; it does not repeat a provider request. An expired
-or replaced lease still fails its transaction.
+destination and both payload hashes through `audit.record_export`. The intent, the
+receipt and a refusal are written on the connection that holds the sealer role, so a
+replica that lost the role cannot record them. Repeating an intent with different hashes
+fails. A receipt marks the intent delivered and advances the destination's partition
+cursor in one transaction. Retention requires a receipt from every configured
+destination and removes per-block intents with the retired block. The last retired block
+and each delivery cursor survive the deletion.
 
 S3 stores an OCSF JSON Lines object and a signed-block JSON object. Keys include the
 destination identity, a partition digest, the block sequence and its hash. The
 exporter first reads the key and compares bytes. An absent key permits a PUT with
 `If-None-Match: *`; a lost response leads to another GET of that key. Both objects
-must match before Store records delivery. No retry overwrites a different object.
+must match before the exporter records delivery. No retry overwrites a different object.
 
 Compliance mode adds retention headers and verifies the returned mode, retention
 date and non-null version ID on GET. Its date is the block's sealing time plus the
@@ -69,7 +64,7 @@ write-once storage guarantee.
 
 OTLP sends one request per block with events named `veoveo.audit.<class>`. Its body
 contains the OCSF event, and attributes preserve record, partition and request IDs.
-The exporter sends HTTP directly because a Store receipt must reflect collector
+The exporter sends HTTP directly because a stored receipt must reflect collector
 acknowledgement. HTTP 200 with zero rejected logs acknowledges delivery. Partial
 rejection is persisted and stops automatic replay of that intent, including on
 another replica. The installation must inspect the rejected destination and select
@@ -78,17 +73,18 @@ a recorded rejection. Partial acceptance never permits retention.
 
 Network failures and uncertain acknowledgements keep their intent for retry after
 five seconds. OTLP honors `Retry-After` on retryable statuses. Delivery is at least
-once: a crash after collector acceptance but before Store acknowledgement can repeat
+once: a crash after collector acceptance but before the receipt commits can repeat
 records. Consumers deduplicate by record ID. Rejection persistence also has this
 crash window; an uncommitted response cannot establish what another replica observed.
 
 Each HTTP operation has a five-second connection deadline and a fifteen-second total
-deadline. A block network attempt has sixty seconds. A known rejection stays in memory while
-its Store write retries; a network deadline cannot turn that response into a resend. Content is limited to 32 MiB, the signed
-head to 2 MiB, and collector responses to 64 KiB. Provider bodies and error text never
-enter logs. Shutdown cancels export after stopping producers and sealing committed
-records. Unacknowledged intents resume on the elected replica; shutdown does not
-wait for an unavailable archive to recover.
+deadline. A block network attempt has sixty seconds. A known rejection stays in memory
+while its database write retries every five seconds; a network deadline cannot turn that
+response into a resend. Content is limited to 32 MiB, the signed head to 2 MiB, and
+collector responses to 64 KiB. Provider bodies and error text never enter logs.
+Shutdown cancels export after stopping producers and sealing committed records.
+Unacknowledged intents resume on the replica that next holds the sealer role; shutdown
+does not wait for an unavailable archive to recover.
 
 ## OCSF Mapping
 
@@ -120,11 +116,12 @@ requires a new export mapping version. It does not affect the stored audit model
 
 `cargo test --locked --workspace --all-features --test s3_export -- --ignored --nocapture`
 qualifies actual S3 delivery with the hosted writer and sealer against a disposable
-RocksDB Store. `VEOVEO_AUDIT_TEST_S3_CONFIG` names a public export configuration with
-an S3 destination, an existing bucket and Object Lock disabled. The normal S3
-credential chain supplies credentials. Docker must have the pinned SurrealDB image.
-The fixture adds a unique prefix, compares downloaded source records and signed blocks,
-checks receipts from a second Store connection, and restarts the audit worker. It
+database from the PostgreSQL fixture. `VEOVEO_AUDIT_TEST_S3_CONFIG` names a public
+export configuration with an S3 destination, an existing bucket and Object Lock
+disabled. The normal S3 credential chain supplies credentials, and the PostgreSQL 18
+programs must be on `PATH`. The fixture adds a unique prefix, compares downloaded source
+records and signed blocks, checks receipts from a second pool, and restarts the audit
+service. It
 allows 180 seconds for acceptance and 30 seconds for prefix cleanup, including after
 a failed assertion. The configured S3 provider is externally managed. This test can
 use the bundled RustFS endpoint; it does not qualify the gateway deployment or Object
@@ -135,14 +132,12 @@ destinations' receipts before restarting the worker and checks both delivery cur
 after restart. The collector operator must verify that its logs pipeline received the
 two synthetic records; an acknowledgement alone proves receiver acceptance.
 
-The foundations batch owns compilation, native protocol tests, independent OCSF
-schema validation, Store failure cases and installed delivery. The source fixtures
-cover uncertain S3 PUTs, mismatched bytes, missing Object Lock proof, destination
-changes, immutable intents, partial rejection and lease-fenced retention. The native
-HTTP protocol fixtures pass. Store and installed qualification are tracked in the
-[consolidated plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#unified-audit-log).
-The reference configuration selects bundled S3 export.
-Compliance-mode provider acceptance is pending under regulated-readiness gap G9.
+The unit fixtures cover uncertain S3 PUTs, mismatched bytes, missing Object Lock proof,
+destination changes and OTLP partial rejection. `tests/export.rs` covers immutable
+intents, idempotent receipts, refusals that bind every replica, retention that waits
+for every destination, and one collector acknowledgement per record while sealing and
+export overlap. Installed delivery and compliance-mode provider acceptance are qualified
+outside this repository.
 
 ## Destination Text Admission
 

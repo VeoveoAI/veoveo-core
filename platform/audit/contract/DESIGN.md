@@ -6,18 +6,20 @@
 |---|---|
 | RFC 9562 | Canonical UUIDv7 record and HTTP request identities |
 | W3C Trace Context | Nonzero lowercase 32-hex trace IDs and 16-hex span IDs |
-| RFC 9162, RFC 8785 and RFC 8032 | Typed block heads, decimal-string versionstamps, Merkle roots and Ed25519 signatures |
+| RFC 9162, RFC 8785 and RFC 8032 | Typed block heads with decimal-string block sequences and record positions, Merkle roots and Ed25519 signatures |
 | JSON Schema draft 2020-12 | Composed closed target union, local definitions, scalar constraints and arrays; owner registration rejects open schemas, unresolved or nonlocal references and undeclared schema mechanics |
-| Naming vocabulary keyword `namingProfile` | Source annotation admitted through the foundational parser against the complete owner schema; Audit still enforces closed target payloads and lookup references |
+| Naming vocabulary keyword `namingProfile` | Source annotation admitted through the foundational parser against the complete owner schema; Audit still enforces closed target payloads |
 | RFC 3339 and JSON | Typed timestamps, tagged closed enums and checked deserialization |
 | `https://veoveo.ai/formats/audit-record` | One reviewed record shape across platform producers and readers |
+| `https://veoveo.ai/formats/audit-block` | Signed block heads, members and checkpoints |
 | `ai.veoveo/knowledge-source` | Reviewed observation fields from the protocol-independent extension contract |
+| PostgreSQL 18 through sqlx 0.9.0 | The `postgres` feature only: `text` bindings for `AuditClass`, `AuditOutcome`, `AuditExportRejection` and `AuditTraceId`, a `uuid` binding for `AuditRecordId`, and `audit.append` for transactional appends |
 
 This library owns the protocol-independent audit vocabulary. It depends on foundational
 names and lightweight Artifact identities. Computers supplies its Audit target codec
-through the installation registry. Store and MCP both depend
-on this crate. The writer depends on Store; separating this contract avoids a Cargo
-cycle and prevents persistence from importing the MCP runtime.
+through the installation registry. Producers, MCP adapters and the `veoveo-audit` crate
+depend on this crate. Without the `postgres` feature it has no database driver, so a
+producer that only builds drafts does not link sqlx.
 
 The draft builder derives the partition from the authenticated actor. Accepted outcomes
 require the accepted reason. Serialization and input admission share these checks.
@@ -31,7 +33,7 @@ Tool, discovery and Task details must match the corresponding typed target, and 
 registration detail targets the registered server. The Gateway records each namespace
 claim, migration, registration, declaration update, removal and lease expiry; lease
 renewals produce no record. A platform
-Task uses its UUID record link; an external Task uses its opaque gateway route and
+Task uses its Task identity; an external Task uses its opaque gateway route and
 server identity. These identities have separate variants.
 Knowledge read details bind the member and collection owner to their resource target.
 Successful reads require an observation whose conditional status matches the outcome.
@@ -49,11 +51,12 @@ validated by the foundational type; it carries no credential or free-form descri
 client. Denials cannot enter an aggregate. `IndexingWindow` requires a matching server
 target, five-minute UTC bounds, positive reads and consistent outcome counters. Its
 occurrence time equals the window end. Constructor and decode checks share these rules.
-Store owns conversion to compound record IDs and native record links. A partition key
+A partition's storage key, `installation` or `tenant:` followed by the tenant,
 distinguishes the installation partition from a tenant literally named `installation`.
 
-The reader's policy owner supplies an `AuditReadScope`. Store checks it before query
-execution and includes its admitted partition in SQL before decoding or limiting rows.
+The reader's policy owner supplies an `AuditReadScope`. The audit store checks it before
+query execution and includes its admitted partition in SQL before decoding or limiting
+rows.
 The public structured `AuditCursor` emits `lastId` and carries its partition and ordering;
 query admission rejects a cursor for another partition or ordering. Query and page readers
 reject retired `last_id`, mixed and duplicate keys. Installation upgrades drain active Audit
@@ -100,22 +103,25 @@ variants or authorization decisions.
 
 Audit identities use `Id` with Audit-owned canonical RFC UUIDv7 and lowercase nonzero hexadecimal admission. Their owner schema functions preserve each UUID pattern, trace/span length and nonzero constraint. Serde uses checked String conversion for these IDs; the independent Activity enum wire profile does not change.
 
-## Integrity Counter Admission
+## Integrity Counters
 
-`AuditBlockSequence` admits 1 through i64::MAX; `AuditVersionstamp` also admits zero.
-Their owner validator and decimal parser require the canonical unsigned spelling.
-Serde converts through String in both human-readable and binary formats. JSON and
-JCS therefore preserve versionstamps that exceed exact IEEE-754 integer precision.
-The nominal counter types keep copied getters and their existing schema profiles.
+`AuditBlockSequence` numbers a partition's blocks and `AuditPosition` its sealed records.
+Both admit 1 through i64::MAX, and `AuditPosition::next` yields the following position.
+A block head names its first and last position, each member its record and position,
+and a checkpoint the partition, sequence, head hash and last position. Positions follow
+one another without gaps within a block and from one block to the next. The owner
+validator and decimal parser require the canonical unsigned spelling, and Serde
+converts through String in both human-readable and binary formats, so JSON and JCS
+never round a counter through an IEEE-754 number.
 
 ## Owner Target Admission
 
-`AuditTargetRegistry` binds each owner discriminator to its typed decoder, closed
-JSON Schema and checked lookup reference. `AuditTargetRegistration<T>` constructs
-and retrieves the registered owner type. The immutable registry shares its identity
-through clones; a target from another registry cannot enter an append or query.
-Target equality compares admitted JSON. Serialization emits the owner object directly,
-and excludes registry identity, cached payloads and lookup references.
+`AuditTargetRegistry` binds each owner discriminator to its typed decoder and closed
+JSON Schema. `AuditTargetRegistration<T>` constructs and retrieves the registered owner
+type. The immutable registry shares its identity through clones; a target from another
+registry cannot enter an append or query. Target equality compares admitted JSON.
+Serialization emits the owner object directly and excludes registry identity and cached
+payloads.
 
 `AuditDecoder` admits target-bearing drafts, records, queries, summaries, pages and
 export lines with an explicit registry. Its JSON parser rejects duplicate object
@@ -130,11 +136,21 @@ when it disables an owner's workload. Missing codecs produce a configuration err
 when reading existing records. Registering a codec installs no runtime or database
 schema.
 
-Store extracts unadmitted driver values privately and decodes them with its configured
-registry. Every returned row, including pagination's extra row, validates its record
-identity, partition and lookup reference. Queries validate target registry identity
-before executing SQL and match the entire `draft.target` object. Transaction writes
-receive the same registry and append alongside the caller's domain write.
+The audit store decodes every stored draft with its configured registry. Every returned
+row, including pagination's extra row, validates its record identity and partition.
+Queries validate target registry identity before executing SQL and match the entire
+target object. Transactional appends receive the same registry.
+
+## Transactional Append
+
+With the `postgres` feature, `AuditTransactionWrite` admits up to 4,096 drafts against
+a target registry and appends them on the caller's connection with `audit.append`, so
+the records commit or roll back with the caller's own writes. It stores each draft as
+`jsonb` with its class and its occurrence time truncated to microseconds, the precision
+PostgreSQL keeps; `stored_time` names that truncation for readers. Repeating an append
+of the same drafts changes nothing. A draft that reuses a stored identity with other
+content fails with `AuditAppendError::IdentityConflict`, and the caller's transaction
+must roll back.
 
 ## Frozen Knowledge Access Encoding
 
