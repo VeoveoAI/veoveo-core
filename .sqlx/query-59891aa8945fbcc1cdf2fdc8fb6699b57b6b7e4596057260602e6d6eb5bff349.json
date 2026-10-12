@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT audit.append_indexing($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "append_indexing",
+        "type_info": "Void",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "UuidArray",
+        "TextArray",
+        "TextArray",
+        "TimestamptzArray",
+        "TextArray",
+        "JsonbArray",
+        "TextArray",
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "59891aa8945fbcc1cdf2fdc8fb6699b57b6b7e4596057260602e6d6eb5bff349"
+}

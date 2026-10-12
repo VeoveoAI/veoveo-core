@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Whether a committed record follows the sealed position.\nSELECT EXISTS (\n    SELECT\n    FROM audit.sealer AS s\n    JOIN audit.record AS r ON (r.txid, r.sequence) > (s.txid, s.sequence)\n) AS \"pending!\"\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pending!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ee526a16b01031e383bd1a28962218302cae6db48d24d0e34160de289775bef1"
+}

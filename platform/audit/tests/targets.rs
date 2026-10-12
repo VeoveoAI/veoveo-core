@@ -1,21 +1,21 @@
-//! Native owner target reads, transactions and immutable registry admission.
-#[path = "../../../testing/fixtures/store.rs"]
-mod fixture;
+//! Owner targets through filters, transactions, change streams, sealing and export lines,
+//! admitted by one immutable registry.
 mod support;
-use futures::StreamExt;
-use std::{sync::Arc, time::Duration};
-use veoveo_audit::{
-    integrity::{AuditSigningKey, record_root},
-    *,
-};
+
 #[path = "../../../testing/fixtures/computer_target.rs"]
 mod computer_target;
+
 use computer_target::{ComputerAuditTarget, ComputerId, register_audit_target};
-use veoveo_platform_store::{
-    StoreError,
-    audit::{AuditLiveChange, AuditTransactionWrite},
+use futures::StreamExt;
+use std::{sync::Arc, time::Duration};
+use support::{AuditDb, seal_all, within};
+use veoveo_audit::{
+    integrity::{AuditSigningKey, record_root},
+    sealer::AuditSealer,
+    *,
 };
 
+/// Another owner whose payload carries the same UUID as a Computer target.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(from = "ShadowWire", into = "ShadowWire")]
 struct ShadowTarget {
@@ -50,19 +50,15 @@ impl schemars::JsonSchema for ShadowTarget {
 }
 impl AuditTargetOwner for ShadowTarget {
     const KIND: &'static str = "shadow_computer";
-    fn lookup_reference(&self) -> Result<Option<AuditLookupReference>, AuditTargetError> {
-        Ok(Some(AuditLookupReference::new(
-            "computer",
-            AuditLookupKey::Uuid(self.lookup_id),
-        )?))
-    }
 }
+
 fn targets() -> Arc<AuditTargetRegistry> {
     let mut builder = AuditTargetRegistry::builder();
     register_audit_target(&mut builder).unwrap();
     builder.register::<ShadowTarget>().unwrap();
     Arc::new(builder.build())
 }
+
 fn draft(target: AuditTarget) -> AuditDraft {
     AuditDraft::builder(
         AuditRequest::background(),
@@ -80,23 +76,11 @@ fn draft(target: AuditTarget) -> AuditDraft {
 }
 
 #[tokio::test]
-async fn targets_preserve_exact_filter_transactions_live_sealing_and_export() {
-    let qualification = async {
+async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_export_lines() {
+    within(Duration::from_secs(90), async {
         let registry = targets();
-        let db = fixture::TestDb::with_audit_targets(registry.clone()).await;
-        let mut table_info =
-            db.a.client()
-                .query(include_str!("queries/targets/targets_preserve_exact_filter_transactions_live_sealing_and_export.surql"))
-                .await
-                .unwrap()
-                .check()
-                .unwrap();
-        assert!(
-            !table_info.take::<Option<bool>>(1).unwrap().unwrap(),
-            "codec registration must not install Computer tables"
-        );
+        let audit = AuditDb::with_targets(registry.clone()).await;
         let selected = ComputerId::new();
-        let other = ComputerId::new();
         let target = registry
             .target(ComputerAuditTarget { computer: selected })
             .unwrap();
@@ -111,73 +95,73 @@ async fn targets_preserve_exact_filter_transactions_live_sealing_and_export() {
             ),
             draft(
                 registry
-                    .target(ComputerAuditTarget { computer: other })
+                    .target(ComputerAuditTarget {
+                        computer: ComputerId::new(),
+                    })
                     .unwrap(),
             ),
             draft(target.clone()),
         ];
         let scope = AuditReadScope::new(None, true);
         let partition = AuditPartition::Installation;
-        let mut live = db.b.audit_live(&scope, &partition).await.unwrap();
-        db.a.append_audit_records(&records).await.unwrap();
-        let notice = tokio::time::timeout(Duration::from_secs(10), live.next())
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        let AuditLiveChange::Record(notice) = notice else {
-            panic!("expected committed owner target")
-        };
+        let mut live = audit.b.live(&scope, &partition).await.unwrap();
+        audit.a.append(&records).await.unwrap();
+        let notice = within(Duration::from_secs(10), async {
+            loop {
+                match live.next().await.unwrap().unwrap() {
+                    AuditLiveChange::Record(record) => break record,
+                    AuditLiveChange::Reconcile => {}
+                    AuditLiveChange::RetainedRangeChanged => panic!("nothing was retired"),
+                }
+            }
+        })
+        .await;
         assert!(
             records
                 .iter()
                 .any(|record| record.id() == notice.draft.id())
         );
         drop(live);
+
         let mut query = AuditQuery::new(partition.clone());
         query.target = Some(target.clone());
         query.limit = 1;
-        let first = db.b.audit_page(&scope, &query).await.unwrap();
+        let first = audit.b.page(&scope, &query).await.unwrap();
         assert_eq!(first.records.len(), 1);
         assert_eq!(first.records[0].draft.target(), &target);
         assert!(first.next.is_some());
-        let reconnected = db.connect_at(db.a.config().endpoint().as_str()).await;
-        assert!(std::ptr::eq(
-            db.a.audit_targets(),
-            reconnected.audit_targets()
-        ));
-        let recovered = reconnected.audit_page(&scope, &query).await.unwrap();
+        let reconnected = AuditStore::new(audit.db.connect().await, registry.clone());
+        assert!(std::ptr::eq(audit.a.targets(), reconnected.targets()));
+        let recovered = reconnected.page(&scope, &query).await.unwrap();
         assert_eq!(recovered.records[0].draft.target(), &target);
         query.cursor = first.next.clone();
-        let second = db.b.audit_page(&scope, &query).await.unwrap();
+        let second = audit.b.page(&scope, &query).await.unwrap();
         assert_eq!(second.records.len(), 1);
         assert_eq!(second.records[0].draft.target(), &target);
         assert_ne!(second.records[0].draft.id(), first.records[0].draft.id());
         assert!(second.next.is_none());
+
         let alien = targets()
             .target(ComputerAuditTarget { computer: selected })
             .unwrap();
         query.cursor = None;
         query.target = Some(alien.clone());
         assert!(matches!(
-            db.a.audit_page(&scope, &query).await,
-            Err(StoreError::AuditTarget(AuditTargetError::Registry))
+            audit.a.page(&scope, &query).await,
+            Err(AuditStoreError::Target(AuditTargetError::Registry))
         ));
         assert!(matches!(
-            db.a.append_audit_records(&[draft(alien.clone())]).await,
-            Err(StoreError::AuditTarget(AuditTargetError::Registry))
+            audit.a.append(&[draft(alien.clone())]).await,
+            Err(AuditStoreError::Target(AuditTargetError::Registry))
         ));
         assert!(matches!(
-            AuditTransactionWrite::new(db.a.audit_targets(), draft(alien)),
-            Err(StoreError::AuditTarget(AuditTargetError::Registry))
+            AuditTransactionWrite::new(audit.a.targets(), draft(alien)),
+            Err(AuditAppendError::Target(AuditTargetError::Registry))
         ));
-        db.admin()
+
+        sqlx::query(include_str!("queries/append/domain_table.sql"))
+            .execute(audit.db.a.pool())
             .await
-            .client()
-            .query(include_str!("queries/targets/define_rollback.surql"))
-            .await
-            .unwrap()
-            .check()
             .unwrap();
         let conflict = AuditDraft::builder(
             records[0].request().clone(),
@@ -190,57 +174,55 @@ async fn targets_preserve_exact_filter_transactions_live_sealing_and_export() {
         .occurred_at(records[0].occurred_at())
         .build()
         .unwrap();
-        let result=db.a.client().query(include_str!("queries/targets/targets_preserve_exact_filter_transactions_live_sealing_and_export_2.surql")).bind(AuditTransactionWrite::batch(db.a.audit_targets(),vec![draft(target.clone()),conflict]).unwrap().into_binding()).await.unwrap().check();
-        assert!(result.is_err());
-        let mut response =
-            db.b.client()
-                .query(include_str!("queries/targets/targets_preserve_exact_filter_transactions_live_sealing_and_export_3.surql"))
-                .await
-                .unwrap()
-                .check()
-                .unwrap();
-        assert_eq!(response.take::<Option<u64>>(0).unwrap().unwrap(), 0);
-        let mut all = AuditQuery::new(partition.clone());
-        let stored = db.b.audit_page(&scope, &all).await.unwrap();
-        assert_eq!(stored.records.len(), 4);
-        let mut lease =
-            db.a.acquire_audit_seal_lease(uuid::Uuid::now_v7())
-                .await
-                .unwrap();
-        let page = support::committed_records(&db.a, &mut lease).await;
-        assert_eq!(page.records.len(), 4);
-        let admitted = page
-            .records
-            .iter()
-            .map(|(_, record)| record.clone())
-            .collect::<Vec<_>>();
-        let members = page
-            .records
-            .iter()
-            .map(|(stamp, record)| AuditBlockMember {
-                id: record.draft.id(),
-                versionstamp: *stamp,
-            })
-            .collect();
-        let block = AuditSigningKey::from_seed(&[71; 32])
-            .seal(
-                partition.clone(),
-                None,
-                members,
-                &admitted,
-                chrono::Utc::now(),
-            )
-            .unwrap();
-        db.a.commit_audit_blocks(&lease, page.next, std::slice::from_ref(&block))
+        let mut transaction = audit.db.a.pool().begin().await.unwrap();
+        sqlx::query(include_str!("queries/append/domain_insert.sql"))
+            .bind(1)
+            .execute(&mut *transaction)
             .await
             .unwrap();
-        let exported = db.b.audit_block_records(&scope, &block).await.unwrap();
-        assert_eq!(record_root(&exported).unwrap(), block.head.root);
-        all.target = Some(target);
-        let filtered =
-            db.b.audit_filtered_block_records(&scope, &block, &all)
+        assert!(
+            AuditTransactionWrite::batch(audit.a.targets(), [draft(target.clone()), conflict])
+                .unwrap()
+                .append(&mut transaction)
+                .await
+                .is_err()
+        );
+        transaction.rollback().await.unwrap();
+        let domain_rows =
+            sqlx::query_scalar::<_, i64>(include_str!("queries/append/domain_count.sql"))
+                .fetch_one(audit.db.b.pool())
                 .await
                 .unwrap();
+        assert_eq!(
+            domain_rows, 0,
+            "the domain write rolls back with the audit append"
+        );
+
+        let mut all = AuditQuery::new(partition.clone());
+        let stored = audit.b.page(&scope, &all).await.unwrap();
+        assert_eq!(stored.records.len(), 4);
+        let sealer = AuditSealer::acquire(
+            audit.a.clone(),
+            Arc::new(AuditSigningKey::from_seed(&[71; 32])),
+        )
+        .await
+        .unwrap();
+        assert_eq!(seal_all(&sealer).await, 4);
+        sealer.release().await.unwrap();
+        let block = audit
+            .b
+            .blocks(&scope, &partition, None, 1)
+            .await
+            .unwrap()
+            .remove(0);
+        let exported = audit.b.block_records(&scope, &block).await.unwrap();
+        assert_eq!(record_root(&exported).unwrap(), block.head.root);
+        all.target = Some(target);
+        let filtered = audit
+            .b
+            .filtered_block_records(&scope, &block, &all)
+            .await
+            .unwrap();
         assert_eq!(filtered.len(), 2);
         for record in exported {
             let line = AuditExportLine::Record {
@@ -248,24 +230,30 @@ async fn targets_preserve_exact_filter_transactions_live_sealing_and_export() {
             };
             let bytes = serde_json::to_string(&line).unwrap();
             assert!(matches!(
-                db.b.audit_targets()
+                audit
+                    .b
+                    .targets()
                     .decoder()
                     .from_str::<AuditExportLine>(&bytes)
                     .unwrap(),
                 AuditExportLine::Record { .. }
             ));
         }
-        // Recreate only the lookahead row with an unbound target in this isolated fixture.
-        let extra = stored.records[1].draft.id();
-        db.a.client().query(include_str!("queries/targets/targets_preserve_exact_filter_transactions_live_sealing_and_export_4.surql")).bind(("id",veoveo_platform_store::audit::record_id(&partition,extra))).await.unwrap().check().unwrap();
+
+        // Rewrite the page's lookahead row with a target no codec admits.
+        sqlx::query_file!(
+            "tests/queries/targets/unbind_target.sql",
+            stored.records[1].draft.id() as AuditRecordId
+        )
+        .execute(audit.db.a.pool())
+        .await
+        .unwrap();
         let mut lookahead = AuditQuery::new(partition);
         lookahead.limit = 1;
         assert!(matches!(
-            db.b.audit_page(&scope, &lookahead).await,
-            Err(StoreError::AuditTarget(AuditTargetError::Unbound(_)))
+            audit.b.page(&scope, &lookahead).await,
+            Err(AuditStoreError::Target(AuditTargetError::Unbound(_)))
         ));
-    };
-    tokio::time::timeout(Duration::from_secs(90), qualification)
-        .await
-        .expect("native Audit target qualification exceeded 90 seconds");
+    })
+    .await;
 }

@@ -1,0 +1,107 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Records after the sealed position whose transactions sort below the snapshot horizon,\n-- in commit order. Every transaction below the horizon has ended, so no record can later\n-- appear before the last one returned.\nSELECT\n    r.sequence,\n    r.txid::text::bigint AS \"txid!\",\n    r.id AS \"id: AuditRecordId\",\n    r.partition,\n    r.class AS \"class: AuditClass\",\n    r.occurred_at,\n    r.draft,\n    r.recorded_at\nFROM audit.sealer AS s\nJOIN audit.record AS r ON (r.txid, r.sequence) > (s.txid, s.sequence)\nWHERE r.txid < pg_snapshot_xmin(pg_current_snapshot())\nORDER BY r.txid, r.sequence\nLIMIT $1\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sequence",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "sequence"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "txid!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "id: AuditRecordId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "partition",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "partition"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "class: AuditClass",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "class"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "occurred_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "occurred_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "draft",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "draft"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "recorded_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "recorded_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9370eb104ef481534dcca5b5a849b7a03f388392f39f231095a860dbefd015a7"
+}

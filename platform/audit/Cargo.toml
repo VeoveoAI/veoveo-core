@@ -12,12 +12,15 @@ serde_json_canonicalizer = "=0.3.2"
 ed25519-dalek = "=3.0.0"
 base64.workspace = true
 veoveo-types.workspace = true
-veoveo-audit-contract.workspace = true
-veoveo-platform-store = { path = "../store" }
+veoveo-audit-contract = { workspace = true, features = ["postgres"] }
+veoveo-mcp-ext-knowledge = { workspace = true, features = ["contract"] }
+veoveo-platform-store.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+schemars.workspace = true
 sha2.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
 tracing.workspace = true
@@ -31,8 +34,10 @@ object_store.workspace = true
 reqwest = { workspace = true, features = ["rustls-no-provider", "stream"] }
 
 [dev-dependencies]
-schemars.workspace = true
-veoveo-modules = { workspace = true, features = ["runner"] }
+# The PostgreSQL fixture in testing/fixtures/store.rs, included by path.
+hex.workspace = true
+secrecy.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }
 axum.workspace = true
 reqwest = { workspace = true, features = ["json"] }

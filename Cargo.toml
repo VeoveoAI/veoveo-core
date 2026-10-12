@@ -8,6 +8,7 @@ members = [
     "mcp/ext-registration",
     "platform/artifacts/client",
     "platform/artifacts/contract",
+    "platform/audit",
     "platform/audit/contract",
     "platform/gateway/contract",
     "platform/http",

@@ -1,24 +1,11 @@
-//! Database filtering, view admission and LIVE recovery for the Console and CLI.
-#[path = "../../../testing/fixtures/store.rs"]
-mod fixture;
+//! SQL filtering, view admission, change streams and recovery for the Console and CLI.
+mod support;
 
 use chrono::{DateTime, TimeDelta, Utc};
 use futures::StreamExt;
 use std::{collections::BTreeSet, num::NonZeroU32, sync::Arc, time::Duration};
+use support::{AuditDb, user, within};
 use veoveo_audit::{integrity::AuditSigningKey, *};
-use veoveo_platform_store::{StoreError, audit::AuditLiveChange};
-
-fn actor(tenant: &str, name: &str) -> AuditActor {
-    AuditActor {
-        principal: name.parse().unwrap(),
-        kind: AuditPrincipalKind::User,
-        tenant: Some(tenant.parse().unwrap()),
-        oauth_client: None,
-        session_family: None,
-        delegating_principal: None,
-        managed_agent: None,
-    }
-}
 
 fn draft(
     actor: &AuditActor,
@@ -45,11 +32,18 @@ fn draft(
     .unwrap()
 }
 
+async fn next(stream: &mut AuditLiveStream) -> AuditLiveChange {
+    within(Duration::from_secs(10), stream.next())
+        .await
+        .expect("the change stream continues")
+        .expect("the change stream delivers a change")
+}
+
 #[tokio::test]
 async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_current_identity() {
-    tokio::time::timeout(Duration::from_secs(90), async {
-        let db = fixture::TestDb::new().await;
-        let alice = actor("alpha", "alice");
+    within(Duration::from_secs(90), async {
+        let audit = AuditDb::new().await;
+        let alice = user("alpha", "alice");
         let partition = AuditPartition::Tenant("alpha".parse().unwrap());
         let scope = AuditReadScope::new(Some("alpha".parse().unwrap()), true);
         let request = AuditRequest::background();
@@ -57,20 +51,21 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
         let first = draft(&alice, &request, now, AuditOutcome::Allowed);
         let denied = draft(&alice, &request, now, AuditOutcome::Denied);
         let last = draft(&alice, &request, now, AuditOutcome::Allowed);
-        db.a.append_audit_records(&[first.clone(), denied, last.clone()])
+        audit
+            .a
+            .append(&[first.clone(), denied, last.clone()])
             .await
             .unwrap();
-        // A known nonmatching class deliberately cannot decode as an AuditDraft.
-        // Successful filtered reads therefore prove admission happened inside SQL.
-        db.a.client()
-            .query(
-                include_str!("queries/reads/sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_current_identity.surql"),
-            )
-            .bind(("trace", request.trace_id.to_string()))
-            .await
-            .unwrap()
-            .check()
-            .unwrap();
+        // A row of another class cannot decode as a draft. Successful filtered reads
+        // therefore show the class filter ran in SQL.
+        sqlx::query_file!(
+            "tests/queries/reads/insert_undecodable.sql",
+            first.id() as AuditRecordId,
+            AuditRecordId::new() as AuditRecordId,
+        )
+        .execute(audit.db.a.pool())
+        .await
+        .unwrap();
         let mut query = AuditQuery::new(partition.clone());
         query.limit = 1;
         query.class = Some(AuditClass::ApiActivity);
@@ -86,19 +81,29 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
         ] {
             query.order = order;
             query.cursor = None;
-            let page = db.b.audit_page(&scope, &query).await.unwrap();
+            let page = audit.b.page(&scope, &query).await.unwrap();
             assert_eq!(page.records.len(), 1);
             assert_eq!(page.records[0].draft.id(), expected[0]);
-            query.cursor = Some(page.next.expect("matching second row supplies a cursor"));
-            let page = db.b.audit_page(&scope, &query).await.unwrap();
+            query.cursor = Some(page.next.expect("a matching second row supplies a cursor"));
+            let page = audit.b.page(&scope, &query).await.unwrap();
             assert_eq!(page.records.len(), 1);
             assert_eq!(page.records[0].draft.id(), expected[1]);
             assert!(page.next.is_none());
         }
+        query.class = None;
+        query.cursor = None;
+        query.order = AuditOrder::NewestFirst;
+        assert!(
+            matches!(
+                audit.b.page(&scope, &query).await,
+                Err(AuditStoreError::Integrity)
+            ),
+            "the undecodable row fails a read that selects it"
+        );
         let foreign = AuditReadScope::new(Some("bravo".parse().unwrap()), false);
         assert!(matches!(
-            db.b.audit_page(&foreign, &query).await,
-            Err(StoreError::AuditAccessDenied)
+            audit.b.page(&foreign, &query).await,
+            Err(AuditStoreError::AccessDenied)
         ));
 
         let profile: veoveo_types::GatewayProfileId = "operator".parse().unwrap();
@@ -122,72 +127,63 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
             .occurred_at(now - TimeDelta::minutes(age))
             .build()
             .unwrap();
-            db.a.append_audit_records(std::slice::from_ref(&receipt))
+            audit
+                .a
+                .append(std::slice::from_ref(&receipt))
                 .await
                 .unwrap();
+            let view = |partition: AuditPartition,
+                        actor: veoveo_types::PrincipalId,
+                        profile: veoveo_types::GatewayProfileId| {
+                let audit = audit.b.clone();
+                let scope = scope.clone();
+                let actor_partition = AuditPartition::Tenant("alpha".parse().unwrap());
+                let receipt = receipt.id();
+                async move {
+                    audit
+                        .view_admitted(
+                            &scope,
+                            &partition,
+                            &actor_partition,
+                            &actor,
+                            &profile,
+                            receipt,
+                        )
+                        .await
+                        .unwrap()
+                }
+            };
             assert_eq!(
-                db.b.audit_view_admitted(
-                    &scope,
-                    &partition,
-                    &partition,
-                    &alice.principal,
-                    &profile,
-                    receipt.id()
-                )
-                .await
-                .unwrap(),
+                view(partition.clone(), alice.principal.clone(), profile.clone()).await,
                 admitted
             );
+            assert!(!view(partition.clone(), "bob".parse().unwrap(), profile.clone()).await);
             assert!(
-                !db.b
-                    .audit_view_admitted(
-                        &scope,
-                        &partition,
-                        &partition,
-                        &"bob".parse().unwrap(),
-                        &profile,
-                        receipt.id()
-                    )
-                    .await
-                    .unwrap()
+                !view(
+                    partition.clone(),
+                    alice.principal.clone(),
+                    "other".parse().unwrap()
+                )
+                .await
             );
             assert!(
-                !db.b
-                    .audit_view_admitted(
-                        &scope,
-                        &partition,
-                        &partition,
-                        &alice.principal,
-                        &"other".parse().unwrap(),
-                        receipt.id()
-                    )
-                    .await
-                    .unwrap()
-            );
-            assert!(
-                !db.b
-                    .audit_view_admitted(
-                        &scope,
-                        &AuditPartition::Installation,
-                        &partition,
-                        &alice.principal,
-                        &profile,
-                        receipt.id()
-                    )
-                    .await
-                    .unwrap()
+                !view(
+                    AuditPartition::Installation,
+                    alice.principal.clone(),
+                    profile.clone()
+                )
+                .await
             );
         }
     })
-    .await
-    .expect("audit query and view admission exceeded 90 seconds");
+    .await;
 }
 
 #[tokio::test]
-async fn scoped_live_daily_pages_and_sealed_recovery_preserve_partition_and_date_bounds() {
-    tokio::time::timeout(Duration::from_secs(90), async {
-        let db = fixture::TestDb::with_backend(fixture::StoreBackend::RocksDb).await;
-        let alice = actor("alpha", "alice");
+async fn scoped_streams_daily_pages_and_sealed_recovery_preserve_partition_and_date_bounds() {
+    within(Duration::from_secs(90), async {
+        let audit = AuditDb::new().await;
+        let alice = user("alpha", "alice");
         let partition = AuditPartition::Tenant("alpha".parse().unwrap());
         let scope = AuditReadScope::new(Some("alpha".parse().unwrap()), false);
         let today = Utc::now()
@@ -208,51 +204,46 @@ async fn scoped_live_daily_pages_and_sealed_recovery_preserve_partition_and_date
             ),
             draft(&alice, &request, now, AuditOutcome::Allowed),
         ];
-        let mut live = db.b.audit_live(&scope, &partition).await.unwrap();
-        let mut sealed = db.b.audit_blocks_live(&scope, &partition).await.unwrap();
+        let mut live = audit.b.live(&scope, &partition).await.unwrap();
+        let mut sealed = audit.b.blocks_live(&scope, &partition).await.unwrap();
         let service = AuditService::start(
-            db.a.clone(),
+            audit.a.clone(),
             Arc::new(AuditSigningKey::from_seed(&[41; 32])),
             NonZeroU32::new(7).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let foreign = draft(&actor("bravo", "bob"), &request, now, AuditOutcome::Allowed);
-        db.a.append_audit_records(&[foreign]).await.unwrap();
-        db.a.append_audit_records(&expected).await.unwrap();
+        let foreign = draft(&user("bravo", "bob"), &request, now, AuditOutcome::Allowed);
+        audit.a.append(&[foreign]).await.unwrap();
+        audit.a.append(&expected).await.unwrap();
         let mut received = BTreeSet::new();
-        for _ in &expected {
-            let change = tokio::time::timeout(Duration::from_secs(10), live.next())
-                .await
-                .unwrap()
-                .unwrap()
-                .unwrap();
-            let AuditLiveChange::Record(record) = change else {
-                panic!("create produced retention notification");
-            };
-            assert_eq!(record.draft.partition(), &partition);
-            received.insert(record.draft.id());
+        while received.len() < expected.len() {
+            match next(&mut live).await {
+                AuditLiveChange::Record(record) => {
+                    assert_eq!(record.draft.partition(), &partition);
+                    received.insert(record.draft.id());
+                }
+                AuditLiveChange::Reconcile => {}
+                AuditLiveChange::RetainedRangeChanged => panic!("nothing was retired"),
+            }
         }
         assert_eq!(received, expected.iter().map(AuditDraft::id).collect());
-        tokio::time::timeout(Duration::from_secs(20), sealed.next())
+        within(Duration::from_secs(20), sealed.next())
             .await
             .unwrap()
-            .unwrap()
             .unwrap();
-        let blocks =
-            db.b.audit_blocks(&scope, &partition, None, 10)
-                .await
-                .unwrap();
+        let blocks = audit.b.blocks(&scope, &partition, None, 10).await.unwrap();
         assert_eq!(blocks.len(), 1);
-        let range = db.b.audit_export_range(&scope, &partition).await.unwrap();
+        let range = audit.b.export_range(&scope, &partition).await.unwrap();
         assert_eq!(range.first, Some(blocks[0].head.sequence));
         assert_eq!(range.checkpoint, Some(blocks[0].checkpoint()));
         let mut filter = AuditQuery::new(partition.clone());
         filter.outcome = Some(AuditOutcome::Denied);
-        let records =
-            db.b.audit_filtered_block_records(&scope, &blocks[0], &filter)
-                .await
-                .unwrap();
+        let records = audit
+            .b
+            .filtered_block_records(&scope, &blocks[0], &filter)
+            .await
+            .unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].draft.id(), expected[1].id());
 
@@ -265,7 +256,7 @@ async fn scoped_live_daily_pages_and_sealed_recovery_preserve_partition_and_date
         };
         let mut counts = Vec::new();
         loop {
-            let page = db.b.audit_daily(&scope, &daily).await.unwrap();
+            let page = audit.b.daily(&scope, &daily).await.unwrap();
             assert!(page.counts.iter().all(|count| count.partition == partition));
             counts.extend(
                 page.counts
@@ -289,7 +280,9 @@ async fn scoped_live_daily_pages_and_sealed_recovery_preserve_partition_and_date
         daily.cursor = None;
         daily.limit = 100;
         assert_eq!(
-            db.b.audit_daily(&scope, &daily)
+            audit
+                .b
+                .daily(&scope, &daily)
                 .await
                 .unwrap()
                 .counts
@@ -302,53 +295,47 @@ async fn scoped_live_daily_pages_and_sealed_recovery_preserve_partition_and_date
         drop(live);
         drop(sealed);
         let missed = draft(&alice, &request, now, AuditOutcome::Allowed);
-        db.a.append_audit_records(std::slice::from_ref(&missed))
-            .await
-            .unwrap();
-        tokio::time::timeout(
+        audit.a.append(std::slice::from_ref(&missed)).await.unwrap();
+        within(
             Duration::from_secs(15),
-            db.b.audit_wait_sealed(&scope, &partition, missed.id()),
+            audit.b.wait_sealed(&scope, &partition, missed.id()),
         )
         .await
-        .unwrap()
         .unwrap();
-        // A resumed subscriber opens LIVE first, then replays its partition's signed blocks.
-        let mut resumed = db.b.audit_live(&scope, &partition).await.unwrap();
-        let recovered =
-            db.b.audit_blocks(&scope, &partition, Some(blocks[0].head.sequence), 10)
-                .await
-                .unwrap();
+        // A resumed reader subscribes first, then replays the partition's blocks.
+        let mut resumed = audit.b.live(&scope, &partition).await.unwrap();
+        let recovered = audit
+            .b
+            .blocks(&scope, &partition, Some(blocks[0].head.sequence), 10)
+            .await
+            .unwrap();
         assert_eq!(recovered.len(), 1);
-        let recovered_records =
-            db.b.audit_block_records(&scope, &recovered[0])
-                .await
-                .unwrap();
+        let recovered_records = audit.b.block_records(&scope, &recovered[0]).await.unwrap();
         assert_eq!(recovered_records.len(), 1);
         assert_eq!(recovered_records[0].draft.id(), missed.id());
         service.shutdown(Duration::from_secs(15)).await.unwrap();
-        db.a.client()
-            .query(include_str!("queries/reads/scoped_live_daily_pages_and_sealed_recovery_preserve_partition_and_date_bounds.surql"))
-            .bind((
-                "id",
-                veoveo_platform_store::audit::record_id(&partition, expected[0].id()),
-            ))
-            .await
-            .unwrap()
-            .check()
-            .unwrap();
-        let change = tokio::time::timeout(Duration::from_secs(10), resumed.next())
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        assert!(matches!(change, AuditLiveChange::RetainedRangeChanged));
+
+        sqlx::query_file!(
+            "tests/queries/reads/remove_block.sql",
+            expected[0].id() as AuditRecordId,
+            partition.storage_key(),
+            i64::try_from(blocks[0].head.sequence.get()).unwrap(),
+        )
+        .execute(audit.db.a.pool())
+        .await
+        .unwrap();
+        assert!(matches!(
+            next(&mut resumed).await,
+            AuditLiveChange::RetainedRangeChanged
+        ));
         assert!(
-            db.b.audit_filtered_block_records(&scope, &blocks[0], &filter)
+            audit
+                .b
+                .filtered_block_records(&scope, &blocks[0], &filter)
                 .await
                 .is_err(),
-            "a missing member invalidates an export even when the SQL filter would exclude it"
+            "a missing member fails the read even when the filter would exclude it"
         );
     })
-    .await
-    .expect("audit LIVE, summary and replay qualification exceeded 90 seconds");
+    .await;
 }

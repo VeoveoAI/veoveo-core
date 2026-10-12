@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Store a copy of a record under a new identity with a class its draft does not have.\nINSERT INTO audit.record (draft, class, occurred_at)\nSELECT jsonb_set(r.draft, '{id}', to_jsonb($2::uuid)), 'authentication', r.occurred_at\nFROM audit.record AS r\nWHERE r.id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "24998c9d9ef8c23052b80f2c4573d9a0d4c3b1715ab75fc1bc5b98ddbe4cfe82"
+}

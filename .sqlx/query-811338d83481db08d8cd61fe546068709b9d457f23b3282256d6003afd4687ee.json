@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Remove one member record and its block outside retention.\nWITH removed AS (\n    DELETE FROM audit.record AS r WHERE r.id = $1\n)\nDELETE FROM audit.block AS b\nWHERE b.partition = $2 AND b.sequence = $3\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "811338d83481db08d8cd61fe546068709b9d457f23b3282256d6003afd4687ee"
+}

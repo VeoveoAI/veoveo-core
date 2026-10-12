@@ -1,166 +1,376 @@
-//! One installation sealer follows committed changes under a database-fenced lease.
-use crate::integrity::{AuditSigningKey, IntegrityError};
-use crate::service::{AuditHealthState, HealthUpdate, Maintenance};
+//! The installation's one sealer. It holds the `audit.sealer` singleton role, reads
+//! records in commit order below the snapshot horizon, signs one block per partition and
+//! commits the blocks with the sealed position on the connection that holds the role.
+//! Export receipts and retention also write through that connection.
+use crate::{
+    integrity::{AuditSigningKey, IntegrityError},
+    service::{AuditHealthState, HealthUpdate, Maintenance},
+    store::{AuditSignal, AuditStore, AuditStoreError, delivery::ExportTransition},
+};
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
+use sqlx::Connection;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use tokio::sync::{Mutex, watch};
 use veoveo_audit_contract::*;
-use veoveo_platform_store::{PlatformStore, StoreError};
+use veoveo_platform_store::{Singleton, SingletonName, StoreError};
+
+/// The most records one pass seals.
+const SEAL_PAGE: usize = 4096;
+/// After the first record of a quiet period commits, the sealer waits this long so
+/// records committed together share a block.
+const BATCH_WINDOW: Duration = Duration::from_secs(1);
+/// How soon the sealer looks again at records that wait behind an open transaction.
+const BLOCKED_RETRY: Duration = Duration::from_millis(250);
+/// How often the sealer checks the connection that holds its role.
+const HEARTBEAT: Duration = Duration::from_secs(10);
+/// How often retention runs.
+const MAINTENANCE: Duration = Duration::from_secs(60);
 
 #[derive(Debug, thiserror::Error)]
 pub enum SealError {
     #[error(transparent)]
-    Store(#[from] StoreError),
+    Store(#[from] AuditStoreError),
     #[error(transparent)]
     Integrity(#[from] IntegrityError),
     #[error(transparent)]
     Export(#[from] crate::export::ExportError),
-    #[error("audit live stream disconnected; recovery requires reconnecting")]
-    Disconnected,
+    #[error("the audit exporter stopped unexpectedly")]
+    Exporter,
 }
+
+impl From<StoreError> for SealError {
+    fn from(error: StoreError) -> Self {
+        Self::Store(error.into())
+    }
+}
+
+impl From<sqlx::Error> for SealError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Store(error.into())
+    }
+}
+
+/// Committed records that remain after a seal pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SealBacklog {
+    /// Every committed record is sealed.
+    Empty,
+    /// The pass was full and more records can be sealed now.
+    Sealable,
+    /// Committed records wait behind a write transaction that is still open. Every
+    /// record whose transaction began writing earlier must commit or roll back first.
+    Blocked,
+}
+
+/// What one seal pass did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SealPass {
+    pub sealed: usize,
+    pub blocks: usize,
+    pub backlog: SealBacklog,
+}
+
+/// The holder of the sealer role. Creating one waits, as a standby, until no other
+/// replica holds the role; dropping or releasing it ends the role's connection and
+/// Postgres grants the role to the next waiting replica.
 pub struct AuditSealer {
-    store: PlatformStore,
+    audit: AuditStore,
     key: Arc<AuditSigningKey>,
-    owner: uuid::Uuid,
+    role: Mutex<Singleton>,
 }
+
+impl std::fmt::Debug for AuditSealer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuditSealer")
+            .field("key", &self.key)
+            .finish_non_exhaustive()
+    }
+}
+
 impl AuditSealer {
-    pub fn new(store: PlatformStore, key: Arc<AuditSigningKey>) -> Self {
-        Self {
-            store,
+    /// The singleton role every sealer contends for.
+    pub const ROLE: &str = "audit.sealer";
+
+    /// Wait until this process holds the sealer role. The wait has no deadline.
+    pub async fn acquire(audit: AuditStore, key: Arc<AuditSigningKey>) -> Result<Self, SealError> {
+        let name = SingletonName::parse(Self::ROLE)?;
+        let role = Singleton::acquire(audit.platform(), name).await?;
+        Ok(Self {
+            audit,
             key,
-            owner: uuid::Uuid::now_v7(),
-        }
+            role: Mutex::new(role),
+        })
     }
-    pub async fn seal_pending(&self) -> Result<usize, SealError> {
-        Ok(self.seal_page().await?.0)
+
+    pub fn audit(&self) -> &AuditStore {
+        &self.audit
     }
-    async fn seal_page(&self) -> Result<(usize, bool), SealError> {
-        let lease = self.store.acquire_audit_seal_lease(self.owner).await?;
-        let committed = self.store.audit_committed_records(&lease).await?;
-        let count = committed.records.len();
-        let mut partitions =
-            BTreeMap::<AuditPartition, Vec<(AuditVersionstamp, AuditRecord)>>::new();
-        for (stamp, record) in committed.records {
+
+    /// Give up the role.
+    pub async fn release(self) -> Result<(), SealError> {
+        self.role.into_inner().release().await?;
+        Ok(())
+    }
+
+    /// Seal up to 4,096 committed records: one block for each partition they belong to.
+    pub async fn seal_pending(&self) -> Result<SealPass, SealError> {
+        let mut role = self.role.lock().await;
+        let connection = role.connection();
+        let from = AuditStore::sealed_position(connection).await?;
+        let mut candidates = self
+            .audit
+            .seal_candidates(connection, SEAL_PAGE + 1)
+            .await?;
+        let full = candidates.len() > SEAL_PAGE;
+        candidates.truncate(SEAL_PAGE);
+        let Some(to) = candidates.last().map(|candidate| candidate.position) else {
+            let backlog = if AuditStore::seal_pending(connection).await? {
+                SealBacklog::Blocked
+            } else {
+                SealBacklog::Empty
+            };
+            return Ok(SealPass {
+                sealed: 0,
+                blocks: 0,
+                backlog,
+            });
+        };
+        let mut previous = from;
+        let mut partitions = BTreeMap::<AuditPartition, Vec<AuditRecord>>::new();
+        for candidate in candidates {
+            if candidate.position <= previous {
+                return Err(AuditStoreError::Integrity.into());
+            }
+            previous = candidate.position;
             partitions
-                .entry(record.draft.partition().clone())
+                .entry(candidate.record.draft.partition().clone())
                 .or_default()
-                .push((stamp, record));
+                .push(candidate.record);
         }
+        let sealed = partitions.values().map(Vec::len).sum();
+        let sealed_at = stored_time(Utc::now());
         let mut blocks = Vec::with_capacity(partitions.len());
-        let now = chrono::Utc::now();
         for (partition, records) in partitions {
-            let previous = self.store.audit_partition_checkpoint(&partition).await?;
-            let members = records
-                .iter()
-                .map(|(versionstamp, record)| AuditBlockMember {
-                    id: record.draft.id(),
-                    versionstamp: *versionstamp,
-                })
-                .collect();
-            let records = records
-                .into_iter()
-                .map(|(_, record)| record)
-                .collect::<Vec<_>>();
+            let head = AuditStore::head(connection, &partition).await?;
             blocks.push(
                 self.key
-                    .seal(partition, previous.as_ref(), members, &records, now)?,
+                    .seal(partition, head.as_ref(), &records, sealed_at)?,
             );
         }
-        self.store
-            .commit_audit_blocks(&lease, committed.next, &blocks)
-            .await?;
+        AuditStore::commit_seal(connection, from, to, &blocks).await?;
         tracing::info!(
-            audit_sealed_records = count,
+            audit_sealed_records = sealed,
             audit_sealed_blocks = blocks.len(),
             "audit seal committed"
         );
-        Ok((count, committed.next.get() > lease.cursor as u64))
+        let backlog = if full {
+            SealBacklog::Sealable
+        } else if AuditStore::seal_pending(connection).await? {
+            SealBacklog::Blocked
+        } else {
+            SealBacklog::Empty
+        };
+        Ok(SealPass {
+            sealed,
+            blocks: blocks.len(),
+            backlog,
+        })
     }
-    /// Native LIVE starts one one-second batching window. Once that window ends,
-    /// replay drains without a delay between pages. An idle worker never polls
-    /// records. Lease renewal has a separate 10 s clock.
-    /// A stream disconnect exits so the gateway supervisor can reconnect and replay
-    /// the persisted cursor. Integrity failures must make that supervisor unhealthy.
-    pub(crate) async fn run(
+
+    /// Commit the intent to send `block` to `destination`, with the hashes of the bytes
+    /// the exporter will send, before sending anything.
+    pub async fn prepare_export(
         &self,
-        mut shutdown: tokio::sync::watch::Receiver<bool>,
-        health: &tokio::sync::watch::Sender<HealthUpdate>,
-        maintenance: &Maintenance,
-    ) -> Result<(), SealError> {
-        let mut lease = self.store.acquire_audit_seal_lease(self.owner).await?;
-        health.send_replace(HealthUpdate::now(AuditHealthState::Recovering));
-        let mut wake = self.store.audit_sealer_wakes().await?;
-        let export_lease = lease.clone();
-        let export = maintenance.exporter.run(&self.store, &export_lease);
-        tokio::pin!(export);
-        let mut renew = tokio::time::interval(Duration::from_secs(10));
-        renew.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut maintain = tokio::time::interval(Duration::from_secs(60));
-        maintain.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut pending = true;
-        let mut flush_at = tokio::time::Instant::now();
-        let mut caught_up_once = false;
+        destination: &AuditDestinationId,
+        block: &AuditBlock,
+        payload: &AuditExportPayload,
+    ) -> Result<(), AuditStoreError> {
+        self.record_export(destination, block, payload, ExportTransition::Prepare, None)
+            .await
+    }
+
+    /// Record the destination's acknowledgement and advance its cursor.
+    pub async fn complete_export(
+        &self,
+        destination: &AuditDestinationId,
+        block: &AuditBlock,
+        payload: &AuditExportPayload,
+    ) -> Result<(), AuditStoreError> {
+        self.record_export(
+            destination,
+            block,
+            payload,
+            ExportTransition::Complete,
+            None,
+        )
+        .await
+    }
+
+    /// Record the destination's permanent refusal. No replica retries the intent.
+    pub async fn reject_export(
+        &self,
+        destination: &AuditDestinationId,
+        block: &AuditBlock,
+        payload: &AuditExportPayload,
+        rejection: AuditExportRejection,
+    ) -> Result<(), AuditStoreError> {
+        self.record_export(
+            destination,
+            block,
+            payload,
+            ExportTransition::Reject,
+            Some(rejection),
+        )
+        .await
+    }
+
+    async fn record_export(
+        &self,
+        destination: &AuditDestinationId,
+        block: &AuditBlock,
+        payload: &AuditExportPayload,
+        transition: ExportTransition,
+        rejection: Option<AuditExportRejection>,
+    ) -> Result<(), AuditStoreError> {
+        let mut role = self.role.lock().await;
+        AuditStore::record_export(
+            role.connection(),
+            destination,
+            block,
+            payload,
+            transition,
+            rejection,
+        )
+        .await
+    }
+
+    /// Retire `block` and its records when it was sealed before `cutoff` and every
+    /// destination acknowledged it. Returns false when retention does not admit it.
+    pub async fn retire(
+        &self,
+        block: &AuditBlock,
+        cutoff: DateTime<Utc>,
+        destinations: &[AuditDestinationId],
+    ) -> Result<bool, AuditStoreError> {
+        let mut role = self.role.lock().await;
+        AuditStore::retire_block(role.connection(), block, cutoff, destinations).await
+    }
+
+    async fn heartbeat(&self) -> Result<(), SealError> {
+        let mut role = self.role.lock().await;
+        role.connection().ping().await?;
+        Ok(())
+    }
+
+    /// Seal every committed record. Producers have stopped; a record that waits behind
+    /// an open transaction is sealed once that transaction ends.
+    async fn drain(&self) -> Result<(), SealError> {
         loop {
-            if *shutdown.borrow() {
-                self.drain(&lease).await?;
-                return Ok(());
-            }
-            tokio::select! {
-                result = &mut export => {
-                    return Err(match result {
-                        Err(crate::export::ExportError::Store(error)) => SealError::Store(error),
-                        Err(crate::export::ExportError::Disconnected) => SealError::Disconnected,
-                        Err(error) => error.into(),
-                        Ok(()) => SealError::Disconnected,
-                    });
-                }
-                result = shutdown.changed() => {
-                    if result.is_err() || *shutdown.borrow() {
-                        self.drain(&lease).await?;
-                        return Ok(());
-                    }
-                }
-                next = wake.next() => match next {
-                    Some(Ok(())) => {
-                        if !pending {
-                            pending = true;
-                            flush_at = tokio::time::Instant::now() + Duration::from_secs(1);
-                        }
-                    },
-                    Some(Err(error)) => return Err(error.into()),
-                    None => return Err(SealError::Disconnected),
-                },
-                _ = renew.tick() => {
-                    lease = self.store.renew_audit_seal_lease(&lease, !pending).await?;
-                    if caught_up_once { health.send_replace(HealthUpdate::now(AuditHealthState::Active)); }
-                }
-                _ = maintain.tick() => {
-                    maintenance.run(&lease).await?;
-                }
-                _ = tokio::time::sleep_until(flush_at), if pending => {
-                    // A zero-record page may contain unrelated table changes. Keep
-                    // draining until Store reports that the database cursor is idle.
-                    pending = self.seal_page().await?.1;
-                    flush_at = tokio::time::Instant::now();
-                    caught_up_once |= !pending;
-                    if caught_up_once {
-                        health.send_replace(HealthUpdate::now(AuditHealthState::Active));
-                    }
-                    // Return to select between pages so shutdown, export and lease
-                    // renewal still progress while a busy database is catching up.
-                    tokio::task::yield_now().await;
-                }
+            match self.seal_pending().await?.backlog {
+                SealBacklog::Empty => return Ok(()),
+                SealBacklog::Sealable => {}
+                SealBacklog::Blocked => tokio::time::sleep(BLOCKED_RETRY).await,
             }
         }
     }
 
-    async fn drain(
-        &self,
-        lease: &veoveo_platform_store::audit::AuditSealLease,
+    /// Seal records as they commit, run export and retention, and drain on shutdown. A
+    /// sealer that loses its connection returns, so the supervisor can wait for the
+    /// role again.
+    pub(crate) async fn run(
+        self: Arc<Self>,
+        mut shutdown: watch::Receiver<bool>,
+        health: &watch::Sender<HealthUpdate>,
+        maintenance: &Maintenance,
     ) -> Result<(), SealError> {
-        // Producers are stopped before shutdown. Schema and unrelated domain
-        // pages still advance the cursor and must not end the drain early.
-        while self.seal_page().await?.1 {}
-        self.store.release_audit_seal_lease(lease).await?;
-        Ok(())
+        health.send_replace(HealthUpdate::now(AuditHealthState::Recovering));
+        let mut changes = self.audit.subscribe().await?;
+        let mut export = tokio::spawn(maintenance.exporter.clone().run(self.clone()));
+        let result = self
+            .serve(
+                &mut shutdown,
+                health,
+                maintenance,
+                &mut changes,
+                &mut export,
+            )
+            .await;
+        export.abort();
+        let _ = export.await;
+        result
+    }
+
+    async fn serve(
+        &self,
+        shutdown: &mut watch::Receiver<bool>,
+        health: &watch::Sender<HealthUpdate>,
+        maintenance: &Maintenance,
+        changes: &mut veoveo_platform_store::ChangeStream,
+        export: &mut tokio::task::JoinHandle<Result<(), crate::export::ExportError>>,
+    ) -> Result<(), SealError> {
+        let mut heartbeat = tokio::time::interval(HEARTBEAT);
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut maintain = tokio::time::interval(MAINTENANCE);
+        maintain.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // Recovery seals whatever committed while no replica held the role.
+        let mut pending = true;
+        let mut flush_at = tokio::time::Instant::now();
+        let mut caught_up = false;
+        loop {
+            if *shutdown.borrow() {
+                return self.drain().await;
+            }
+            tokio::select! {
+                result = &mut *export => {
+                    return Err(match result {
+                        Ok(Err(error)) => error.into(),
+                        Ok(Ok(())) | Err(_) => SealError::Exporter,
+                    });
+                }
+                result = shutdown.changed() => {
+                    if result.is_err() || *shutdown.borrow() {
+                        return self.drain().await;
+                    }
+                }
+                signal = changes.next() => match signal.map(|signal| signal.map(AuditSignal::decode)) {
+                    Some(Ok(AuditSignal::Record(_) | AuditSignal::Reconcile)) => {
+                        if !pending {
+                            pending = true;
+                            flush_at = tokio::time::Instant::now() + BATCH_WINDOW;
+                        }
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(error)) => {
+                        tracing::warn!(%error, "audit sealer listener reconnecting");
+                    }
+                    None => return Err(AuditStoreError::Disconnected.into()),
+                },
+                _ = heartbeat.tick() => {
+                    self.heartbeat().await?;
+                    if caught_up {
+                        health.send_replace(HealthUpdate::now(AuditHealthState::Active));
+                    }
+                }
+                _ = maintain.tick() => maintenance.run(self).await?,
+                _ = tokio::time::sleep_until(flush_at), if pending => {
+                    let pass = self.seal_pending().await?;
+                    match pass.backlog {
+                        SealBacklog::Sealable => flush_at = tokio::time::Instant::now(),
+                        SealBacklog::Blocked => {
+                            flush_at = tokio::time::Instant::now() + BLOCKED_RETRY;
+                        }
+                        SealBacklog::Empty => {
+                            pending = false;
+                            caught_up = true;
+                            health.send_replace(HealthUpdate::now(AuditHealthState::Active));
+                        }
+                    }
+                    // Return to select between passes so shutdown, export and the
+                    // heartbeat progress while a large backlog drains.
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
     }
 }

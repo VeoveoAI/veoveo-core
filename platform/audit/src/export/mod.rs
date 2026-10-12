@@ -1,16 +1,20 @@
-//! Gateway-owned export, independent of request latency and lease renewal.
+//! Gateway-owned export, independent of request latency. The sealer runs it and records
+//! its intents and receipts on the connection that holds the sealer role.
 mod config;
 pub use config::{AuditExportConfig, BucketName, ObjectLock, ObjectPrefix, OtlpConfig, S3Config};
 pub mod ocsf;
 mod otlp;
 mod s3;
-use crate::integrity::{IntegrityError, canonical_bytes, record_root};
+use crate::{
+    integrity::{IntegrityError, canonical_bytes, record_root},
+    sealer::AuditSealer,
+    store::{AuditSignal, AuditStoreError},
+};
 use futures::StreamExt;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::{io::Write, time::Duration};
+use std::{io::Write, sync::Arc, time::Duration};
 use veoveo_audit_contract::*;
-use veoveo_platform_store::{PlatformStore, StoreError, audit::AuditSealLease};
 use veoveo_types::Sha256Digest;
 const MAX_CONTENT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_SEAL_BYTES: usize = 2 * 1024 * 1024;
@@ -20,7 +24,7 @@ pub enum ExportError {
     #[error("invalid audit export configuration: {0}")]
     Configuration(&'static str),
     #[error(transparent)]
-    Store(#[from] StoreError),
+    Store(#[from] AuditStoreError),
     #[error(transparent)]
     Integrity(#[from] IntegrityError),
     #[error("audit destination unavailable; delivery remains unresolved")]
@@ -35,7 +39,7 @@ pub enum ExportError {
     ObjectLock,
     #[error("audit collector rejected part of the block; automatic retry is prohibited")]
     PartialAcceptance,
-    #[error("audit export LIVE stream disconnected")]
+    #[error("audit export change notifications ended")]
     Disconnected,
     #[error("audit export exceeds the configured wire profile size")]
     Size,
@@ -171,24 +175,22 @@ impl AuditExporter {
     pub fn destination_ids(&self) -> Vec<AuditDestinationId> {
         self.destinations.iter().map(|d| d.id().clone()).collect()
     }
-    pub(crate) async fn run(
-        &self,
-        store: &PlatformStore,
-        lease: &AuditSealLease,
-    ) -> Result<(), ExportError> {
+    /// Deliver every block each destination has not acknowledged, then wait for the next
+    /// sealed block. Runs while `sealer` holds the role.
+    pub(crate) async fn run(self: Arc<Self>, sealer: Arc<AuditSealer>) -> Result<(), ExportError> {
         if self.destinations.is_empty() {
             return std::future::pending().await;
         }
         // Subscribe before the initial replay. An idle exporter performs no scans.
-        let mut wake = store.audit_export_wakes().await?;
+        let mut wake = sealer.audit().subscribe().await?;
         loop {
             let mut pending = false;
             for destination in &self.destinations {
-                let Some(block) = store.audit_export_candidate(destination.id()).await? else {
+                let Some(block) = sealer.audit().export_candidate(destination.id()).await? else {
                     continue;
                 };
                 pending = true;
-                match self.deliver(store, lease, destination, &block).await {
+                match self.deliver(&sealer, destination, &block).await {
                     Ok(()) => {}
                     Err(error) if error.retry_delay().is_some() => {
                         tracing::warn!(
@@ -204,18 +206,27 @@ impl AuditExporter {
                 }
             }
             if !pending {
-                match wake.next().await {
-                    Some(Ok(())) => {}
-                    Some(Err(error)) => return Err(error.into()),
-                    None => return Err(ExportError::Disconnected),
+                loop {
+                    match wake
+                        .next()
+                        .await
+                        .map(|signal| signal.map(AuditSignal::decode))
+                    {
+                        Some(Ok(AuditSignal::Sealed(_) | AuditSignal::Reconcile)) => break,
+                        Some(Ok(_)) => {}
+                        // The listener reconnects by itself and then asks to reconcile.
+                        Some(Err(error)) => {
+                            tracing::warn!(%error, "audit export listener reconnecting");
+                        }
+                        None => return Err(ExportError::Disconnected),
+                    }
                 }
             }
         }
     }
     async fn deliver(
         &self,
-        store: &PlatformStore,
-        lease: &AuditSealLease,
+        sealer: &AuditSealer,
         destination: &Destination,
         block: &AuditBlock,
     ) -> Result<(), ExportError> {
@@ -223,7 +234,7 @@ impl AuditExporter {
             AuditPartition::Installation => AuditReadScope::new(None, true),
             AuditPartition::Tenant(tenant) => AuditReadScope::new(Some(tenant.clone()), false),
         };
-        let records = store.audit_block_records(&scope, block).await?;
+        let records = sealer.audit().block_records(&scope, block).await?;
         if record_root(&records)? != block.head.root {
             return Err(ExportError::Conflict);
         }
@@ -235,8 +246,8 @@ impl AuditExporter {
             },
         };
         let hashes = bundle.hashes();
-        store
-            .prepare_audit_export(lease, destination.id(), block, &hashes)
+        sealer
+            .prepare_export(destination.id(), block, &hashes)
             .await?;
         let result = tokio::time::timeout(Duration::from_secs(60), async {
             match destination {
@@ -256,15 +267,15 @@ impl AuditExporter {
                 _ => None,
             };
             if let Some(rejection) = rejection {
-                // Keep a known negative provider response while Store reconnects.
-                // A network-attempt timeout must never turn it into a resend.
+                // Keep a known negative provider response while the database is
+                // unavailable. A network-attempt timeout must never turn it into a resend.
                 loop {
-                    match store
-                        .reject_audit_export(lease, destination.id(), block, &hashes, rejection)
+                    match sealer
+                        .reject_export(destination.id(), block, &hashes, rejection)
                         .await
                     {
-                        Ok(()) | Err(StoreError::AuditExportRejected) => break,
-                        Err(StoreError::Database(_)) => {
+                        Ok(()) | Err(AuditStoreError::ExportRejected) => break,
+                        Err(AuditStoreError::Database(_)) => {
                             tracing::warn!(
                                 destination = destination.id().as_str(),
                                 "retrying audit export rejection persistence"
@@ -277,8 +288,8 @@ impl AuditExporter {
             }
             return Err(error);
         }
-        store
-            .complete_audit_export(lease, destination.id(), block, &hashes)
+        sealer
+            .complete_export(destination.id(), block, &hashes)
             .await?;
         tracing::info!(
             destination = destination.id().as_str(),

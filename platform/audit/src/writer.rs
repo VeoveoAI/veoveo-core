@@ -1,7 +1,7 @@
+use crate::store::AuditStore;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{Mutex, mpsc, oneshot, watch};
 use veoveo_audit_contract::{AuditDraft, IndexingRead};
-use veoveo_platform_store::PlatformStore;
 mod indexing;
 use indexing::indexing_windows;
 
@@ -49,7 +49,7 @@ pub struct AuditWriter {
     runtime: Arc<Runtime>,
 }
 impl AuditWriter {
-    pub fn start(store: PlatformStore) -> Self {
+    pub fn start(audit: AuditStore) -> Self {
         let (sender, receiver) = mpsc::channel::<Pending>(QUEUE_LIMIT);
         let (completions, completion_receiver) = mpsc::channel::<AuditDraft>(QUEUE_LIMIT);
         let (stop, stopped) = watch::channel(false);
@@ -58,14 +58,14 @@ impl AuditWriter {
             // receivers and rejects new writes; no detached child keeps running.
             tokio::try_join!(
                 async {
-                    required(store.clone(), receiver, stopped.clone()).await;
+                    required(audit.clone(), receiver, stopped.clone()).await;
                     Ok(())
                 },
                 async {
-                    completed(store.clone(), completion_receiver, stopped.clone()).await;
+                    completed(audit.clone(), completion_receiver, stopped.clone()).await;
                     Ok(())
                 },
-                indexing_windows(store.clone(), stopped.clone()),
+                indexing_windows(audit.clone(), stopped.clone()),
             )
             .map(|_| ())
         });
@@ -154,7 +154,7 @@ async fn next<T>(receiver: &mut mpsc::Receiver<T>, stop: &mut watch::Receiver<bo
     }
 }
 async fn required(
-    store: PlatformStore,
+    audit: AuditStore,
     mut receiver: mpsc::Receiver<Pending>,
     mut stop: watch::Receiver<bool>,
 ) {
@@ -181,7 +181,7 @@ async fn required(
         let started = tokio::time::Instant::now();
         let result = tokio::time::timeout(
             Duration::from_secs(15),
-            store.append_audit_group(&records, &indexing),
+            audit.append_group(&records, &indexing),
         )
         .await
         .map_err(|_| AuditWriteError::Commit)
@@ -199,7 +199,7 @@ async fn required(
     }
 }
 async fn completed(
-    store: PlatformStore,
+    audit: AuditStore,
     mut receiver: mpsc::Receiver<AuditDraft>,
     mut stop: watch::Receiver<bool>,
 ) {
@@ -213,7 +213,7 @@ async fn completed(
         }
         let mut delay = Duration::from_millis(100);
         loop {
-            match store.append_audit_records(&records).await {
+            match audit.append(&records).await {
                 Ok(()) => break,
                 Err(_) => {
                     tracing::error!(

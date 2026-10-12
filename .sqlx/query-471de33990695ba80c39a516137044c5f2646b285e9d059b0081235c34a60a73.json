@@ -1,0 +1,122 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Windows whose five minutes have ended by the database clock, oldest first.\nSELECT\n    w.scope,\n    w.start_at,\n    w.end_at,\n    w.collection,\n    w.template,\n    w.reads,\n    w.not_modified,\n    w.failed,\n    w.members_digest\nFROM audit.indexing_window AS w\nWHERE w.end_at <= now()\nORDER BY w.end_at\nLIMIT 32\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "scope",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "scope"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "start_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "start_at"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "end_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "end_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "collection",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "collection"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "template",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "template"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "reads",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "reads"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "not_modified",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "not_modified"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "failed",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "failed"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "members_digest",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit.indexing_window",
+            "name": "members_digest"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "471de33990695ba80c39a516137044c5f2646b285e9d059b0081235c34a60a73"
+}

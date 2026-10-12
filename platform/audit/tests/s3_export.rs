@@ -1,6 +1,5 @@
-//! Real S3 delivery from a disposable Store, using an isolated provider prefix.
-#[path = "../../../testing/fixtures/store.rs"]
-mod fixture;
+//! Real S3 delivery from a disposable database, using an isolated provider prefix.
+mod support;
 
 use futures::{FutureExt, TryStreamExt};
 use object_store::{ObjectStore, ObjectStoreExt, aws::AmazonS3Builder, path::Path};
@@ -24,11 +23,7 @@ struct Source {
     veoveo: serde_json::Value,
 }
 
-async fn delivered(
-    store: &veoveo_platform_store::PlatformStore,
-    destination: &AuditDestinationId,
-    health: &AuditHealth,
-) {
+async fn delivered(store: &AuditStore, destination: &AuditDestinationId, health: &AuditHealth) {
     tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             assert_ne!(
@@ -36,12 +31,7 @@ async fn delivered(
                 AuditHealthState::Failed,
                 "export worker failed"
             );
-            if store
-                .audit_export_candidate(destination)
-                .await
-                .unwrap()
-                .is_none()
-            {
+            if store.export_candidate(destination).await.unwrap().is_none() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -52,7 +42,7 @@ async fn delivered(
 }
 
 async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path) {
-    let db = fixture::TestDb::with_backend(fixture::StoreBackend::RocksDb).await;
+    let db = support::AuditDb::new().await;
     let destinations = AuditExporter::new(exports.clone())
         .unwrap()
         .destination_ids();
@@ -86,7 +76,7 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
         writer.record(draft.clone()).await.unwrap();
         tokio::time::timeout(
             Duration::from_secs(30),
-            db.a.audit_wait_sealed(&scope, &partition, draft.id()),
+            db.a.wait_sealed(&scope, &partition, draft.id()),
         )
         .await
         .expect("fixture record was not sealed")
@@ -97,10 +87,7 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
     }
     writer.shutdown(Duration::from_secs(10)).await.unwrap();
     service.shutdown(Duration::from_secs(15)).await.unwrap();
-    let expected_blocks =
-        db.b.audit_blocks(&scope, &partition, None, 10)
-            .await
-            .unwrap();
+    let expected_blocks = db.b.blocks(&scope, &partition, None, 10).await.unwrap();
     assert_eq!(expected_blocks.len(), 2);
 
     let mut objects: Vec<_> = s3
@@ -134,7 +121,7 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
             {
                 let event: ExportedEvent = serde_json::from_slice(line).unwrap();
                 let record: AuditRecord =
-                    db.a.audit_targets()
+                    db.a.targets()
                         .decoder()
                         .from_value(event.unmapped.veoveo)
                         .unwrap();
@@ -164,7 +151,7 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
         .finish(&blocks.last().unwrap().checkpoint())
         .unwrap();
 
-    // A different Store connection and worker reuse the persisted receipts.
+    // Another pool and worker reuse the persisted receipts.
     let restarted =
         AuditService::start(db.b.clone(), key, NonZeroU32::new(1).unwrap(), exports).unwrap();
     let mut health = restarted.health();
@@ -177,12 +164,7 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
     .await
     .expect("restarted export worker did not become active");
     for destination in &destinations {
-        assert!(
-            db.a.audit_export_candidate(destination)
-                .await
-                .unwrap()
-                .is_none()
-        );
+        assert!(db.a.export_candidate(destination).await.unwrap().is_none());
     }
     restarted.shutdown(Duration::from_secs(15)).await.unwrap();
     let mut after: Vec<_> = s3
@@ -213,7 +195,7 @@ async fn cleanup(s3: &dyn ObjectStore, prefix: &Path) -> bool {
 }
 
 #[tokio::test]
-#[ignore = "requires VEOVEO_AUDIT_TEST_S3_CONFIG, S3 credentials and Docker; owns an isolated prefix and Store"]
+#[ignore = "requires VEOVEO_AUDIT_TEST_S3_CONFIG, S3 credentials and PostgreSQL 18; owns an isolated prefix and database"]
 async fn real_s3_delivery_preserves_records_signatures_and_replica_receipts() {
     let path = std::env::var_os("VEOVEO_AUDIT_TEST_S3_CONFIG")
         .expect("set VEOVEO_AUDIT_TEST_S3_CONFIG to a public export configuration");

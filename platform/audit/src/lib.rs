@@ -1,6 +1,9 @@
-//! One audit writer for request group commits and existing domain transactions.
+//! The audit log in PostgreSQL: group-committed and transactional appends,
+//! partition-scoped reads and change streams, the singleton sealer with export and
+//! retention, and signed-block verification.
 pub use veoveo_audit_contract::*;
-pub use veoveo_platform_store::audit::AuditTransactionWrite;
+mod store;
+pub use store::{AuditExportRange, AuditLiveChange, AuditLiveStream, AuditStore, AuditStoreError};
 mod writer;
 pub use writer::{AuditShutdownError, AuditWriteError, AuditWriter};
 pub mod integrity;

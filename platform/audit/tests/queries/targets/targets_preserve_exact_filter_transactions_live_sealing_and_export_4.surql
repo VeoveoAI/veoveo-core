@@ -1,1 +1,0 @@
-BEGIN TRANSACTION; LET $original=SELECT * FROM ONLY $id; DELETE $id; CREATE ONLY $id CONTENT object::extend($original,{draft:object::extend($original.draft,{target:{kind:'missing_owner'}})}); COMMIT TRANSACTION;

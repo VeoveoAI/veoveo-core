@@ -6,7 +6,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use veoveo_audit_contract::*;
-use veoveo_platform_store::ChangefeedCursor;
 use veoveo_types::Sha256Digest;
 
 const HEAD_DOMAIN: &[u8] = b"https://veoveo.ai/formats/audit-block\0";
@@ -21,7 +20,7 @@ pub enum IntegrityError {
     Canonicalization,
     #[error("audit integer exceeds the I-JSON exact integer range")]
     IntegerRange,
-    #[error("audit block membership or commit ordering is invalid")]
+    #[error("audit block membership or positions are invalid")]
     Membership,
     #[error("audit block chain has a missing or mismatched link")]
     Chain,
@@ -128,11 +127,12 @@ impl AuditSigningKey {
     pub fn key_id(&self) -> Sha256Digest {
         Sha256Digest::from_bytes(hash(&[&self.public_key()]))
     }
+    /// Sign `records`, in commit order, as the block after `previous`. Each record takes
+    /// the partition position after the one before it.
     pub fn seal(
         &self,
         partition: AuditPartition,
         previous: Option<&AuditCheckpoint>,
-        members: Vec<AuditBlockMember>,
         records: &[AuditRecord],
         sealed_at: DateTime<Utc>,
     ) -> Result<AuditBlock, IntegrityError> {
@@ -143,23 +143,24 @@ impl AuditSigningKey {
             .map_or(Some(1), |previous| previous.sequence.get().checked_add(1))
             .ok_or(IntegrityError::Sequence)?;
         let sequence = AuditBlockSequence::new(sequence).map_err(|_| IntegrityError::Sequence)?;
-        let first = members
-            .first()
-            .ok_or(IntegrityError::Membership)?
-            .versionstamp;
-        let last = members
-            .last()
-            .ok_or(IntegrityError::Membership)?
-            .versionstamp;
-        if previous.is_some_and(|previous| first <= previous.last_versionstamp) {
-            return Err(IntegrityError::Chain);
+        let first = first_position(previous)?;
+        let mut members = Vec::with_capacity(records.len());
+        let mut position = first;
+        for (index, record) in records.iter().enumerate() {
+            if index > 0 {
+                position = position.next().map_err(|_| IntegrityError::Sequence)?;
+            }
+            members.push(AuditBlockMember {
+                id: record.draft.id(),
+                position,
+            });
         }
         let head = AuditBlockHead {
             format: AuditBlockFormat::AuditBlock,
             partition,
             sequence,
-            first_versionstamp: first,
-            last_versionstamp: last,
+            first_position: first,
+            last_position: position,
             members,
             root: record_root(records)?,
             previous: previous.map(|previous| previous.head_hash.clone()),
@@ -175,16 +176,24 @@ impl AuditSigningKey {
         })
     }
 }
+/// The position of the first record after `previous`.
+fn first_position(previous: Option<&AuditCheckpoint>) -> Result<AuditPosition, IntegrityError> {
+    match previous {
+        None => AuditPosition::new(1),
+        Some(previous) => previous.last_position.next(),
+    }
+    .map_err(|_| IntegrityError::Sequence)
+}
 fn check_members(head: &AuditBlockHead, records: &[AuditRecord]) -> Result<(), IntegrityError> {
     if records.is_empty()
         || records.len() > MAX_BLOCK_RECORDS
         || records.len() != head.members.len()
-        || head.members.first().map(|m| m.versionstamp) != Some(head.first_versionstamp)
-        || head.members.last().map(|m| m.versionstamp) != Some(head.last_versionstamp)
+        || head.members.first().map(|m| m.position) != Some(head.first_position)
+        || head.members.last().map(|m| m.position) != Some(head.last_position)
         || head
             .members
             .windows(2)
-            .any(|pair| pair[0].versionstamp > pair[1].versionstamp)
+            .any(|pair| pair[0].position.next().ok() != Some(pair[1].position))
     {
         return Err(IntegrityError::Membership);
     }
@@ -212,15 +221,17 @@ impl AuditKeyRing {
         Ok(id)
     }
 }
+/// A record whose producer-supplied times disagree with the database clock that
+/// recorded it by more than the verifier's allowed skew.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditFinding {
     BackdatedRecord {
         id: AuditRecordId,
-        committed_at: DateTime<Utc>,
+        recorded_at: DateTime<Utc>,
     },
     FutureRecord {
         id: AuditRecordId,
-        committed_at: DateTime<Utc>,
+        recorded_at: DateTime<Utc>,
     },
 }
 /// A verifier consumes one partition in order. A retained prefix requires its
@@ -264,10 +275,7 @@ impl<'a> AuditVerifier<'a> {
         if head.partition != self.partition
             || head.sequence.get() != expected_sequence
             || head.previous != self.previous.as_ref().map(|p| p.head_hash.clone())
-            || self
-                .previous
-                .as_ref()
-                .is_some_and(|p| head.first_versionstamp <= p.last_versionstamp)
+            || head.first_position != first_position(self.previous.as_ref())?
         {
             return Err(IntegrityError::Chain);
         }
@@ -287,13 +295,10 @@ impl<'a> AuditVerifier<'a> {
         key.verify_strict(&bytes, &Signature::from_bytes(&block.signature.to_bytes()))
             .map_err(|_| IntegrityError::Signature)?;
         let mut findings = Vec::new();
-        for (record, member) in records.iter().zip(&head.members) {
-            // The signed feed stamp anchors commit time independently of mutable
-            // database credentials. Sealer downtime must not look like backdating.
-            let committed_at =
-                ChangefeedCursor::from_versionstamp(member.versionstamp.get() as i64)
-                    .and_then(ChangefeedCursor::timestamp)
-                    .ok_or(IntegrityError::Membership)?;
+        for record in records {
+            // The database assigned `recorded_at` when the record was inserted, so a
+            // sealer that runs hours later does not make a record look backdated.
+            let recorded_at = record.recorded_at;
             let uuid_time = record
                 .draft
                 .id()
@@ -303,22 +308,18 @@ impl<'a> AuditVerifier<'a> {
                 .to_unix();
             let id_time = DateTime::from_timestamp(uuid_time.0 as i64, uuid_time.1)
                 .ok_or(IntegrityError::Membership)?;
-            let earliest = id_time
-                .min(record.draft.occurred_at())
-                .min(record.recorded_at);
-            let latest = id_time
-                .max(record.draft.occurred_at())
-                .max(record.recorded_at);
-            if committed_at - earliest > self.clock_skew {
+            let earliest = id_time.min(record.draft.occurred_at());
+            let latest = id_time.max(record.draft.occurred_at());
+            if recorded_at - earliest > self.clock_skew {
                 findings.push(AuditFinding::BackdatedRecord {
                     id: record.draft.id(),
-                    committed_at,
+                    recorded_at,
                 });
             }
-            if latest - committed_at > self.clock_skew {
+            if latest - recorded_at > self.clock_skew {
                 findings.push(AuditFinding::FutureRecord {
                     id: record.draft.id(),
-                    committed_at,
+                    recorded_at,
                 });
             }
         }
@@ -352,18 +353,6 @@ mod tests {
             recorded_at: Utc::now(),
         }
     }
-    fn members(records: &[AuditRecord], stamp: u64) -> Vec<AuditBlockMember> {
-        records
-            .iter()
-            .map(|record| AuditBlockMember {
-                id: record.draft.id(),
-                versionstamp: AuditVersionstamp::new(
-                    ((records[0].recorded_at.timestamp_millis() as u64) << 16) | stamp,
-                )
-                .unwrap(),
-            })
-            .collect()
-    }
     #[test]
     fn rfc9162_uses_domain_separation_and_unbalanced_tree_split() {
         let a = hash(&[&[0], b"a"]);
@@ -384,14 +373,17 @@ mod tests {
         keys.insert(key.public_key()).unwrap();
         let records = vec![fixture(), fixture(), fixture()];
         let block = key
-            .seal(
-                AuditPartition::Installation,
-                None,
-                members(&records, 123),
-                &records,
-                Utc::now(),
-            )
+            .seal(AuditPartition::Installation, None, &records, Utc::now())
             .unwrap();
+        assert_eq!(
+            block
+                .head
+                .members
+                .iter()
+                .map(|member| member.position.get())
+                .collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
         let verify = |block: &AuditBlock, records: &[AuditRecord]| {
             AuditVerifier::new(
                 &keys,
@@ -419,16 +411,22 @@ mod tests {
             verify(&forged, &records),
             Err(IntegrityError::Signature)
         ));
+        let mut gap = block.clone();
+        gap.head.members[1].position = AuditPosition::new(3).unwrap();
+        assert!(matches!(
+            verify(&gap, &records),
+            Err(IntegrityError::Membership)
+        ));
         let second_records = vec![fixture()];
         let second = key
             .seal(
                 AuditPartition::Installation,
                 Some(&block.checkpoint()),
-                members(&second_records, 124),
                 &second_records,
                 Utc::now(),
             )
             .unwrap();
+        assert_eq!(second.head.first_position.get(), 4);
         assert!(matches!(
             verify(&second, &second_records),
             Err(IntegrityError::Chain)
@@ -466,17 +464,8 @@ mod tests {
         .build()
         .unwrap();
         let records = vec![fixture(), old];
-        let mut members = members(&records, 42);
-        members[1].versionstamp =
-            AuditVersionstamp::new(members[0].versionstamp.get() + 1).unwrap();
         let block = key
-            .seal(
-                AuditPartition::Installation,
-                None,
-                members,
-                &records,
-                Utc::now(),
-            )
+            .seal(AuditPartition::Installation, None, &records, Utc::now())
             .unwrap();
         let mut verifier = AuditVerifier::new(
             &keys,
@@ -493,15 +482,14 @@ mod tests {
         verifier.finish(&block.checkpoint()).unwrap();
     }
     #[test]
-    fn commit_clock_distinguishes_delayed_sealing_from_forged_record_times() {
+    fn database_clock_distinguishes_delayed_sealing_from_forged_record_times() {
         let key = AuditSigningKey::from_seed(&[17; 32]);
         let mut keys = AuditKeyRing::default();
         keys.insert(key.public_key()).unwrap();
         for offset in [0, -1, 1] {
             let mut record = fixture();
-            // Preserve the actual commit stamp when both timestamp fields are
-            // forged. The sealer may legitimately be offline for two hours.
-            let members = members(std::slice::from_ref(&record), 1);
+            // The producer supplies the occurrence time; the database supplies the
+            // recording time. The sealer may legitimately be offline for two hours.
             let now = record.recorded_at;
             let supplied = now + TimeDelta::hours(offset);
             record.draft = AuditDraft::builder(
@@ -517,12 +505,10 @@ mod tests {
             .occurred_at(supplied)
             .build()
             .unwrap();
-            record.recorded_at = supplied;
             let block = key
                 .seal(
                     AuditPartition::Installation,
                     None,
-                    members,
                     std::slice::from_ref(&record),
                     now + TimeDelta::hours(2),
                 )
@@ -552,8 +538,8 @@ mod tests {
     }
 
     #[test]
-    fn canonicalization_never_rounds_database_versionstamps() {
-        let stamp = AuditVersionstamp::new(117_300_000_000_000_001).unwrap();
+    fn canonicalization_never_rounds_large_positions() {
+        let stamp = AuditPosition::new(117_300_000_000_000_001).unwrap();
         assert_eq!(canonical_bytes(&stamp).unwrap(), br#""117300000000000001""#);
         assert!(matches!(
             canonical_bytes(&117_300_000_000_000_001u64),

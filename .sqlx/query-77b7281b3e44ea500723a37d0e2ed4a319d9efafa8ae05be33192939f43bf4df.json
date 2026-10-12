@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Give the current transaction its transaction ID before it writes anything.\nSELECT pg_current_xact_id()::text AS \"txid!\"\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "txid!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "77b7281b3e44ea500723a37d0e2ed4a319d9efafa8ae05be33192939f43bf4df"
+}

@@ -110,16 +110,7 @@ fn export_retry_bytes_and_otlp_correlation_are_stable() {
     );
     let records = vec![record];
     let block = crate::integrity::AuditSigningKey::from_seed(&[7; 32])
-        .seal(
-            AuditPartition::Installation,
-            None,
-            vec![AuditBlockMember {
-                id: records[0].draft.id(),
-                versionstamp: AuditVersionstamp::new(1).unwrap(),
-            }],
-            &records,
-            Utc::now(),
-        )
+        .seal(AuditPartition::Installation, None, &records, Utc::now())
         .unwrap();
     let first = Bundle::ocsf(&block, &records).unwrap();
     assert_eq!(

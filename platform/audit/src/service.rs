@@ -1,7 +1,9 @@
-//! Gateway-owned sealing and retention with lease election and observable failure.
+//! The Gateway's audit service: a standby until it holds the sealer role, then the
+//! sealer with export and retention. Failures are observable through its health.
 use crate::{
     integrity::AuditSigningKey,
     sealer::{AuditSealer, SealError},
+    store::{AuditStore, AuditStoreError},
 };
 use std::{
     num::NonZeroU32,
@@ -9,7 +11,11 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
-use veoveo_platform_store::{PlatformStore, StoreError, audit::AuditSealLease};
+
+/// How often a waiting standby reports that it is alive.
+const STANDBY_HEARTBEAT: Duration = Duration::from_secs(10);
+/// The most blocks one retention pass retires.
+const RETENTION_BATCH: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditHealthState {
@@ -70,7 +76,7 @@ pub struct AuditService {
 }
 impl AuditService {
     pub fn start(
-        store: PlatformStore,
+        audit: AuditStore,
         key: Arc<AuditSigningKey>,
         retention_days: NonZeroU32,
         exports: crate::export::AuditExportConfig,
@@ -82,7 +88,13 @@ impl AuditService {
         let (stop, shutdown) = watch::channel(false);
         let (health, receiver) = watch::channel(HealthUpdate::now(AuditHealthState::Starting));
         let task = tokio::spawn(async move {
-            let result = supervise(store, key, retention_days, exporter, shutdown, &health).await;
+            let maintenance = Maintenance {
+                audit: audit.clone(),
+                retention_days,
+                destinations: exporter.destination_ids(),
+                exporter: Arc::new(exporter),
+            };
+            let result = supervise(audit, key, &maintenance, shutdown, &health).await;
             health.send_replace(HealthUpdate::now(if result.is_ok() {
                 AuditHealthState::Stopped
             } else {
@@ -122,115 +134,134 @@ impl Drop for AuditService {
         }
     }
 }
+
+/// Failures that waiting for the role again cannot repair.
+fn fatal(error: &SealError) -> bool {
+    matches!(
+        error,
+        SealError::Export(_)
+            | SealError::Integrity(_)
+            | SealError::Exporter
+            | SealError::Store(
+                AuditStoreError::Integrity
+                    | AuditStoreError::ExportRejected
+                    | AuditStoreError::IdentityConflict
+                    | AuditStoreError::BatchLimit
+                    | AuditStoreError::Target(_)
+                    | AuditStoreError::Validation(_),
+            )
+    )
+}
+
+async fn stopping(shutdown: &mut watch::Receiver<bool>) {
+    while !*shutdown.borrow() {
+        if shutdown.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
 async fn supervise(
-    store: PlatformStore,
+    audit: AuditStore,
     key: Arc<AuditSigningKey>,
-    retention_days: NonZeroU32,
-    exporter: crate::export::AuditExporter,
+    maintenance: &Maintenance,
     mut shutdown: watch::Receiver<bool>,
     health: &watch::Sender<HealthUpdate>,
 ) -> Result<(), AuditServiceError> {
-    let sealer = AuditSealer::new(store.clone(), key);
-    let maintenance = Maintenance {
-        store,
-        retention_days,
-        destinations: exporter.destination_ids(),
-        exporter,
-    };
     let mut delay = Duration::from_secs(1);
     loop {
-        let (pause, recovery_error) = match sealer.run(shutdown.clone(), health, &maintenance).await
-        {
-            Ok(()) => return Ok(()),
-            Err(SealError::Store(StoreError::AuditLeaseBusy)) => {
-                health.send_replace(HealthUpdate::now(AuditHealthState::Standby));
-                delay = Duration::from_secs(1);
-                (Duration::from_secs(2), None)
-            }
-            Err(
-                error @ (SealError::Export(_)
-                | SealError::Integrity(_)
-                | SealError::Store(
-                    StoreError::AuditIntegrity
-                    | StoreError::AuditExportRejected
-                    | StoreError::AuditChangefeedGap
-                    | StoreError::AuditBatchLimit
-                    | StoreError::AuditValidation(_),
-                )),
-            ) => {
-                tracing::error!(error = %error, "audit integrity service failed; operator recovery required");
-                return Err(error.into());
-            }
-            Err(error) => {
-                health.send_replace(HealthUpdate::now(AuditHealthState::Recovering));
-                tracing::warn!(error = %error, "audit service reconnecting from committed cursor");
-                let pause = delay;
-                delay = (delay * 2).min(Duration::from_secs(10));
-                (pause, Some(error))
+        health.send_replace(HealthUpdate::now(AuditHealthState::Standby));
+        let acquire = AuditSealer::acquire(audit.clone(), key.clone());
+        tokio::pin!(acquire);
+        let mut heartbeat = tokio::time::interval(STANDBY_HEARTBEAT);
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let acquired = loop {
+            tokio::select! {
+                acquired = &mut acquire => break acquired,
+                // A standby that stops has no committed work of its own to seal.
+                () = stopping(&mut shutdown) => return Ok(()),
+                _ = heartbeat.tick() => {
+                    health.send_replace(HealthUpdate::now(AuditHealthState::Standby));
+                }
             }
         };
-        let stopping = *shutdown.borrow();
-        let stopping = stopping
-            || tokio::select! {
-                _ = tokio::time::sleep(pause) => false,
-                result = shutdown.changed() => result.is_err() || *shutdown.borrow(),
-            };
-        if stopping {
-            // A failed drain or a disconnected worker has not sealed its pending
-            // records. Only an elected standby may stop without doing that work.
-            return recovery_error.map_or(Ok(()), |error| Err(error.into()));
+        let error = match acquired {
+            Ok(sealer) => {
+                let sealer = Arc::new(sealer);
+                let result = sealer
+                    .clone()
+                    .run(shutdown.clone(), health, maintenance)
+                    .await;
+                if let Ok(sealer) = Arc::try_unwrap(sealer)
+                    && let Err(error) = sealer.release().await
+                {
+                    tracing::warn!(%error, "audit sealer role connection did not close cleanly");
+                }
+                match result {
+                    Ok(()) => return Ok(()),
+                    Err(error) if fatal(&error) => {
+                        tracing::error!(%error, "audit integrity service failed; operator recovery required");
+                        return Err(error.into());
+                    }
+                    Err(error) => error,
+                }
+            }
+            Err(error) => error,
+        };
+        health.send_replace(HealthUpdate::now(AuditHealthState::Recovering));
+        tracing::warn!(%error, "audit sealer waiting for its role again");
+        let pause = delay;
+        delay = (delay * 2).min(Duration::from_secs(10));
+        tokio::select! {
+            () = tokio::time::sleep(pause) => {}
+            // A sealer that failed has not sealed its pending records.
+            () = stopping(&mut shutdown) => return Err(error.into()),
         }
     }
 }
 
 pub(crate) struct Maintenance {
-    store: PlatformStore,
+    audit: AuditStore,
     retention_days: NonZeroU32,
-    pub(crate) exporter: crate::export::AuditExporter,
+    pub(crate) exporter: Arc<crate::export::AuditExporter>,
     destinations: Vec<veoveo_audit_contract::AuditDestinationId>,
 }
 impl Maintenance {
-    pub(crate) async fn run(&self, lease: &AuditSealLease) -> Result<(), SealError> {
+    /// Retire up to 128 expired blocks within a two-second budget.
+    pub(crate) async fn run(&self, sealer: &AuditSealer) -> Result<(), SealError> {
         let cutoff = chrono::Utc::now()
             .checked_sub_signed(chrono::TimeDelta::days(i64::from(
                 self.retention_days.get(),
             )))
-            .ok_or(StoreError::AuditIntegrity)?;
+            .ok_or(AuditStoreError::Integrity)?;
         let work = async {
-            let mut deleted = 0usize;
-            while deleted < 128 {
+            let mut retired = 0usize;
+            while retired < RETENTION_BATCH {
                 let blocks = self
-                    .store
-                    .audit_retention_candidates(cutoff, &self.destinations)
+                    .audit
+                    .retention_candidates(cutoff, &self.destinations)
                     .await?;
-                if blocks.is_empty() {
-                    break;
-                }
+                let before = retired;
                 for block in blocks {
-                    match self
-                        .store
-                        .retain_audit_block(lease, &block, cutoff, &self.destinations)
-                        .await
-                    {
-                        Ok(()) => deleted += 1,
-                        Err(StoreError::AuditRetentionNotAdmitted) => {}
-                        Err(error) => return Err(error),
-                    }
-                    if deleted == 128 {
+                    if retired == RETENTION_BATCH {
                         break;
                     }
+                    if sealer.retire(&block, cutoff, &self.destinations).await? {
+                        retired += 1;
+                    }
+                }
+                if retired == before {
+                    break;
                 }
             }
-            let guards = self.store.prune_audit_download_windows().await?;
             tracing::info!(
-                audit_retained_blocks_deleted = deleted,
-                audit_window_guards_deleted = guards,
+                audit_retained_blocks_deleted = retired,
                 "audit retention pass"
             );
-            Ok::<(), StoreError>(())
+            Ok::<(), SealError>(())
         };
         match tokio::time::timeout(Duration::from_secs(2), work).await {
-            Ok(result) => result.map_err(SealError::from),
+            Ok(result) => result,
             Err(_) => {
                 tracing::warn!("audit retention pass reached its two-second work budget");
                 Ok(())

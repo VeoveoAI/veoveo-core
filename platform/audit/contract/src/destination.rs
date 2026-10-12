@@ -23,8 +23,8 @@ pub struct AuditExportPayload {
     pub seal: Sha256Digest,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, veoveo_types::Vocabulary)]
+#[cfg_attr(feature = "postgres", vocabulary(postgres))]
 pub enum AuditExportRejection {
     PartialAcceptance,
     Protocol,

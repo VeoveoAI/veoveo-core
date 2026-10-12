@@ -334,10 +334,6 @@ mod tests {
                 .seal(
                     veoveo_audit_contract::AuditPartition::Installation,
                     None,
-                    vec![veoveo_audit_contract::AuditBlockMember {
-                        id: records[0].draft.id(),
-                        versionstamp: veoveo_audit_contract::AuditVersionstamp::new(1).unwrap(),
-                    }],
                     &records,
                     Utc::now(),
                 )
