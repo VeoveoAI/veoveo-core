@@ -1,1 +1,0 @@
-RETURN fn::kernel::own::read_undeclared(own:x,'key');

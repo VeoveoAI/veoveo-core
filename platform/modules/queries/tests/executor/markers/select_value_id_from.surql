@@ -1,1 +1,0 @@
-SELECT VALUE id FROM type::table($table) ORDER BY id;

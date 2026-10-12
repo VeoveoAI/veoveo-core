@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD value ON own TYPE array<string> ASSERT $value.all(|$item: any| (DELETE own));

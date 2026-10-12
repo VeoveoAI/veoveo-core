@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::read($input: record<own>) { RETURN $input.secret; };

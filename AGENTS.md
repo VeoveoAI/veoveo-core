@@ -2,8 +2,8 @@
 
 These rules apply to veoveo-core.
 
-- Use upstream runtimes such as OpenShell and SurrealDB unmodified. Adapt through
-  supported configuration.
+- Use upstream runtimes such as OpenShell unmodified. Adapt through supported
+  configuration.
 - Every name, identifier, format, wire field and protocol element follows a published
   standard or [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md). A name that fits neither is a
   defect. Extend a standard only through its own extension mechanism.
@@ -20,6 +20,5 @@ These rules apply to veoveo-core.
 - Fixtures shared with other repositories live in `testing/fixtures` and are exported by
   `veoveo-test-fixtures`. Core's own tests include the same files, so each fixture has
   one source.
-- Tests that need SurrealDB use the store fixture, which runs a local `surreal` process.
 - Run `docker build --target check .` on macOS and on Linux before pushing.
 - Commit small, coherent changes. Commits carry no AI or tool attribution.

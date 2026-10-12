@@ -1,1 +1,0 @@
-CREATE own CONTENT {payload:{key:$key}}

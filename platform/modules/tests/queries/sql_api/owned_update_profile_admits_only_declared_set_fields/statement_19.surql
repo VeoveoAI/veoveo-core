@@ -1,1 +1,0 @@
-UPDATE own_other SET payload = {key:$key} RETURN NONE

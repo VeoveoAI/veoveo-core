@@ -13,11 +13,9 @@ members = [
     "platform/http",
     "platform/knowledge/contract",
     "platform/macros",
-    "platform/modules",
     "platform/oauth",
     "platform/policy",
     "platform/runtimes/embedding/contract",
-    "platform/store",
     "platform/task-runtime/contract",
     "platform/types",
     "testing/fixtures/library",
@@ -98,7 +96,6 @@ uuid = { version = "1.24.1", features = ["serde", "v4", "v5", "v7"] }
 zeroize = "=1.9.0"
 veoveo-mcp-contract = { path = "mcp/contract", default-features = false }
 veoveo-types = { path = "platform/types" }
-veoveo-modules = { path = "platform/modules", default-features = false }
 veoveo-mcp-ext-registration = { path = "mcp/ext-registration", default-features = false }
 veoveo-gateway-contract = { path = "platform/gateway/contract" }
 veoveo-artifact-client = { path = "platform/artifacts/client" }

@@ -1,1 +1,0 @@
-DEFINE TABLE observation_cleanup_rows SCHEMALESS; DEFINE TABLE observation_cleanup_denied SCHEMALESS; DEFINE TABLE observation_cleanup_counter SCHEMALESS; CREATE observation_cleanup_counter:fixture SET registrations = 0;

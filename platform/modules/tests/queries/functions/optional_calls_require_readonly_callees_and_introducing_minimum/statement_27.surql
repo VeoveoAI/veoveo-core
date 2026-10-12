@@ -1,1 +1,0 @@
-RETURN fn::base::read();

@@ -1,1 +1,0 @@
-DEFINE FIELD link ON own TYPE record<base> PERMISSIONS FOR select WHERE (SELECT * FROM base);

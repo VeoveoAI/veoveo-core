@@ -1,1 +1,0 @@
-DEFINE TABLE fixture_left; CREATE fixture_left:one;

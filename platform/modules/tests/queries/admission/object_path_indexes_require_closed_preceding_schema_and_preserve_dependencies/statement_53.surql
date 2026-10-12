@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD identity ON own TYPE object; DEFINE INDEX by_key ON own FIELDS identity.child.key;

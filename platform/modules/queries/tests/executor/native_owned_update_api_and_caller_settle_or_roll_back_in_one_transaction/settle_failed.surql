@@ -1,1 +1,0 @@
-fn::kernel::store::update(fixture_marker:base,'released'); DEFINE TABLE fixture_optional; CREATE fixture_optional:one SET value='settled'; THROW 'controlled failure';

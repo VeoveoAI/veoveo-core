@@ -1,1 +1,0 @@
-UPDATE ONLY $id UNSET payload RETURN NONE

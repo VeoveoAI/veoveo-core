@@ -1,11 +1,6 @@
 //! Task lifecycle and recovery vocabularies, independent of storage and execution.
-//! The optional native hook preserves the qualified Store literal profile.
-
-#[cfg(feature = "surreal")]
-use surrealdb::types::SurrealValue;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
-#[cfg_attr(feature = "surreal", vocabulary(surreal))]
 pub enum TaskStatus {
     #[vocabulary(rename = "queued")]
     Queued,
@@ -24,7 +19,6 @@ pub enum TaskStatus {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
-#[cfg_attr(feature = "surreal", vocabulary(surreal))]
 pub enum RecoveryClass {
     #[vocabulary(rename = "resume")]
     Resume,
@@ -79,28 +73,5 @@ mod tests {
             );
         }
         assert!(serde_json::from_str::<RecoveryClass>("\"unknown\"").is_err());
-    }
-
-    #[cfg(feature = "surreal")]
-    #[test]
-    fn native_literals_and_optional_none_match_storage_profile() {
-        use surrealdb::types::{SurrealValue, Value};
-        for state in TaskStatus::ALL {
-            let value = state.into_value();
-            assert!(matches!(&value, Value::String(_)));
-            assert_eq!(TaskStatus::from_value(value).unwrap(), *state);
-        }
-        for class in RecoveryClass::ALL {
-            let value = class.into_value();
-            assert!(matches!(&value, Value::String(_)));
-            assert_eq!(RecoveryClass::from_value(value).unwrap(), *class);
-        }
-        assert_eq!(Option::<TaskStatus>::from_value(Value::None).unwrap(), None);
-        assert_eq!(
-            Option::<RecoveryClass>::from_value(Value::None).unwrap(),
-            None
-        );
-        assert_eq!(Option::<TaskStatus>::None.into_value(), Value::None);
-        assert_eq!(Option::<RecoveryClass>::None.into_value(), Value::None);
     }
 }

@@ -1,1 +1,0 @@
-DEFINE ANALYZER own_search FUNCTION fn::own;

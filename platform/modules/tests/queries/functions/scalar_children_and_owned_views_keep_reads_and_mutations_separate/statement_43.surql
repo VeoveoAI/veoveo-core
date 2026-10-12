@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD value ON own TYPE uuid ASSERT $value != $this.previous;

@@ -1,1 +1,0 @@
-DEFINE FIELD payload ON own TYPE object

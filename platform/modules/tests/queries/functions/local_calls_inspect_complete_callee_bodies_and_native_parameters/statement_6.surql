@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::read($input: any) -> bool { RETURN IF type::is_object($input) THEN $input.enabled=true ELSE false END; };

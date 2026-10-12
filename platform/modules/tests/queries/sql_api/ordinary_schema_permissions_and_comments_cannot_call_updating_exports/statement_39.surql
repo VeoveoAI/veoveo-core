@@ -1,1 +1,0 @@
-DEFINE FIELD payload ON consumer COMMENT fn::kernel::own::read(own:x,'key');

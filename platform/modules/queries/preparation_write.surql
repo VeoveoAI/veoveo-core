@@ -1,1 +1,0 @@
-UPSERT $record CONTENT $content;

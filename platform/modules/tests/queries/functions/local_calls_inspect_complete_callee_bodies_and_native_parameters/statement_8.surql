@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::write() { DELETE foreign; }; RETURN fn::own::write();

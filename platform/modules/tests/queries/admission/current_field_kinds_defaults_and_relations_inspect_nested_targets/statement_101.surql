@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD payload ON own TYPE {nested: array<record<foreign>>};

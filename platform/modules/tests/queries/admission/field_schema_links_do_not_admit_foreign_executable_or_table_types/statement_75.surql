@@ -1,1 +1,0 @@
-DEFINE FIELD link ON own TYPE record<base> DEFAULT base:one;

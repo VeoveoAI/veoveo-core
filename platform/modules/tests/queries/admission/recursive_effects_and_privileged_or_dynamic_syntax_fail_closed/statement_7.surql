@@ -1,1 +1,0 @@
-DEFINE FIELD bad ON own VALUE (CREATE foreign);

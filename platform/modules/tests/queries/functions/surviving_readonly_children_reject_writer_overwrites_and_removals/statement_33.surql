@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::caller() -> bool { RETURN fn::own::leaf(); } PERMISSIONS WHERE fn::own::leaf();

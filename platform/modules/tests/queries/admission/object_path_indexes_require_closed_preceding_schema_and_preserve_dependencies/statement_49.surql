@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE INDEX by_key ON own FIELDS identity.key;

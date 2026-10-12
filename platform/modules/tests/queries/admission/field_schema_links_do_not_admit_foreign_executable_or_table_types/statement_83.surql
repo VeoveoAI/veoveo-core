@@ -1,1 +1,0 @@
-DEFINE FIELD link ON own TYPE record<own> REFERENCE ON DELETE THEN { RETURN (SELECT * FROM base); };

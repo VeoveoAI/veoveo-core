@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::write($id: record<own>) -> bool { UPDATE ONLY $id SET value=1; RETURN true; }; fn::own::write(own:one);

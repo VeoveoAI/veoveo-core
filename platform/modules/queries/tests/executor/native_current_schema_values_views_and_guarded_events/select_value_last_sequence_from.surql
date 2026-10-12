@@ -1,1 +1,0 @@
-SELECT VALUE last_sequence FROM fixture_head;

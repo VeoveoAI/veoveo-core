@@ -1,1 +1,0 @@
-DEFINE TABLE own SCHEMAFULL; DEFINE FIELD value ON own TYPE int ASSERT $value > 0; DEFINE INDEX by_value ON own FIELDS value UNIQUE; CREATE own:one CONTENT { value: 1 }; UPDATE own:one SET value = 2; DEFINE FUNCTION fn::own() { RETURN (SELECT * FROM own); };

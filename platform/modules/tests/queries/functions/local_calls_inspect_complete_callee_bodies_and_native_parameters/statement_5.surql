@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::read($rows: array<object>) { FOR $row IN $rows { LET $payload: object=$row.payload; RETURN $payload.enabled; }; };

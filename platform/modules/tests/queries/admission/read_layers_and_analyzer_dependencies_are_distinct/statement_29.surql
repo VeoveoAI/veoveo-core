@@ -1,1 +1,0 @@
-DEFINE INDEX search ON own FIELDS text FULLTEXT ANALYZER base_search BM25;

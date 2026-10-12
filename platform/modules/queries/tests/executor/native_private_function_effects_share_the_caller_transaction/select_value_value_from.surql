@@ -1,1 +1,0 @@
-SELECT VALUE value FROM ONLY fixture_marker:base;

@@ -1,1 +1,0 @@
-RETURN <record<base>> $value;

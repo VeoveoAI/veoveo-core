@@ -1,1 +1,0 @@
-DEFINE TABLE consumer PERMISSIONS FOR select WHERE { UPDATE consumer SET value=1; RETURN true; };

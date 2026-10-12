@@ -16,7 +16,6 @@ that their generated code implements. Each consuming library owns its domain dec
 | OAuth 2.0, RFC 6749 section 3.3 | Code-owned scope-token syntax; dynamic installation scopes keep `ScopeName` admission |
 | Naming vocabulary keyword `namingProfile` | Scope and Task hooks and identity/resource schema emitters delegate local classification to public foundational helpers; instance serialization is unchanged. |
 | Veoveo Task operation names | The `TaskTypeName` lexical profile, with distinct spellings |
-| SurrealDB Rust SDK 3.3.0 | Optional consumer-only `SurrealValue` delegation preserves the owner's literal-string mapping |
 | SHA-256, FIPS 180-4 | Digest of the embedded document's original UTF-8 bytes |
 
 ## Naming Metadata Delegation
@@ -77,10 +76,7 @@ Their validators sanitize returned errors; these mechanics provide no zeroizatio
 `custom` delegates unusual storage or admission to explicit owner hooks through the
 same emitter. Nonidentity labels and quantities stay ordinary checked newtypes.
 
-`const_uuid` is available only when the owner admits arbitrary UUID values. The
-consumer-only `surreal = "table"` capability uses that profile for existing native
-UUID record IDs and emits SDK delegation in the consumer. Neither the macro crate
-nor `veoveo-types` depends on the database SDK.
+`const_uuid` is available only when the owner admits arbitrary UUID values.
 
 ## ResourceAddress
 
@@ -206,12 +202,6 @@ to schemars with owner documentation and schema attributes. The helper keeps the
 owner's schema name and module-qualified identity. Scope serialization delegates to
 its existing checked-name contract instead.
 
-`#[vocabulary(surreal)]` emits a private SDK-derived enum into the consuming crate
-and delegates `SurrealValue` to it. The helper's literal annotations come from the
-same spelling declaration used by every other surface. Neither this crate nor
-`veoveo-types` depends on SurrealDB. The hook requires the consumer's existing
-`surrealdb` dependency; unsupported SDK combinations fail compilation.
-
 ## Embedded Documents
 
 `embedded_document!("relative/path.md")` reads under the consumer's manifest
@@ -256,7 +246,5 @@ implements these declarations.
 Foundation tests qualify independent trait implementations, explicit spellings,
 empty scopes, invalid declarations and same-named owners. Audit tests compare every
 migrated enum against its previous Serde/schemars declaration and verify unit-variant
-ordinals. Store and Time compare SDK kinds, conversion, rejection and JSON values
-against their previous declarations. Contract-only consumers qualify dependency
-isolation. The active [plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#phase-0-core-macros-and-shared-building-blocks)
+ordinals. Contract-only consumers qualify dependency isolation. The active [plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#phase-0-core-macros-and-shared-building-blocks)
 tracks owner qualification and the remaining implementation phases.

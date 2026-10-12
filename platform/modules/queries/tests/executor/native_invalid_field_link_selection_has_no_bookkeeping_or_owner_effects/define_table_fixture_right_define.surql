@@ -1,1 +1,0 @@
-DEFINE TABLE fixture_right; DEFINE FIELD link ON fixture_right TYPE array<record<fixture_left> | record<unclaimed>>;

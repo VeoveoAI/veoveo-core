@@ -1,1 +1,0 @@
-RETURN observation_cleanup_counter:fixture.registrations;

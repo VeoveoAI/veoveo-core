@@ -1,1 +1,0 @@
-DEFINE ANALYZER own_search TOKENIZERS blank FILTERS lowercase; DEFINE INDEX text ON own FIELDS value FULLTEXT ANALYZER own_search BM25;

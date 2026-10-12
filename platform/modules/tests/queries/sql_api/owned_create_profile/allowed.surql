@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::kernel::own::read($id: record<own>, $key: string) -> option<object> { LET $rows = SELECT * FROM $id; LET $row = array::first($rows); RETURN IF type::is_object($row) THEN { CREATE ONLY $id SET payload = {key:$key} RETURN NONE; RETURN {key:$key}; } ELSE NONE END; } PERMISSIONS FULL;

@@ -1,1 +1,0 @@
-SELECT VALUE value FROM fixture_marker;

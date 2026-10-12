@@ -1,1 +1,0 @@
-RETURN http::get('https://example.com');

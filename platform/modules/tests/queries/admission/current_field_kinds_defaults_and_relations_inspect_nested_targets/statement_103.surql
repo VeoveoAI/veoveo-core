@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD target ON own TYPE option<record> REFERENCE;

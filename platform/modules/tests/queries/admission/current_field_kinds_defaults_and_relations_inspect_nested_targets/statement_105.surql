@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own($target: record) { RETURN $target; };

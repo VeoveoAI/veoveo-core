@@ -1,1 +1,0 @@
-RETURN <record<foreign>> $value;

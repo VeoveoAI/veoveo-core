@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD state ON own TYPE 'queued' | 'running';

@@ -25,7 +25,6 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     };
     let mut scope = false;
     let mut task_type = false;
-    let mut surreal = false;
     for attr in &input.attrs {
         if attr.path().is_ident("vocabulary") {
             attr.parse_nested_meta(|meta| {
@@ -33,10 +32,8 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                     scope = true;
                 } else if meta.path.is_ident("task_type") {
                     task_type = true;
-                } else if meta.path.is_ident("surreal") {
-                    surreal = true;
                 } else {
-                    return Err(meta.error("expected scope, task_type or surreal"));
+                    return Err(meta.error("expected scope or task_type"));
                 }
                 Ok(())
             })?;
@@ -208,25 +205,6 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             },
         )
     };
-    let surreal_hook = surreal.then(|| quote! {
-        const _: () = {
-            use ::surrealdb::types as surrealdb_types;
-            #[derive(::surrealdb::types::SurrealValue)]
-            #[surreal(untagged)]
-            enum DatabaseWire { #(#[surreal(value = #spellings)] #variants),* }
-            impl ::surrealdb::types::SurrealValue for #name {
-                fn kind_of() -> ::surrealdb::types::Kind { <DatabaseWire as ::surrealdb::types::SurrealValue>::kind_of() }
-                fn is_value(value: &::surrealdb::types::Value) -> bool { <DatabaseWire as ::surrealdb::types::SurrealValue>::is_value(value) }
-                fn into_value(self) -> ::surrealdb::types::Value {
-                    let wire = match self { #(Self::#variants => DatabaseWire::#variants),* };
-                    ::surrealdb::types::SurrealValue::into_value(wire)
-                }
-                fn from_value(value: ::surrealdb::types::Value) -> ::core::result::Result<Self, ::surrealdb::types::Error> {
-                    Ok(match <DatabaseWire as ::surrealdb::types::SurrealValue>::from_value(value)? { #(DatabaseWire::#variants => Self::#variants),* })
-                }
-            }
-        };
-    });
     let validation = if scope {
         quote! { const _: () = { #(assert!(::veoveo_types::is_scope_token(#spellings), "declared scope must follow OAuth scope-token syntax");)* }; }
     } else if task_type {
@@ -253,7 +231,7 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             type Err = ::veoveo_types::IdentifierError;
             fn from_str(value: &str) -> ::core::result::Result<Self, Self::Err> { #parse }
         }
-        #scope_hook #task_hook #wire #surreal_hook
+        #scope_hook #task_hook #wire
     })
 }
 
@@ -299,7 +277,7 @@ mod tests {
         .to_string();
         assert!(expansion.contains("is_scope_token"));
         assert!(expansion.contains("scope_vocabulary_schema"));
-        assert!(!expansion.contains("surrealdb"));
+        assert!(!expansion.contains("sqlx"));
     }
     #[test]
     fn snake_case_matches_serde_unit_variant_rules() {

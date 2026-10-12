@@ -1,1 +1,0 @@
-BEGIN; UPDATE ONLY $enterprise SET enabled = false, name = 'Operator name'; UPDATE ONLY $tenant SET enabled = false, classification_ceiling = 'restricted'; UPDATE ONLY $principal SET enabled = false, email = 'verified@example.test', claims_hash = 'committed-claims', display_name = 'Current name'; COMMIT;

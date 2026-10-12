@@ -1,1 +1,0 @@
-INFO FOR TABLE $table;

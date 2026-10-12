@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD state ON own TYPE bool ASSERT fn::own::leaf(); DEFINE FIELD IF NOT EXISTS state ON own TYPE bool;

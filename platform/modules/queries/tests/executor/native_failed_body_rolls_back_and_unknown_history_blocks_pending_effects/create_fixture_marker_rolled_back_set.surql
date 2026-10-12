@@ -1,1 +1,0 @@
-CREATE fixture_marker:rolled_back SET value = 'private-token'; THROW 'private-token';

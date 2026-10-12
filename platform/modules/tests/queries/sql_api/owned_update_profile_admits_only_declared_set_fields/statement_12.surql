@@ -1,1 +1,0 @@
-UPDATE ONLY $id SET other = {key:$key} RETURN NONE

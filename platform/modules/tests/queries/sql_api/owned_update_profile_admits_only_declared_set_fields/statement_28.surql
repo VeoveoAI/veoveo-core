@@ -1,1 +1,0 @@
-UPDATE ONLY $id SET payload = fn::kernel::own::read($id,$key) RETURN NONE

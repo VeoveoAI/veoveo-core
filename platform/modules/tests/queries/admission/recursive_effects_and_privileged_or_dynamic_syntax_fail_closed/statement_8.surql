@@ -1,1 +1,0 @@
-DEFINE TABLE own COMMENT (DELETE foreign);

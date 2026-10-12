@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::read($id: record<own>) -> bool { RETURN record::exists($id); };

@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::read($value: object) { RETURN record::exists($value.target); };

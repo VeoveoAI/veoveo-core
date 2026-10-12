@@ -1,1 +1,0 @@
-CREATE platform_module_lane;

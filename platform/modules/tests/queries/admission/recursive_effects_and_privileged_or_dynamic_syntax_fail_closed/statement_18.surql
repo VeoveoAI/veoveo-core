@@ -1,1 +1,0 @@
-LET $target = 'own'; DELETE $target;

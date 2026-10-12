@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::base::read() -> bool { DELETE base; RETURN true; };

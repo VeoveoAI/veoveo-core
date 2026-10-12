@@ -1,1 +1,0 @@
-DEFINE TABLE own; DEFINE FIELD identity ON own TYPE object; DEFINE INDEX by_key ON own FIELDS identity.key; IF false THEN { REMOVE INDEX by_key ON own; } END; DEFINE FIELD OVERWRITE identity ON own TYPE record<own>;

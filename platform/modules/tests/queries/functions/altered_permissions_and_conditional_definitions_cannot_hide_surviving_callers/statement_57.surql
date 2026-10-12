@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::leaf() -> bool { RETURN true; }; DEFINE TABLE own; ALTER TABLE own PERMISSIONS FOR select WHERE fn::own::leaf(); REMOVE FUNCTION fn::own::leaf;

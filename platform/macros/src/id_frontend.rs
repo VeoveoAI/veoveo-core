@@ -18,7 +18,6 @@ struct Declaration {
     secret: bool,
     ordered: bool,
     inner_display: bool,
-    surreal: Option<LitStr>,
 }
 impl Parse for Declaration {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -58,7 +57,6 @@ impl Parse for Declaration {
             secret: false,
             ordered: false,
             inner_display: false,
-            surreal: None,
         };
         let mut seen = std::collections::BTreeSet::new();
         while !input.is_empty() {
@@ -88,10 +86,6 @@ impl Parse for Declaration {
                     input.parse::<Token![=]>()?;
                     value.context = Some(input.parse()?);
                 }
-                "surreal" => {
-                    input.parse::<Token![=]>()?;
-                    value.surreal = Some(input.parse()?);
-                }
                 _ => {
                     return Err(syn::Error::new_spanned(
                         option,
@@ -103,28 +97,12 @@ impl Parse for Declaration {
         if value.ordered && !value.secret
             || value.inner_display && value.secret
             || value.constant && value.storage != "uuid"
-            || value.surreal.is_some() && !value.constant
             || value.storage == "custom" && !seen.is_empty()
         {
             return Err(syn::Error::new_spanned(
                 &value.storage,
                 "identity capability does not match storage",
             ));
-        }
-        if let Some(table) = &value.surreal {
-            let name = table.value();
-            if name.is_empty()
-                || name.len() > 128
-                || !name.as_bytes()[0].is_ascii_lowercase()
-                || !name
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-            {
-                return Err(syn::Error::new_spanned(
-                    table,
-                    "surreal table requires a lowercase ASCII table identifier",
-                ));
-            }
         }
         Ok(value)
     }
@@ -211,12 +189,7 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             if !matches!(attribute.meta, syn::Meta::List(_)) {
                 continue;
             }
-            let owner_derives: &[&str] = if declaration.surreal.is_some() {
-                &["Id", "SurrealValue"]
-            } else {
-                &["Id"]
-            };
-            if let Some(derive) = super::derive_policy::conflict(attribute, owner_derives)? {
+            if let Some(derive) = super::derive_policy::conflict(attribute, &["Id"])? {
                 return Err(syn::Error::new_spanned(
                     derive,
                     "identity owns standard derives",
@@ -313,13 +286,6 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         impl ::veoveo_types::StableKeyIdentity for #name { fn from_stable_key(key: &[u8]) -> Self { Self(::veoveo_types::stable_profile_string::<#profile>(key, #metadata)) } }
         impl #name { pub fn from_stable_key(key: &[u8]) -> Self { <Self as ::veoveo_types::StableKeyIdentity>::from_stable_key(key) } }
     });
-    let sdk = declaration.surreal.as_ref().map(|table| quote! {
-        impl #name { pub const TABLE: &'static str = #table; pub fn record_id(self) -> ::surrealdb::types::RecordId { ::surrealdb::types::RecordId::new(Self::TABLE, ::surrealdb::types::Uuid::from(self.0)) } }
-        impl From<#name> for ::surrealdb::types::RecordId { fn from(value: #name) -> Self { value.record_id() } }
-    });
-    let sdk_derive = declaration
-        .surreal
-        .map(|_| quote!(#[derive(::surrealdb::types::SurrealValue)]));
     let serialized = if uuid {
         quote!(match #policy.wire { ::veoveo_types::IdWire::String => serializer.serialize_str(&self.0.to_string()), _ => ::serde::Serialize::serialize(&self.0, serializer) })
     } else {
@@ -349,7 +315,7 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     });
     let extra = quote! {
         const _: () = { #check_uuid #check_fresh #check_stable #check_wire };
-        #constant #prefix_api #uuid_api #string_uuid_api #stable #sdk
+        #constant #prefix_api #uuid_api #string_uuid_api #stable
         impl ::serde::Serialize for #name { fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { #serialized } }
         impl<'de> ::serde::Deserialize<'de> for #name { fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> { #deserialized } }
         const _: () = {
@@ -388,7 +354,7 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             extra,
         },
     );
-    Ok(quote!(#sdk_derive #traits #input #generated))
+    Ok(quote!(#traits #input #generated))
 }
 
 #[cfg(test)]
@@ -428,12 +394,7 @@ mod tests {
                 ),
             ),
             (
-                quote!(
-                    uuid(StoreIds),
-                    fresh,
-                    const_uuid,
-                    surreal = "fixture_identity"
-                ),
+                quote!(uuid(StoreIds), fresh, const_uuid),
                 quote!(
                     struct RowId(uuid::Uuid);
                 ),
@@ -499,13 +460,6 @@ mod tests {
                     struct Name(String);
                 ),
                 "capability does not match",
-            ),
-            (
-                quote!(uuid(StoreIds), const_uuid, surreal = "invalid table"),
-                quote!(
-                    struct RowId(uuid::Uuid);
-                ),
-                "lowercase ASCII table",
             ),
             (
                 quote!(text(Names)),

@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own($link: record<base>) -> record<base> { RETURN $link; };

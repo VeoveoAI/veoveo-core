@@ -1,1 +1,0 @@
-DEFINE FIELD link ON base TYPE record<own>;

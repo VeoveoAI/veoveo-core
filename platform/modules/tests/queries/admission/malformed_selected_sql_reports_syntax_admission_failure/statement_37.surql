@@ -1,1 +1,0 @@
-DEFINE TABLE own; CREATE own CONTENT { broken: ;

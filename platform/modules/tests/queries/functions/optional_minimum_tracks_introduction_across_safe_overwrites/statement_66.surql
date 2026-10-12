@@ -1,1 +1,0 @@
-DEFINE FUNCTION OVERWRITE fn::base::read() -> bool { RETURN false; };

@@ -1,1 +1,0 @@
-RETURN fn::store::exists(fixture_other:one);

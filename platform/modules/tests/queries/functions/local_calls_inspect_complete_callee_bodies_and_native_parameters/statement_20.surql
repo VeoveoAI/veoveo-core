@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::read($input: object) { LET $payload: any=$input.payload; RETURN $payload.secret; };

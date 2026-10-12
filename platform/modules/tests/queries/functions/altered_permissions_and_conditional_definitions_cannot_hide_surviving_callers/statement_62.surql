@@ -1,1 +1,0 @@
-DEFINE FUNCTION fn::own::leaf() -> bool {{ RETURN true; }}; {middle} DEFINE FUNCTION OVERWRITE fn::own::leaf() -> bool {{ UPDATE own SET state=true; RETURN true; }};

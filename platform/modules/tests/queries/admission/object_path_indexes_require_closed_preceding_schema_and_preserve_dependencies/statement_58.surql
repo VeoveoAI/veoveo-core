@@ -1,1 +1,0 @@
-DEFINE TABLE own; IF false THEN { DEFINE FIELD identity ON own TYPE object; } END; DEFINE INDEX by_key ON own FIELDS identity.key;

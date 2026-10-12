@@ -1,1 +1,0 @@
-DEFINE TABLE fixture_optional SCHEMAFULL PERMISSIONS NONE; DEFINE FIELD value ON fixture_optional TYPE string; CREATE fixture_optional:first SET value = 'first';

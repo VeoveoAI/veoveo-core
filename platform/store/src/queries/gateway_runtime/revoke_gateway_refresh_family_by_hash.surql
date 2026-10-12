@@ -1,1 +1,0 @@
-BEGIN TRANSACTION; LET $revoked = (UPDATE ONLY $family SET revoked_at = $now, revocation_reason = 'client_revocation' WHERE revoked_at = NONE AND expires_at > $now RETURN AFTER); IF $revoked = NONE { THROW 'gateway_refresh_family_invalid'; }; COMMIT TRANSACTION;
