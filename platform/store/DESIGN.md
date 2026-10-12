@@ -8,7 +8,7 @@ the crate implements.
 
 | Standard or interface | Profile |
 |---|---|
-| PostgreSQL 18 | Server 18.6; one database per installation, kernel schemas `kernel`, `identity` and `gateway` |
+| PostgreSQL 18 | Server 18.6; one database per installation, kernel schemas `kernel`, `identity`, `gateway`, `tasks` and `audit` |
 | sqlx 0.9.0 | `PgPool`, `PgListener`, compile-time checked `query_file!` macros, `Migrator` with this crate's `sqlx.toml` |
 | `postgres://` connection URIs | The URL names host and database and may name the user; the password travels separately |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads: `{"table", "operation", "key", "tenant"}` on the schema's channel |

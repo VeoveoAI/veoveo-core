@@ -11,7 +11,7 @@ revision of this repository.
 |---|---|---|
 | `platform/types` | `veoveo-types` | Identifiers, vocabularies, resource addresses and shared scalar types |
 | `platform/macros` | `veoveo-macros` | The `id`, `resource_address`, `Vocabulary` and `embedded_document!` macros |
-| `platform/store` | `veoveo-platform-store` | PostgreSQL access: the connection pool, kernel and identity migrations, process instances, singletons, change notifications and registered servers' roles |
+| `platform/store` | `veoveo-platform-store` | PostgreSQL access: the connection pool, kernel migrations, process instances, singletons, change notifications, registered servers' roles and the Gateway's state |
 | `platform/policy` | `veoveo-policy` | The shared policy evaluator and role evaluation over registered servers' permissions |
 | `platform/oauth` | `veoveo-oauth-client` | RS256 client-assertion signing |
 | `platform/http` | `veoveo-http` | Shared HTTP admission |
