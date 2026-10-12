@@ -211,6 +211,21 @@ pub enum ArtifactActivity {
     ShareRedeem,
 }
 
+/// A step in a server's registration with the Gateway. Lease renewals are not
+/// recorded; an expiry records the lease that lapsed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, veoveo_types::Vocabulary)]
+pub enum RegistrationActivity {
+    /// The first registration of a slug pinned its namespace to the server's key.
+    ClaimNamespace,
+    /// The Gateway applied the server module's pending migrations.
+    Migrate,
+    Register,
+    /// An RFC 7592 update changed the registered declarations.
+    Update,
+    Deregister,
+    Expire,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, veoveo_types::Vocabulary)]
 pub enum LiveViewActivity {
     Issue,
@@ -356,6 +371,9 @@ pub enum AuditDetail {
         recordings: u32,
         selection_digest: Sha256Digest,
     },
+    Registration {
+        activity: RegistrationActivity,
+    },
     DictationOpen,
     DictationDenial,
     DictationSummary {
@@ -481,6 +499,14 @@ impl AuditDetail {
                 RecordingActivity::PlaybackGrant => "recording_playback_grant",
             },
             Self::RecordingCatalogGrant { .. } => "recording_catalog_grant",
+            Self::Registration { activity } => match activity {
+                RegistrationActivity::ClaimNamespace => "namespace_claim",
+                RegistrationActivity::Migrate => "module_migrate",
+                RegistrationActivity::Register => "server_register",
+                RegistrationActivity::Update => "server_update",
+                RegistrationActivity::Deregister => "server_deregister",
+                RegistrationActivity::Expire => "server_expire",
+            },
             Self::DictationOpen => "dictation_open",
             Self::DictationDenial => "dictation_denial",
             Self::DictationSummary { .. } => "dictation_summary",

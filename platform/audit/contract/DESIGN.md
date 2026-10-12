@@ -27,7 +27,10 @@ open maps and unreviewed string wrappers. It also recognizes the reviewed, inlin
 SHA-256 pattern. These identifier allowlists belong to this contract and must be
 reviewed when a detail gains a new identifier type.
 Numeric counters must fit the exact I-JSON integer range before a draft can be stored.
-Tool, discovery and Task details must match the corresponding typed target. A platform
+Tool, discovery and Task details must match the corresponding typed target, and a
+registration detail targets the registered server. The Gateway records each namespace
+claim, migration, registration, declaration update, removal and lease expiry; lease
+renewals produce no record. A platform
 Task uses its UUID record link; an external Task uses its opaque gateway route and
 server identity. These identities have separate variants.
 Knowledge read details bind the member and collection owner to their resource target.

@@ -318,6 +318,8 @@ impl TryFrom<AuditDraftWire> for AuditDraft {
                 collection.server() == server
             }
             (AuditDetail::IndexingWindow { .. }, _) => false,
+            (AuditDetail::Registration { .. }, AuditTarget::Server { .. }) => true,
+            (AuditDetail::Registration { .. }, _) => false,
             _ => true,
         };
         if !target_matches {
