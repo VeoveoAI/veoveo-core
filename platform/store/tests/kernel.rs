@@ -106,6 +106,19 @@ async fn instances_hold_their_lock_until_shutdown_and_are_reaped_once_it_is_gone
 }
 
 #[tokio::test]
+async fn a_shared_instance_shuts_down_while_other_holders_keep_it() {
+    let db = TestDb::new().await;
+    let shared = std::sync::Arc::new(Instance::start(&db.a, &slug("gateway")).await.unwrap());
+    let holder = shared.clone();
+    let id = shared.id();
+    shared.shutdown().await.unwrap();
+    assert!(holder.is_lost());
+    assert!(!db.a.instance_alive(id).await.unwrap());
+    assert!(visible_instances(&db.a).await.is_empty());
+    holder.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn an_instance_whose_connection_ends_reports_itself_lost() {
     let db = TestDb::new().await;
     let instance = Instance::start(&db.a, &slug("gateway")).await.unwrap();

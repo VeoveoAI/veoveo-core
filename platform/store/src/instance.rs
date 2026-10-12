@@ -1,10 +1,14 @@
 //! Process instances: a row in `kernel.instance` and a session advisory lock that proves
 //! the process alive, both held on one dedicated connection.
-use std::{fmt, time::Duration};
+use std::{
+    fmt,
+    sync::{Mutex, PoisonError},
+    time::Duration,
+};
 
 use sqlx::{Connection, PgConnection};
 use tokio::{
-    sync::{oneshot, watch},
+    sync::{Mutex as AsyncMutex, oneshot, watch},
     task::JoinHandle,
     time::MissedTickBehavior,
 };
@@ -54,8 +58,8 @@ pub struct Instance {
     id: InstanceId,
     lost: CancellationToken,
     reaps: watch::Receiver<ReapRound>,
-    stop: Option<oneshot::Sender<()>>,
-    task: Option<JoinHandle<Result<(), StoreError>>>,
+    stop: Mutex<Option<oneshot::Sender<()>>>,
+    task: AsyncMutex<Option<JoinHandle<Result<(), StoreError>>>>,
 }
 
 impl Instance {
@@ -76,8 +80,8 @@ impl Instance {
             id,
             lost,
             reaps,
-            stop: Some(stop),
-            task: Some(task),
+            stop: Mutex::new(Some(stop)),
+            task: AsyncMutex::new(Some(task)),
         })
     }
 
@@ -99,22 +103,33 @@ impl Instance {
         self.reaps.clone()
     }
 
-    /// Delete this instance's row and close its lock connection. An instance dropped
-    /// without shutdown closes the connection, and another instance reaps the row.
-    pub async fn shutdown(mut self) -> Result<(), StoreError> {
-        if let Some(stop) = self.stop.take() {
+    /// Delete this instance's row and close its lock connection, which releases the
+    /// work it owned at once. Every holder of a shared instance may call it; the first
+    /// call stops the instance, and it reports itself lost from then on. An instance
+    /// dropped without shutdown closes the connection, and another instance reaps the
+    /// row.
+    pub async fn shutdown(&self) -> Result<(), StoreError> {
+        let stop = self
+            .stop
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(stop) = stop {
             let _ = stop.send(());
         }
-        match self.task.take() {
+        let task = self.task.lock().await.take();
+        let stopped = match task {
             Some(task) => task.await.unwrap_or(Err(StoreError::InstanceLost)),
             None => Ok(()),
-        }
+        };
+        self.lost.cancel();
+        stopped
     }
 }
 
 impl Drop for Instance {
     fn drop(&mut self) {
-        if let Some(task) = self.task.take() {
+        if let Some(task) = self.task.get_mut().take() {
             task.abort();
         }
     }
