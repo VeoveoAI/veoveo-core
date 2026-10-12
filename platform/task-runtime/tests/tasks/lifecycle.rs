@@ -43,6 +43,10 @@ async fn creation_validates_its_draft_and_queues_the_task() {
             snapshot.retention_expires_at.unwrap() - snapshot.created_at,
             chrono::TimeDelta::milliseconds(60_000)
         );
+        assert_eq!(
+            runtime.owner(snapshot.task_id).await.unwrap(),
+            Some(task.owner.clone())
+        );
         assert_eq!(runtime.get(snapshot.task_id).await.unwrap(), Some(snapshot));
 
         let mut wrong_server = draft(&runtime, &owner(), RecoveryClass::Resume);
