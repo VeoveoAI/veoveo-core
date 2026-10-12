@@ -1,5 +1,7 @@
 //! Typed audit records shared by persistence, producers and readers.
-//! This crate has no database driver, MCP runtime, HTTP client or async runtime.
+//! This crate has no MCP runtime, HTTP client or async runtime. Its `postgres` feature
+//! adds the sqlx bindings and `AuditTransactionWrite`, which appends records inside a
+//! caller's PostgreSQL transaction.
 mod activity;
 mod destination;
 pub use destination::*;
@@ -18,6 +20,10 @@ pub use query::*;
 pub use reader::*;
 mod integrity;
 pub use integrity::*;
+#[cfg(feature = "postgres")]
+mod postgres;
+#[cfg(feature = "postgres")]
+pub use postgres::*;
 
 /// The audit domain owns this scope; protocol cores only carry its validated name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]

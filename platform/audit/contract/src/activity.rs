@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use veoveo_types::{ResourceUri, Sha256Digest};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, veoveo_types::Vocabulary)]
+#[cfg_attr(feature = "postgres", vocabulary(postgres))]
 pub enum AuditClass {
     ApiActivity,
     Authentication,
@@ -14,6 +15,7 @@ pub enum AuditClass {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, veoveo_types::Vocabulary)]
+#[cfg_attr(feature = "postgres", vocabulary(postgres))]
 pub enum AuditOutcome {
     Allowed,
     Denied,

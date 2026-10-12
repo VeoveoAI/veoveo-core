@@ -4,13 +4,24 @@ use uuid::Uuid;
 #[error("invalid audit identity: {0}")]
 pub struct AuditIdentityError(&'static str);
 
-#[veoveo_types::id(uuid(AuditRecordIdProfile), fresh)]
+#[cfg_attr(
+    feature = "postgres",
+    veoveo_types::id(uuid(AuditRecordIdProfile), fresh, postgres)
+)]
+#[cfg_attr(
+    not(feature = "postgres"),
+    veoveo_types::id(uuid(AuditRecordIdProfile), fresh)
+)]
 pub struct AuditRecordId(Uuid);
 #[veoveo_types::id(uuid(AuditRecordIdProfile), fresh)]
 pub struct AuditRequestId(Uuid);
 #[veoveo_types::id(uuid(AuditRecordIdProfile), fresh)]
 pub struct AuditEpisodeId(Uuid);
-#[veoveo_types::id(hex(AuditTraceIdProfile))]
+#[cfg_attr(
+    feature = "postgres",
+    veoveo_types::id(hex(AuditTraceIdProfile), postgres)
+)]
+#[cfg_attr(not(feature = "postgres"), veoveo_types::id(hex(AuditTraceIdProfile)))]
 pub struct AuditTraceId(String);
 
 #[veoveo_types::id(hex(AuditSpanIdProfile))]
