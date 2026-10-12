@@ -74,7 +74,7 @@ impl ClientAssertionSigner {
     }
     /// The owner supplies its already admitted RSA key; fixtures may use DER.
     pub fn from_rsa_key(key_id: ClientAssertionKeyId, key: EncodingKey) -> Self {
-        let _ = jsonwebtoken::crypto::rust_crypto::DEFAULT_PROVIDER.install_default();
+        let _ = jsonwebtoken::crypto::aws_lc::DEFAULT_PROVIDER.install_default();
         Self { key_id, key }
     }
     pub fn public_jwk(&self) -> Result<jsonwebtoken::jwk::Jwk, AssertionError> {
@@ -139,12 +139,27 @@ impl ClientAssertionSigner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rsa::pkcs8::EncodePrivateKey;
+    use aws_lc_rs::encoding::{AsDer, Pkcs8V1Der};
+    use base64::Engine;
+
+    /// A fresh 2048-bit RSA key as PKCS#8 PEM, generated with the same AWS-LC provider
+    /// the signer uses.
+    fn fresh_rsa_pem() -> String {
+        let key = aws_lc_rs::rsa::KeyPair::generate(aws_lc_rs::rsa::KeySize::Rsa2048).unwrap();
+        let der: Pkcs8V1Der<'static> = key.as_der().unwrap();
+        let body = base64::engine::general_purpose::STANDARD.encode(der.as_ref());
+        let lines = body
+            .as_bytes()
+            .chunks(64)
+            .map(|line| std::str::from_utf8(line).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("-----BEGIN PRIVATE KEY-----\n{lines}\n-----END PRIVATE KEY-----\n")
+    }
 
     #[test]
     fn worker_assertions_bind_client_endpoint_key_and_fresh_short_identity() {
-        let key = rsa::RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).unwrap();
-        let pem = key.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF).unwrap();
+        let pem = fresh_rsa_pem();
         let signer = ClientAssertionSigner::from_rsa_pem(
             ClientAssertionKeyId::parse("worker-key").unwrap(),
             pem.as_bytes(),

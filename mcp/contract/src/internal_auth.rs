@@ -578,7 +578,7 @@ impl GatewayInternalTokenVerifier {
 }
 
 fn ensure_jwt_crypto_provider() {
-    let _ = jsonwebtoken::crypto::rust_crypto::DEFAULT_PROVIDER.install_default();
+    let _ = jsonwebtoken::crypto::aws_lc::DEFAULT_PROVIDER.install_default();
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

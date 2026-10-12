@@ -42,6 +42,7 @@ veoveo-audit-contract = { path = "platform/audit/contract" }
 anyhow = "=1.0.104"
 axum = "0.8.9"
 axum-server = { version = "0.8.0", features = ["tls-rustls-no-provider"] }
+aws-lc-rs = "1.18.0"
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
 clap = { version = "4.6.6", features = ["derive", "env"] }
@@ -52,8 +53,8 @@ http = "1.5.0"
 iri-string = { version = "=0.7.14", default-features = false, features = ["std"] }
 hex = "=0.4.3"
 jsonschema = "=0.51.0"
-rsa = "=0.9.10"
-jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["rust_crypto", "use_pem"] }
+# AWS-LC provides constant-time RSA; the RustCrypto backend carries RUSTSEC-2023-0071.
+jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 object_store = { version = "=0.14.1", default-features = false, features = ["aws"] }
 opentelemetry = "0.32.0"
 opentelemetry-appender-tracing = "0.32.0"
