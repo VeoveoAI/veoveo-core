@@ -49,6 +49,12 @@ impl std::fmt::Display for DeclarationError {
 impl std::error::Error for DeclarationError {}
 
 #[cfg(feature = "serialization")]
+mod manifest;
+#[cfg(feature = "serialization")]
+pub use manifest::*;
+#[cfg(feature = "schema")]
+mod manifest_schema;
+#[cfg(feature = "serialization")]
 mod plan;
 #[cfg(feature = "serialization")]
 pub use plan::*;

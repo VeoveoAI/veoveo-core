@@ -489,7 +489,7 @@ impl PreparedInstallation<'_> {
             if let Err(error) = transaction::execute(
                 db,
                 transaction::Operation::Migration {
-                    sql: migration.sql(),
+                    sql: migration.shared_sql(),
                     content,
                     preparation: preparation.cloned(),
                 },

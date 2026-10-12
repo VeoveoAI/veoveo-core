@@ -9,9 +9,12 @@ publish.workspace = true
 [features]
 default = []
 serialization = ["dep:serde", "dep:serde_json", "dep:sha2"]
+# JSON Schema for the module manifest a registering server sends.
+schema = ["serialization", "dep:schemars"]
 runner = ["serialization","dep:serde_json", "dep:serde", "dep:sha2", "dep:surrealdb", "dep:surrealdb-syn", "dep:surrealdb-sql", "dep:tokio"]
 
 [dependencies]
+schemars = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }

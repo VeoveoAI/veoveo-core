@@ -128,15 +128,18 @@ pub struct Migration {
     version: MigrationVersion,
     name: MigrationName,
     filename: String,
-    sql: &'static str,
+    sql: std::sync::Arc<str>,
     requires: Vec<LaneRequirement>,
 }
 impl Migration {
+    /// Compiled declarations pass embedded SQL; registered manifests pass received SQL.
+    /// Both take the same admission.
     pub fn new(
         version: MigrationVersion,
         name: MigrationName,
-        sql: &'static str,
+        sql: impl Into<std::sync::Arc<str>>,
     ) -> Result<Self, DeclarationError> {
+        let sql = sql.into();
         if sql.trim().is_empty() || sql.len() > 1_048_576 {
             return Err(DeclarationError::new(
                 "migration SQL must contain 1..=1048576 bytes",
@@ -169,8 +172,12 @@ impl Migration {
     pub fn filename(&self) -> &str {
         &self.filename
     }
-    pub fn sql(&self) -> &'static str {
-        self.sql
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+    #[cfg(feature = "runner")]
+    pub(crate) fn shared_sql(&self) -> std::sync::Arc<str> {
+        self.sql.clone()
     }
     pub fn requires(&self) -> &[LaneRequirement] {
         &self.requires

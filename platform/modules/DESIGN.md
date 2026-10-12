@@ -9,6 +9,7 @@
 | Database transport | SurrealDB Rust SDK `=3.3.0`, WebSocket with Rustls, explicit native transactions |
 | Generated installation plan | Repository-owned `veoveo.ai/module-selection/v1` and `veoveo.ai/module-plan/v1` JSON; camelCase fields, positive u64 generation encoded as canonical decimal text |
 | Migration identity | SHA-256 over the owner body and recorded declaration identity; append-only numbered lane history |
+| Module manifest | camelCase JSON form of one optional module, carried as `ai.veoveo/module` by the [server registration protocol](../../mcp/registration-extension/DESIGN.md); JSON Schema 2020-12 through the `schema` feature |
 
 ## Declaration Ownership
 
@@ -197,14 +198,25 @@ replacement by a new parser. Both exact pins move together only after AST-child 
 fail-closed policy and native transaction fixtures pass. Replace this private adapter
 when upstream offers a maintained equivalent that preserves complete inspection.
 
-The deployment harness qualifies rendered Jobs and the digest-pinned composition
-image's commands through `module-installation-verify`. Its isolated namespace covers
-fresh preparation, lane completion, runtime-authenticated publication, credential
-rotation and stale-generation rejection. It applies selected chart resources directly;
-full Helm rollback, hosted workload startup and managed-agent recovery require their
-own installed checks. Current kernel and optional schemas live in their owning lanes.
-Source and native qualification do not establish installed image or Job qualification;
-that acceptance is tracked in the active contract plan.
+Current kernel and optional schemas live in their owning lanes. Source and native
+qualification do not establish installed image or Job qualification.
+
+## Module Manifests
+
+A registering server sends its optional module as a `ModuleManifest`: the module name,
+ownership claims, requirements, extension bindings and the migration lane with its SQL
+bodies. `ModuleManifest::from_setup` describes a compiled optional declaration and
+refuses kernel modules and modules that export a kernel SQL API. `ModuleManifest::admit`
+rebuilds a received manifest through `Migration::new`, `MigrationLane::new` and
+`ModuleSetup::builder`, so a manifest passes exactly the checks of a compiled
+declaration: name syntax, non-overlapping claims, a contiguous lane, nonblank SQL,
+requirements that never name the module itself and prerequisites that later
+migrations keep. The receiver supplies the execution host, because a server never
+chooses where its migrations run. Unknown members fail decoding.
+
+`ModuleManifest::sha256` hashes the manifest's JSON form, so equal manifests have equal
+digests. The `serialization` feature provides the wire form, and the `schema` feature
+adds JSON Schema whose name patterns restate the checked constructors.
 
 ## Generated Composition Plans
 

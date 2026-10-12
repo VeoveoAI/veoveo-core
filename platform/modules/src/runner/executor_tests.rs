@@ -421,7 +421,7 @@ async fn native_transaction_timeout_and_dropped_awaiter_cancel_before_commit() {
         let result = transaction::execute(
             &a,
             transaction::Operation::Migration {
-                sql: delayed.sql(),
+                sql: delayed.shared_sql(),
                 content: row(&name("store"), &delayed, vec![]),
                 preparation: None,
             },
@@ -439,7 +439,7 @@ async fn native_transaction_timeout_and_dropped_awaiter_cancel_before_commit() {
             transaction::execute(
                 &connection,
                 transaction::Operation::Migration {
-                    sql: delayed.sql(),
+                    sql: delayed.shared_sql(),
                     content,
                     preparation: None,
                 },

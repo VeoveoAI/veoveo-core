@@ -53,7 +53,7 @@ pub(crate) enum Operation {
         preparation: Option<PreparationKey>,
     },
     Migration {
-        sql: &'static str,
+        sql: std::sync::Arc<str>,
         content: Applied,
         preparation: Option<PreparationKey>,
     },
@@ -320,7 +320,7 @@ pub(crate) async fn execute<C: Connection>(
                     wait(
                         &mut receiver,
                         limits.operation_timeout,
-                        transaction.query(*sql),
+                        transaction.query(sql.to_string()),
                     )
                     .await?
                     .map_err(|error| database_failure("migration body transaction failed", &error))
