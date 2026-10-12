@@ -53,8 +53,8 @@ pub(crate) fn accepts_input(status: TaskStatus) -> Result<(), TaskError> {
     Ok(())
 }
 
-fn object(map: &BTreeMap<String, Value>) -> Value {
-    Value::Object(map.clone().into_iter().collect())
+pub(crate) fn object(map: BTreeMap<String, Value>) -> Value {
+    Value::Object(map.into_iter().collect())
 }
 
 impl TaskRuntime {
@@ -80,7 +80,7 @@ impl TaskRuntime {
             self.instance_id() as InstanceId,
             key,
             request.method,
-            object(&request.params),
+            object(request.params),
         )
         .fetch_optional(self.pool())
         .await
@@ -162,7 +162,7 @@ impl TaskRuntime {
                 task_id.as_uuid(),
                 self.server().as_str(),
                 key,
-                object(&response),
+                object(response),
             )
             .fetch_one(self.pool())
             .await?;

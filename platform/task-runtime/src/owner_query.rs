@@ -6,7 +6,7 @@ use veoveo_types::{TaskId, TaskTypeName};
 
 use crate::{
     TaskError, TaskInputSubmission, TaskOwner, TaskPage, TaskPageCursor, TaskRuntime, TaskSnapshot,
-    inputs::{InputResponses, accepts_input, validate_input_key},
+    inputs::{InputResponses, accepts_input, object, validate_input_key},
     owner::OwnerScope,
     row::{TaskRow, columns::*},
 };
@@ -229,7 +229,7 @@ impl OwnerTaskQuery {
                 scope.work_context,
                 task.as_uuid(),
                 key,
-                serde_json::Value::Object(response.into_iter().collect()),
+                object(response),
             )
             .fetch_one(self.runtime.pool())
             .await?;
