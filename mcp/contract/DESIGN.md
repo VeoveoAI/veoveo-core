@@ -275,7 +275,7 @@ results and actions. The gateway's persisted transition is specified in
 A `tools_compat` registration may explicitly enable the direct task-call adapter.
 That adapter supplies the negotiated capability upstream, waits on the canonical
 subscription and returns the terminal result with its canonical Task ID. It shares
-the original Task and authority. The typed `veoveo://task/{task_id}` resource exposes
+the original Task and authority. The typed `veoveo://tasks/{task_id}` resource exposes
 current status and terminal result without introducing another task store.
 
 ## Stateless Transport And Explicit State
@@ -438,8 +438,8 @@ URI conventions, Work Context propagation, and internal identity.
 - Every Rust Streamable HTTP endpoint applies the shared terminal-response
   middleware after final JSON serialization. A response through 8 MiB is
   delivered unchanged. A larger response is discarded in full and replaced
-  by JSON-RPC error `-32010` with diagnostic code
-  `response_budget_exceeded`, `maximum_bytes`, and `actual_bytes` when the
+  by JSON-RPC error `-31001` with diagnostic code
+  `response_budget_exceeded`, `maximumBytes`, and `actualBytes` when the
   completed byte count is available. A body collection failure uses
   `response_serialization_failed`. Neither diagnostic contains a partial
   result or an internal error detail.
@@ -523,7 +523,7 @@ The host gives every server the same behavior:
 
 | Behavior | Host rule |
 |---|---|
-| Routes | `{mount}/healthz`, optional `{mount}/readyz`, `{mount}/admin/docs/*` and `{mount}/mcp` |
+| Routes | `{mount}/livez`, optional `{mount}/readyz`, `{mount}/admin/docs/*` and `{mount}/mcp` |
 | Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug; a rejection is 401 with `WWW-Authenticate: Bearer` |
 | Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` after the domain's list hooks, sorted, 100 per page, private, five-second cache |

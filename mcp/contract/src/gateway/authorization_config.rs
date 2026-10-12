@@ -56,7 +56,7 @@ pub enum GrantSubject {
 /// The escape hatch for a server that labels an action wrongly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
-    rename_all = "camelCase",
+    rename_all = "snake_case",
     rename_all_fields = "camelCase",
     tag = "kind",
     deny_unknown_fields

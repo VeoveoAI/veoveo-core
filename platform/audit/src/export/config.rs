@@ -8,13 +8,13 @@ use url::Url;
 use veoveo_audit_contract::AuditDestinationId;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuditExportConfig {
     pub s3: Option<S3Config>,
     pub otlp: Option<OtlpConfig>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct S3Config {
     pub endpoint: Url,
     pub region: String,
@@ -31,7 +31,7 @@ pub enum ObjectLock {
     Compliance { days: NonZeroU32 },
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OtlpConfig {
     /// Complete Logs URL, including /v1/logs.
     pub endpoint: Url,

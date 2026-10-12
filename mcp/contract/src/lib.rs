@@ -17,6 +17,7 @@ pub mod bootstrap;
 #[cfg(feature = "runtime")]
 pub mod catalog;
 pub mod docs;
+pub mod jsonrpc_codes;
 #[cfg(feature = "runtime")]
 pub mod public_endpoint;
 #[cfg(not(feature = "configuration"))]

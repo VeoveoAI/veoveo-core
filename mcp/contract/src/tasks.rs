@@ -22,15 +22,15 @@ fn is_terminal(status: &TaskStatus) -> bool {
     )
 }
 
-pub const GATEWAY_TASK_RESOURCE_TEMPLATE: &str = "veoveo://task/{task_id}";
+pub const GATEWAY_TASK_RESOURCE_TEMPLATE: &str = "veoveo://tasks/{task_id}";
 
 pub fn gateway_task_resource_uri(task_id: &OpaqueTaskId) -> ResourceUri {
-    ResourceUri::new(format!("veoveo://task/{task_id}"))
+    ResourceUri::new(format!("veoveo://tasks/{task_id}"))
         .expect("gateway task resource URI is valid")
 }
 
 pub fn parse_gateway_task_resource_uri(uri: &str) -> Option<&str> {
-    uri.strip_prefix("veoveo://task/")
+    uri.strip_prefix("veoveo://tasks/")
         .filter(|task_id| !task_id.is_empty() && !task_id.contains('/'))
 }
 
@@ -60,6 +60,7 @@ impl TryFrom<&TaskStatus> for GatewayTaskStatusKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct GatewayTaskStatus {
     pub task_id: OpaqueTaskId,
     pub status: GatewayTaskStatusKind,
@@ -100,6 +101,7 @@ impl GatewayTaskStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct GatewayTaskStatusDocument {
     pub task: GatewayTaskStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,7 +203,7 @@ mod tests {
         assert_eq!(status.poll_interval_ms, Some(5000));
         assert_eq!(
             status.status_resource.as_str(),
-            "veoveo://task/gateway-task-1"
+            "veoveo://tasks/gateway-task-1"
         );
         assert_eq!(
             parse_gateway_task_resource_uri(status.status_resource.as_str()),

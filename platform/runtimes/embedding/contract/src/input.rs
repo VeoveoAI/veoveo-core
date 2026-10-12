@@ -123,7 +123,7 @@ impl JsonSchema for EmbeddingBatch {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum EmbeddingPriority {
     Interactive,
     Bulk,

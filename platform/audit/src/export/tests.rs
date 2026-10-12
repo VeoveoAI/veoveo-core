@@ -78,7 +78,7 @@ fn ocsf_preserves_unknown_identity_and_distinguishes_work_context_from_account()
 }
 #[test]
 fn destination_identity_covers_storage_and_retention_but_never_credentials() {
-    let cfg: S3Config = serde_json::from_str(r#"{"endpoint":"https://store.example.test","region":"us-east-1","bucket":"audit-fixture","prefix":"audit","object_lock":{"mode":"disabled"}}"#).unwrap();
+    let cfg: S3Config = serde_json::from_str(r#"{"endpoint":"https://store.example.test","region":"us-east-1","bucket":"audit-fixture","prefix":"audit","objectLock":{"mode":"disabled"}}"#).unwrap();
     let first = config::destination_id("s3", &cfg).unwrap();
     let mut changed = cfg.clone();
     changed.prefix = "another-installation".to_owned().try_into().unwrap();

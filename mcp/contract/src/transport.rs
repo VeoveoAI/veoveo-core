@@ -15,7 +15,7 @@ use rmcp::transport::streamable_http_server::{
 /// Maximum bytes in one fully serialized terminal MCP JSON response.
 pub const MAX_MCP_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 
-const RESPONSE_BUDGET_ERROR_CODE: i64 = -32_010;
+const RESPONSE_BUDGET_ERROR_CODE: i64 = crate::jsonrpc_codes::RESPONSE_BUDGET_EXCEEDED;
 
 /// Builds the only supported configuration for a Veoveo Streamable HTTP
 /// endpoint.
@@ -60,8 +60,8 @@ pub fn bound_serialized_jsonrpc_response(
             "message": "serialized MCP response exceeds the byte budget",
             "data": {
                 "code": "response_budget_exceeded",
-                "maximum_bytes": MAX_MCP_RESPONSE_BYTES,
-                "actual_bytes": actual_bytes,
+                "maximumBytes": MAX_MCP_RESPONSE_BYTES,
+                "actualBytes": actual_bytes,
             }
         }
     }))
@@ -128,7 +128,7 @@ fn response_collection_diagnostic(code: &'static str) -> Vec<u8> {
             },
             "data": {
                 "code": code,
-                "maximum_bytes": MAX_MCP_RESPONSE_BYTES,
+                "maximumBytes": MAX_MCP_RESPONSE_BYTES,
             }
         }
     }))
@@ -156,7 +156,7 @@ mod response_budget_tests {
             "response_budget_exceeded"
         );
         assert_eq!(
-            diagnostic["error"]["data"]["maximum_bytes"],
+            diagnostic["error"]["data"]["maximumBytes"],
             MAX_MCP_RESPONSE_BYTES
         );
         assert!(diagnostic.get("result").is_none());
