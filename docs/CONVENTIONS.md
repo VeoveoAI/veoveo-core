@@ -60,8 +60,10 @@ stored marker that binds a hash to its format holds the same URI. A contract tha
 servers declare compliance with is identified by `https://veoveo.ai/contracts/<kebab-name>`,
 such as `https://veoveo.ai/contracts/hosted-mcp`.
 
-Nothing carries a version number before it is released. After release, a format changes
-compatibly or takes a new name; the release process records that policy.
+Identifiers carry no version. Format and contract URIs, schema `$id`s, extension
+identifiers, claim and parameter names, and HTTP paths have no `v1` or `/v2` segment. A
+format changes compatibly or takes a new name. Releases carry versions: Git tags, crate
+versions, image tags and RFC 7591 `software_version`.
 
 ## Domain Names
 
