@@ -107,8 +107,9 @@ WHERE status IN ('succeeded', 'failed', 'cancelled') AND retention_pins = '{}';
 
 ALTER TABLE tasks.task ENABLE ROW LEVEL SECURITY;
 
+-- The scalar subquery evaluates the caller's servers once per statement.
 CREATE POLICY task_server ON tasks.task TO veoveo_server
-USING (server = ANY (kernel.current_servers()))
-WITH CHECK (server = ANY (kernel.current_servers()));
+USING (server = ANY ((SELECT kernel.current_servers())))
+WITH CHECK (server = ANY ((SELECT kernel.current_servers())));
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON tasks.task TO veoveo_server;

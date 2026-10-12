@@ -6,7 +6,7 @@ INSERT INTO tasks.task (
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-    'Queued', now() + $20::interval
+    'Queued', now() + $20::bigint * interval '1 millisecond'
 )
 ON CONFLICT (server, tenant, owner_principal, profile, idempotency_key)
 WHERE idempotency_key IS NOT NULL
