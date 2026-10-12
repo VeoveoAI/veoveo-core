@@ -39,6 +39,11 @@ Servers register with the Gateway through the
 installation grants roles that select their declared permissions by access kind and
 risk.
 
+## Conventions
+
+Every name and format in Veoveo repositories follows a published standard or
+[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md).
+
 ## Gate
 
 ```sh

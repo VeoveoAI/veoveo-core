@@ -4,6 +4,9 @@ These rules apply to veoveo-core.
 
 - Use upstream runtimes such as OpenShell and SurrealDB unmodified. Adapt through
   supported configuration.
+- Every name, identifier, format, wire field and protocol element follows a published
+  standard or [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md). A name that fits neither is a
+  defect. Extend a standard only through its own extension mechanism.
 - Prefer strong types: typed structs, enums and domain identifiers over raw strings and
   JSON wherever the shape is known.
 - Keep test logic in Rust and tool behavior in each tool's own configuration. Do not add
