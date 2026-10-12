@@ -4532,7 +4532,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "url",
- "veoveo-modules",
  "veoveo-types",
 ]
 
@@ -4795,7 +4794,6 @@ dependencies = [
  "veoveo-gateway-contract",
  "veoveo-mcp-contract",
  "veoveo-mcp-ext-registration",
- "veoveo-modules",
  "veoveo-types",
 ]
 

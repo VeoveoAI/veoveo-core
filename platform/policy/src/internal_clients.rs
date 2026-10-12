@@ -7,7 +7,6 @@ use std::{
 };
 use veoveo_gateway_contract::GatewayToolName;
 use veoveo_mcp_contract::GatewayInternalIdentity;
-use veoveo_modules::ObservationTable;
 use veoveo_types::{WorkContextId, WorkContextMembershipLevel};
 
 pub struct InternalClientAuthorityRequest<'a> {
@@ -25,17 +24,13 @@ pub type AuthorityFuture<'a> =
 /// Called again before delivery; no result establishes a cached authority lease.
 pub trait InternalClientAuthorityResolver: Send + Sync {
     fn resolve<'a>(&'a self, request: InternalClientAuthorityRequest<'a>) -> AuthorityFuture<'a>;
-    fn observation_tables(&self) -> Vec<ObservationTable>;
 }
 /// For an installation whose admitted effective plan excludes managed clients.
-/// It never probes optional-owner tables and rejects any managed attribution.
+/// It reads no database and rejects any managed attribution.
 pub struct StaticInternalClientAuthorityResolver;
 impl InternalClientAuthorityResolver for StaticInternalClientAuthorityResolver {
     fn resolve<'a>(&'a self, input: InternalClientAuthorityRequest<'a>) -> AuthorityFuture<'a> {
         Box::pin(async move { static_authority(input) })
-    }
-    fn observation_tables(&self) -> Vec<ObservationTable> {
-        Vec::new()
     }
 }
 /// Managed adapters may use this only AFTER proving absence of a managed registration,

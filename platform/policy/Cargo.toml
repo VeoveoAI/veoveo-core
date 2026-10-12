@@ -7,7 +7,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-veoveo-modules = { workspace = true, default-features = false }
 veoveo-gateway-contract.workspace = true
 veoveo-types.workspace = true
 anyhow.workspace = true

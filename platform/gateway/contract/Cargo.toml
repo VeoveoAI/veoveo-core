@@ -8,7 +8,6 @@ publish.workspace = true
 
 [dependencies]
 veoveo-types.workspace = true
-veoveo-modules = { workspace = true, features = ["serialization"] }
 serde.workspace = true
 serde_json.workspace = true
 schemars = { workspace = true, features = ["chrono04"] }

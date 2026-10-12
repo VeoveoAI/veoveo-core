@@ -8,7 +8,7 @@
 | `ai.veoveo/authorization` | Registered servers' permission declarations, read through `PolicyCatalogView::server_authorization`; defined in [the server registration protocol](../../mcp/ext-registration/DESIGN.md) |
 | MCP 2026-07-28 | Canonical method/action names and domain resource ownership; evaluation itself performs no protocol I/O |
 | JSON / JSON Schema 2020-12 | `mcp/contract` owns policy decisions and core targets; owner contracts supply registered target codecs. The protocol schema adapter composes their bound declarations |
-| SurrealDB 3.3.0 | Caller-owned current revision read in `platform/store`; the evaluator has no database dependency |
+| PostgreSQL 18 | Caller-owned current revision read; the evaluator has no database dependency |
 | Veoveo session-family authority | Internal read-only projection of the stored refresh family and verified request context; no new token or stored wire format |
 | RFC 6570 declaration targets | Template discovery and completion carry the foundational `ResourceTemplateUri`. Policy selectors use their existing restricted lexical matcher, not RFC expansion or set containment. |
 
@@ -34,11 +34,10 @@ revision. It must account for that read's latency before issuing a bounded lease
 Caching immutable revisions is compatible with this boundary; renewing from a stale
 head or unreachable authority store is not.
 
-`PlatformStore::active_gateway_control_revision` reads the active pointer and that
-exact retained revision in one round trip. It distinguishes an absent installation
-pointer from a dangling or inconsistent revision. The gateway uses this same reader.
-Readers capture monotonic time before the request and charge all read and validation
-latency against any authority lease they issue afterwards.
+The caller reads the active control-plane pointer and the revision it names in one
+snapshot, and distinguishes an absent installation pointer from a dangling or
+inconsistent revision. Readers capture monotonic time before the request and charge
+all read and validation latency against any authority lease they issue afterwards.
 
 `session::SessionFamilyAuthority` owns the pure browser-family binding decision used
 by gateway requests and server-side controls. The caller reads the exact signed family ID
@@ -74,6 +73,6 @@ membership/tool result. The pure evaluator keeps no Store or Agent dependency.
 The static implementation evaluates installed registration against the current
 profile and rejects managed attribution. A composition selects it only when the
 admitted plan excludes Agents. Agent adapters check live registration and collision
-before selecting static or managed authority and declare the owner tables that wake
-subscribers. Callers authenticate assertions, validate identity/control freshness,
-and repeat resolution before delivery. Resolver results grant no cached lease.
+before selecting static or managed authority. Callers authenticate assertions,
+validate identity/control freshness, and repeat resolution before delivery. Resolver
+results grant no cached lease.
