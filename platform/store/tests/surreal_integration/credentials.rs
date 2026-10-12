@@ -249,7 +249,7 @@ async fn root_password_replacement_observes_existing_sessions_and_recovers_data(
         }
     })
     .await
-    .expect("root credential qualification exceeded180seconds");
+    .expect("root credential qualification exceeded 180 seconds");
 }
 
 async fn bootstrap_step<T>(

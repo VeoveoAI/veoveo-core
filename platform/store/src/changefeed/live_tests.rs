@@ -95,7 +95,7 @@ async fn full_row_unpolled_drop_and_partial_registration_keep_parent_session() {
             .unwrap();
     })
     .await
-    .expect("owned full-row lifecycle exceeded90seconds");
+    .expect("owned full-row lifecycle exceeded 90 seconds");
 }
 #[tokio::test]
 async fn abandoned_registration_and_unknown_receipt_close_only_owned_transport() {
@@ -173,5 +173,5 @@ async fn abandoned_registration_and_unknown_receipt_close_only_owned_transport()
             .unwrap();
     })
     .await
-    .expect("abandoned LIVE registration exceeded90seconds");
+    .expect("abandoned LIVE registration exceeded 90 seconds");
 }

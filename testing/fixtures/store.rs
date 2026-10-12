@@ -121,7 +121,7 @@ impl TestDb {
             PlatformStore::connect(self.admin_config.clone()),
         )
         .await
-        .expect("fixture admin connection exceeded60seconds")
+        .expect("fixture admin connection exceeded 60 seconds")
         .unwrap()
     }
 
@@ -254,7 +254,7 @@ impl TestDb {
         .expect("isolated migrations/readiness failed");
         tokio::time::timeout(Duration::from_secs(60), prepared.apply(admin.client()))
             .await
-            .expect("fixture selected bootstrap exceeded60seconds")
+            .expect("fixture selected bootstrap exceeded 60 seconds")
             .unwrap_or_else(|error| panic!("fixture selected bootstrap failed: {error}"));
         let admin_config =
             StoreConfig::builder(&endpoint, "veoveo_fixture", &database, admin_credentials)

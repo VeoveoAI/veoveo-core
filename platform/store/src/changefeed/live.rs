@@ -1,4 +1,4 @@
-//! Owned physical-connection cleanup for the SurrealDB3.3 LIVE profile.
+//! Owned physical-connection cleanup for the SurrealDB 3.3 LIVE profile.
 use crate::{ObservationTable, PlatformClient, PlatformStore, StoreError};
 use futures::{StreamExt, stream::BoxStream};
 use std::{sync::Arc, time::Duration};
@@ -12,7 +12,7 @@ pub(crate) struct Identity {
     pub(crate) id: RecordId,
 }
 
-/// The SDK's3.3 query stream reconstructs an unauthenticated session for Drop.
+/// The SDK's 3.3 query stream reconstructs an unauthenticated session for Drop.
 /// Keep the registering session and only IDs returned by its own statements.
 struct LiveCleanup {
     client: Arc<Surreal<PlatformClient>>,
@@ -53,7 +53,9 @@ impl Drop for LiveCleanup {
                 Ok(Err(error)) => {
                     tracing::error!(queries = count, %error, "owned LIVE cleanup failed")
                 }
-                Err(_) => tracing::error!(queries = count, "owned LIVE cleanup exceeded30seconds"),
+                Err(_) => {
+                    tracing::error!(queries = count, "owned LIVE cleanup exceeded 30 seconds")
+                }
             }
         });
     }
