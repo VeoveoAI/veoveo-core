@@ -146,7 +146,7 @@ slug. Every other module prefixes its tables with `<slug>_` and its functions wi
 | Thing | Form |
 |---|---|
 | Repository, crate, binary, image name | `veoveo-<kind>-<name>` |
-| OpenShell sandbox, provider, Compose service | `vv-<code>-<name>`, at most 19 characters |
+| OpenShell sandbox and provider, Compose project, service and container | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-surrealdb`; at most 19 characters |
 | Throwaway test sandbox | `vv-qual-<run>-<role>` |
 | Environment image tag | `:dev` |
 | OpenTelemetry `service.name` | the repository name |
