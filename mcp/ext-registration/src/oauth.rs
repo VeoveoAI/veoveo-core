@@ -141,7 +141,7 @@ impl ClientMetadata {
         if slug.is_reserved() {
             return Err(DeclarationError::invalid(
                 "software_id",
-                "the slug is reserved for the platform, a kernel module or a registered URI scheme",
+                "the slug is reserved for the platform, a database schema or a registered URI scheme",
             ));
         }
         if self.registration.uri_scheme.as_ref() != slug.as_ref() {

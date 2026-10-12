@@ -416,6 +416,25 @@ fn client_metadata_checks_every_declaration() {
     let mut elsewhere = registration();
     elsewhere.slug = ServerSlug::parse("map").unwrap();
     assert!(ClientMetadata::new(rfc8037_key(), elsewhere, authorization()).is_err());
+
+    // Kernel and PostgreSQL schemas are not server namespaces.
+    for reserved in ["kernel", "identity", "public", "pg-stat"] {
+        let mut registration = registration();
+        registration.slug = ServerSlug::parse(reserved).unwrap();
+        registration.uri_scheme = ResourceScheme::parse(reserved).unwrap();
+        let mut metadata = metadata();
+        metadata.registration = registration;
+        assert!(
+            matches!(
+                metadata.check(),
+                Err(DeclarationError::Invalid {
+                    field: "software_id",
+                    ..
+                })
+            ),
+            "{reserved}"
+        );
+    }
 }
 
 fn information() -> serde_json::Value {

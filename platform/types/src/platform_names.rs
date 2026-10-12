@@ -6,16 +6,21 @@ use crate::IdentifierError;
 pub struct ServerSlug(String);
 
 /// Names no server may register as its slug or URI scheme: the platform scheme, the
-/// kernel modules and common URI schemes registered with IANA.
+/// kernel's database schemas, the Artifact and Knowledge planes, the schemas PostgreSQL
+/// creates in every database and common URI schemes registered with IANA. Slugs that
+/// start with `pg-` are reserved as well, because PostgreSQL reserves schemas that start
+/// with `pg_`.
 pub const RESERVED_SERVER_SLUGS: &[&str] = &[
     "veoveo",
-    "artifacts",
-    "audit",
-    "gateway",
+    "kernel",
     "identity",
-    "knowledge",
-    "store",
+    "gateway",
     "tasks",
+    "audit",
+    "artifacts",
+    "knowledge",
+    "public",
+    "information-schema",
     "data",
     "file",
     "ftp",
@@ -28,9 +33,10 @@ pub const RESERVED_SERVER_SLUGS: &[&str] = &[
 ];
 
 impl ServerSlug {
-    /// Whether the slug is reserved for the platform, a kernel module or a registered scheme.
+    /// Whether the slug is reserved for the platform, a kernel or PostgreSQL schema, or a
+    /// registered scheme.
     pub fn is_reserved(&self) -> bool {
-        RESERVED_SERVER_SLUGS.contains(&self.as_ref())
+        RESERVED_SERVER_SLUGS.contains(&self.as_ref()) || self.as_str().starts_with("pg-")
     }
 }
 #[doc = "Veoveo profile id exposed under `/mcp/{profile}`."]
