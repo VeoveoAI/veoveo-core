@@ -18,6 +18,7 @@ struct Declaration {
     secret: bool,
     ordered: bool,
     inner_display: bool,
+    postgres: bool,
 }
 impl Parse for Declaration {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -57,6 +58,7 @@ impl Parse for Declaration {
             secret: false,
             ordered: false,
             inner_display: false,
+            postgres: false,
         };
         let mut seen = std::collections::BTreeSet::new();
         while !input.is_empty() {
@@ -78,6 +80,7 @@ impl Parse for Declaration {
                 "secret" => value.secret = true,
                 "ordered" => value.ordered = true,
                 "inner_display" => value.inner_display = true,
+                "postgres" => value.postgres = true,
                 "prefix" => {
                     input.parse::<Token![=]>()?;
                     value.prefix = input.parse()?;
@@ -97,6 +100,7 @@ impl Parse for Declaration {
         if value.ordered && !value.secret
             || value.inner_display && value.secret
             || value.constant && value.storage != "uuid"
+            || value.postgres && value.secret
             || value.storage == "custom" && !seen.is_empty()
         {
             return Err(syn::Error::new_spanned(
@@ -189,7 +193,12 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             if !matches!(attribute.meta, syn::Meta::List(_)) {
                 continue;
             }
-            if let Some(derive) = super::derive_policy::conflict(attribute, &["Id"])? {
+            let owner_derives: &[&str] = if declaration.postgres {
+                &["Id", "Type", "Encode", "Decode"]
+            } else {
+                &["Id"]
+            };
+            if let Some(derive) = super::derive_policy::conflict(attribute, owner_derives)? {
                 return Err(syn::Error::new_spanned(
                     derive,
                     "identity owns standard derives",
@@ -286,6 +295,9 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         impl ::veoveo_types::StableKeyIdentity for #name { fn from_stable_key(key: &[u8]) -> Self { Self(::veoveo_types::stable_profile_string::<#profile>(key, #metadata)) } }
         impl #name { pub fn from_stable_key(key: &[u8]) -> Self { <Self as ::veoveo_types::StableKeyIdentity>::from_stable_key(key) } }
     });
+    let postgres = declaration
+        .postgres
+        .then(|| postgres_binding(name, uuid, declaration.storage == "uuid"));
     let serialized = if uuid {
         quote!(match #policy.wire { ::veoveo_types::IdWire::String => serializer.serialize_str(&self.0.to_string()), _ => ::serde::Serialize::serialize(&self.0, serializer) })
     } else {
@@ -315,7 +327,7 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     });
     let extra = quote! {
         const _: () = { #check_uuid #check_fresh #check_stable #check_wire };
-        #constant #prefix_api #uuid_api #string_uuid_api #stable
+        #constant #prefix_api #uuid_api #string_uuid_api #stable #postgres
         impl ::serde::Serialize for #name { fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { #serialized } }
         impl<'de> ::serde::Deserialize<'de> for #name { fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> { #deserialized } }
         const _: () = {
@@ -357,6 +369,81 @@ pub(super) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     Ok(quote!(#traits #input #generated))
 }
 
+/// PostgreSQL binding through the identity's admitted representation: `uuid` for UUID
+/// forms and `text` otherwise. Decoding applies the owner's admission again.
+fn postgres_binding(name: &Ident, uuid_storage: bool, uuid_form: bool) -> TokenStream {
+    let (sql, encode, decode) = if uuid_storage {
+        (
+            quote!(::uuid::Uuid),
+            quote!(
+                <::uuid::Uuid as ::sqlx::Encode<'_, ::sqlx::Postgres>>::encode_by_ref(&self.0, buf)
+            ),
+            quote! {
+                let value = <::uuid::Uuid as ::sqlx::Decode<'r, ::sqlx::Postgres>>::decode(value)?;
+                <Self as ::std::convert::TryFrom<::uuid::Uuid>>::try_from(value)
+            },
+        )
+    } else if uuid_form {
+        (
+            quote!(::uuid::Uuid),
+            quote! {
+                let value = <Self as ::veoveo_types::UuidIdentity>::as_uuid(self);
+                <::uuid::Uuid as ::sqlx::Encode<'_, ::sqlx::Postgres>>::encode(value, buf)
+            },
+            quote! {
+                let value = <::uuid::Uuid as ::sqlx::Decode<'r, ::sqlx::Postgres>>::decode(value)?;
+                <Self as ::std::convert::TryFrom<::std::string::String>>::try_from(value.to_string())
+            },
+        )
+    } else {
+        (
+            quote!(&str),
+            quote! {
+                let value = <Self as ::veoveo_types::Identity>::identity_text(self);
+                <&str as ::sqlx::Encode<'_, ::sqlx::Postgres>>::encode(&*value, buf)
+            },
+            quote! {
+                let value = <::std::string::String as ::sqlx::Decode<'r, ::sqlx::Postgres>>::decode(value)?;
+                <Self as ::std::convert::TryFrom<::std::string::String>>::try_from(value)
+            },
+        )
+    };
+    quote! {
+        impl ::sqlx::Type<::sqlx::Postgres> for #name {
+            fn type_info() -> ::sqlx::postgres::PgTypeInfo {
+                <#sql as ::sqlx::Type<::sqlx::Postgres>>::type_info()
+            }
+            fn compatible(ty: &::sqlx::postgres::PgTypeInfo) -> bool {
+                <#sql as ::sqlx::Type<::sqlx::Postgres>>::compatible(ty)
+            }
+        }
+        impl ::sqlx::postgres::PgHasArrayType for #name {
+            fn array_type_info() -> ::sqlx::postgres::PgTypeInfo {
+                <#sql as ::sqlx::postgres::PgHasArrayType>::array_type_info()
+            }
+            fn array_compatible(ty: &::sqlx::postgres::PgTypeInfo) -> bool {
+                <#sql as ::sqlx::postgres::PgHasArrayType>::array_compatible(ty)
+            }
+        }
+        impl ::sqlx::Encode<'_, ::sqlx::Postgres> for #name {
+            fn encode_by_ref(
+                &self,
+                buf: &mut ::sqlx::postgres::PgArgumentBuffer,
+            ) -> ::core::result::Result<::sqlx::encode::IsNull, ::sqlx::error::BoxDynError> {
+                #encode
+            }
+        }
+        impl<'r> ::sqlx::Decode<'r, ::sqlx::Postgres> for #name {
+            fn decode(
+                value: ::sqlx::postgres::PgValueRef<'r>,
+            ) -> ::core::result::Result<Self, ::sqlx::error::BoxDynError> {
+                let admitted = { #decode };
+                admitted.map_err(::std::convert::Into::<::sqlx::error::BoxDynError>::into)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,9 +481,15 @@ mod tests {
                 ),
             ),
             (
-                quote!(uuid(StoreIds), fresh, const_uuid),
+                quote!(uuid(StoreIds), fresh, const_uuid, postgres),
                 quote!(
                     struct RowId(uuid::Uuid);
+                ),
+            ),
+            (
+                quote!(text(Names), postgres),
+                quote!(
+                    struct Name(String);
                 ),
             ),
             (
@@ -460,6 +553,21 @@ mod tests {
                     struct Name(String);
                 ),
                 "capability does not match",
+            ),
+            (
+                quote!(text(Secrets), secret, postgres),
+                quote!(
+                    struct Secret(String);
+                ),
+                "capability does not match",
+            ),
+            (
+                quote!(uuid(StoreIds), postgres),
+                quote!(
+                    #[derive(sqlx::Type)]
+                    struct RowId(uuid::Uuid);
+                ),
+                "owns standard derives",
             ),
             (
                 quote!(text(Names)),

@@ -25,6 +25,7 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     };
     let mut scope = false;
     let mut task_type = false;
+    let mut postgres = false;
     for attr in &input.attrs {
         if attr.path().is_ident("vocabulary") {
             attr.parse_nested_meta(|meta| {
@@ -32,8 +33,10 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                     scope = true;
                 } else if meta.path.is_ident("task_type") {
                     task_type = true;
+                } else if meta.path.is_ident("postgres") {
+                    postgres = true;
                 } else {
-                    return Err(meta.error("expected scope or task_type"));
+                    return Err(meta.error("expected scope, task_type or postgres"));
                 }
                 Ok(())
             })?;
@@ -205,6 +208,7 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             },
         )
     };
+    let postgres_hook = postgres.then(|| postgres_text(name, &name_text));
     let validation = if scope {
         quote! { const _: () = { #(assert!(::veoveo_types::is_scope_token(#spellings), "declared scope must follow OAuth scope-token syntax");)* }; }
     } else if task_type {
@@ -231,8 +235,52 @@ fn generate(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             type Err = ::veoveo_types::IdentifierError;
             fn from_str(value: &str) -> ::core::result::Result<Self, Self::Err> { #parse }
         }
-        #scope_hook #task_hook #wire
+        #scope_hook #task_hook #wire #postgres_hook
     })
+}
+
+/// PostgreSQL `text` binding through the wire spellings. Decoding rejects any other
+/// value, so a row cannot introduce a variant the owner never declared.
+fn postgres_text(name: &syn::Ident, name_text: &str) -> proc_macro2::TokenStream {
+    quote! {
+        impl ::sqlx::Type<::sqlx::Postgres> for #name {
+            fn type_info() -> ::sqlx::postgres::PgTypeInfo {
+                <&str as ::sqlx::Type<::sqlx::Postgres>>::type_info()
+            }
+            fn compatible(ty: &::sqlx::postgres::PgTypeInfo) -> bool {
+                <&str as ::sqlx::Type<::sqlx::Postgres>>::compatible(ty)
+            }
+        }
+        impl ::sqlx::postgres::PgHasArrayType for #name {
+            fn array_type_info() -> ::sqlx::postgres::PgTypeInfo {
+                <&str as ::sqlx::postgres::PgHasArrayType>::array_type_info()
+            }
+            fn array_compatible(ty: &::sqlx::postgres::PgTypeInfo) -> bool {
+                <&str as ::sqlx::postgres::PgHasArrayType>::array_compatible(ty)
+            }
+        }
+        impl ::sqlx::Encode<'_, ::sqlx::Postgres> for #name {
+            fn encode_by_ref(
+                &self,
+                buf: &mut ::sqlx::postgres::PgArgumentBuffer,
+            ) -> ::core::result::Result<::sqlx::encode::IsNull, ::sqlx::error::BoxDynError> {
+                <&str as ::sqlx::Encode<'_, ::sqlx::Postgres>>::encode(
+                    <Self as ::veoveo_types::Vocabulary>::as_str(*self),
+                    buf,
+                )
+            }
+        }
+        impl<'r> ::sqlx::Decode<'r, ::sqlx::Postgres> for #name {
+            fn decode(
+                value: ::sqlx::postgres::PgValueRef<'r>,
+            ) -> ::core::result::Result<Self, ::sqlx::error::BoxDynError> {
+                let text = <&str as ::sqlx::Decode<'r, ::sqlx::Postgres>>::decode(value)?;
+                <Self as ::veoveo_types::Vocabulary>::from_wire(text).ok_or_else(|| {
+                    ::std::format!(concat!("unknown ", #name_text, " value {:?}"), text).into()
+                })
+            }
+        }
+    }
 }
 
 fn snake_case(value: &str) -> String {
@@ -278,6 +326,19 @@ mod tests {
         assert!(expansion.contains("is_scope_token"));
         assert!(expansion.contains("scope_vocabulary_schema"));
         assert!(!expansion.contains("sqlx"));
+    }
+    #[test]
+    fn postgres_profile_binds_wire_spellings_as_text_and_rejects_others() {
+        let expansion = declaration(
+            "#[vocabulary(postgres)] enum Kind { #[vocabulary(rename = \"user\")] User }",
+        )
+        .unwrap()
+        .to_string();
+        assert!(expansion.contains("impl :: sqlx :: Type < :: sqlx :: Postgres > for Kind"));
+        assert!(expansion.contains("PgHasArrayType"));
+        assert!(expansion.contains("from_wire"));
+        let plain = declaration("enum Kind { User }").unwrap().to_string();
+        assert!(!plain.contains("sqlx"));
     }
     #[test]
     fn snake_case_matches_serde_unit_variant_rules() {

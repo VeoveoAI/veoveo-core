@@ -16,6 +16,7 @@ that their generated code implements. Each consuming library owns its domain dec
 | OAuth 2.0, RFC 6749 section 3.3 | Code-owned scope-token syntax; dynamic installation scopes keep `ScopeName` admission |
 | Naming vocabulary keyword `namingProfile` | Scope and Task hooks and identity/resource schema emitters delegate local classification to public foundational helpers; instance serialization is unchanged. |
 | Veoveo Task operation names | The `TaskTypeName` lexical profile, with distinct spellings |
+| PostgreSQL 18 through sqlx 0.9.0 | Optional consumer-only `Type`, `Encode`, `Decode` and `PgHasArrayType` for Postgres: vocabularies bind as `text`, identities as `uuid` or `text` |
 | SHA-256, FIPS 180-4 | Digest of the embedded document's original UTF-8 bytes |
 
 ## Naming Metadata Delegation
@@ -77,6 +78,18 @@ Their validators sanitize returned errors; these mechanics provide no zeroizatio
 same emitter. Nonidentity labels and quantities stay ordinary checked newtypes.
 
 `const_uuid` is available only when the owner admits arbitrary UUID values.
+
+The `postgres` capability binds the identity to PostgreSQL through sqlx. A UUID-backed
+identity and a String-backed identity of the `uuid` form bind as `uuid`; the other
+forms bind as `text` in their identity spelling. Decoding applies the owner's admission
+again, so a stored value the owner would reject fails to decode. Arrays bind as `uuid[]`
+or `text[]`. The capability conflicts with `secret`, and a declaration with it may not
+also derive sqlx's `Type`, `Encode` or `Decode`.
+
+```rust
+#[veoveo_types::id(uuid(PersistenceIds), const_uuid, postgres)]
+pub struct TenantId(Uuid);
+```
 
 ## ResourceAddress
 
@@ -202,6 +215,16 @@ to schemars with owner documentation and schema attributes. The helper keeps the
 owner's schema name and module-qualified identity. Scope serialization delegates to
 its existing checked-name contract instead.
 
+`#[vocabulary(postgres)]` binds the vocabulary to a PostgreSQL `text` column through
+sqlx, writing each variant's wire spelling. Decoding rejects any other stored text, so a
+row cannot introduce a variant the owner never declared; the column's `CHECK`
+constraint lists the same spellings. Arrays bind as `text[]`. It combines with the other
+profiles.
+
+Both `postgres` hooks emit code that names `::sqlx` and `::veoveo_types` in the
+consuming crate, and the identity hook also `::uuid`; the consumer depends on sqlx with
+its `postgres` feature. Neither this crate nor `veoveo-types` depends on sqlx.
+
 ## Embedded Documents
 
 `embedded_document!("relative/path.md")` reads under the consumer's manifest
@@ -246,5 +269,7 @@ implements these declarations.
 Foundation tests qualify independent trait implementations, explicit spellings,
 empty scopes, invalid declarations and same-named owners. Audit tests compare every
 migrated enum against its previous Serde/schemars declaration and verify unit-variant
-ordinals. Contract-only consumers qualify dependency isolation. The active [plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#phase-0-core-macros-and-shared-building-blocks)
+ordinals. Expansion tests cover the `postgres` hooks' shape and conflicts, and the
+store's tests bind and decode them against PostgreSQL, including rejected values.
+Contract-only consumers qualify dependency isolation. The active [plan](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#phase-0-core-macros-and-shared-building-blocks)
 tracks owner qualification and the remaining implementation phases.

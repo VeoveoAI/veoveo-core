@@ -4,7 +4,8 @@ Follow the repository [instructions](../../AGENTS.md) and this crate's
 [design](DESIGN.md). Keep expansions focused on declarations and trait delegation.
 Runtime semantics belong to ordinary public traits and helpers in `platform/types`.
 This proc-macro crate must not depend on `veoveo-types`, MCP, a database driver or a
-server.
+server. The `postgres` hooks emit sqlx implementations into a consumer that depends on
+sqlx; they do not link sqlx here.
 
 Preserve each owner's serialized forms, schema identity, metadata and variant order.
 Qualify declaration misuse with compile-fail doctests in `platform/types` and
