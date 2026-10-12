@@ -312,10 +312,16 @@ async fn qualify() -> anyhow::Result<()> {
     }
 
     server.stop().await;
-    assert!(
-        tokio::net::TcpStream::connect(address).await.is_err(),
-        "fixture listener outlived qualification"
-    );
+    // A refused connection is not required: inside an OpenShell 0.1.3 sandbox a closed
+    // loopback port can still complete the TCP handshake. The server must not answer.
+    let answered = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()?
+        .get(format!("http://{address}/observatory/admin/docs/llms.txt"))
+        .send()
+        .await
+        .is_ok();
+    assert!(!answered, "fixture server outlived qualification");
     Ok(())
 }
 
