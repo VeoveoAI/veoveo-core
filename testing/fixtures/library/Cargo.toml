@@ -18,10 +18,14 @@ store = [
     "dep:veoveo-platform-store",
     "dep:veoveo-types",
 ]
+# Tenant-predicate, row-bound, index-use and schema checks over a crate's queries. Only
+# test code depends on this feature, so pg_query never links into a service.
+database-conformance = ["store", "dep:pg_query", "dep:serde", "dep:serde_json"]
 tool-inputs = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 hex = { workspace = true, optional = true }
+pg_query = { workspace = true, optional = true }
 secrecy = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
@@ -31,3 +35,10 @@ tokio = { workspace = true, features = ["fs", "macros", "process", "rt", "sync",
 uuid = { workspace = true, features = ["v4"], optional = true }
 veoveo-platform-store = { workspace = true, optional = true }
 veoveo-types = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+
+[[test]]
+name = "database_conformance"
+required-features = ["database-conformance"]

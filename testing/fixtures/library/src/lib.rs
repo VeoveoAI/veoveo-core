@@ -5,6 +5,10 @@
 #[path = "../../store.rs"]
 pub mod store;
 
+#[cfg(feature = "database-conformance")]
+#[path = "../../database.rs"]
+pub mod database;
+
 #[cfg(feature = "tool-inputs")]
 #[path = "../../tool_inputs.rs"]
 pub mod tool_inputs;

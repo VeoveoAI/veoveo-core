@@ -31,7 +31,7 @@ revision of this repository.
 | `mcp/ext-registration` | `veoveo-mcp-ext-registration` | The server registration protocol: the `ai.veoveo/registration` and `ai.veoveo/authorization` declarations, RFC 7591 and RFC 7592 registration types, the database grant, granted-permission details and the registration client servers run |
 | `mcp/conformance` | `veoveo-mcp-conformance` | Hosted server conformance checks |
 | `testing/fixtures/modular-mcp` | `veoveo-modular-fixture-mcp` | An independently typed server used as a conformance and Gateway test peer |
-| `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database and tool-input cases |
+| `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database, the database conformance checks and tool-input cases |
 
 Core names no specific server, and neither does an installation's configuration.
 Servers register with the Gateway through the

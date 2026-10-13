@@ -5,7 +5,9 @@
 | Boundary | Profile |
 |---|---|
 | PostgreSQL 18 | The `postgres`, `initdb`, `pg_ctl`, `createdb` and `dropdb` programs of one PGDG or Homebrew 18.x installation on `PATH`; one private cluster per test process on a loopback port with a private socket directory |
-| sqlx 0.9.0 | Superuser sessions over the socket for administration; `PlatformStore` pools over TCP with SCRAM passwords for tests |
+| sqlx 0.9.0 | Superuser sessions over the socket for administration; `PlatformStore` pools over TCP with SCRAM passwords for tests; the offline query metadata format of a `.sqlx` directory (`query`, `hash`) |
+| [pg_query](https://github.com/pganalyze/pg_query.rs) 6.2.1 | The parse tree and scanner of libpg_query, PostgreSQL 17's parser built as a library, for the database conformance checks; statements that need PostgreSQL 18 grammar fail to parse and are reported |
+| `EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON)` | PostgreSQL 18 generic plans with `enable_seqscan = off`, read for scan nodes |
 | Rust test harness | Source modules reused by owning tests; no separate smoke process or assertion framework |
 
 ## PostgreSQL
@@ -43,6 +45,42 @@ Server start tries up to five free ports and waits up to 30 seconds per attempt;
 programs and the template build each have 60 seconds, and a whole fixture setup 120.
 Failures name the step and the cause, include the tail of the server log for startup
 failures, and never include a password.
+
+## Database Conformance
+
+`database.rs` (feature `database-conformance`) holds a crate to the
+[server schema rules](../../docs/DATABASE.md#server-schema-rules) from one test. Only test
+code enables the feature, so `pg_query` and the C library it builds never link into a
+service. Core's own suites include the file by path next to `store.rs`.
+
+| API | Use |
+|---|---|
+| `Conformance::new()` | An empty check |
+| `server(&slug, migrator)` | Applies the server's migrations as one of its logins, checks the server's schema and plans every query as that login; without it, queries are planned as the installation owner |
+| `schema(name)` | Another schema whose tables the index-use and schema rules cover, such as a kernel schema |
+| `queries_from(dir)` | Every `query-*.json` of a sqlx offline directory, each named by the `.sql` file under the directory's parent whose SHA-256 is its hash |
+| `sources(dir)` | Keeps the queries whose `.sql` file lies under `dir`; repeatable |
+| `query(label, sql)` | One more statement |
+| `tenant_columns(table, columns)` | The columns that scope a table, in place of `tenant` and `tenant_id` |
+| `all_tenants(table, reason)` | A table queries may read across tenants, reported as an exemption |
+| `check()`, `run()` | Panics with the report when a rule is broken, or returns the `Report` |
+
+The check clones a fixture database, reads the catalog through the owner pool and the
+search path of the planning session, and analyzes each query once. The tenant and
+row-bound rules work on pg_query's parse tree: a query level records its relations and
+the equalities of its WHERE and join conditions, each limited to the relations it can
+filter, and solves which relations are tenant-scoped and which are bounded until no
+equality adds one. A value equal to a bind parameter, to the tenant column of a scoped
+relation, or to the single-column primary key of a scoped row carries that fact through
+subqueries, WITH queries and RETURNING lists. The planning session runs `SET
+enable_seqscan = off` and then `EXPLAIN` on each statement; utility statements are
+skipped. The whole check has 300 seconds.
+
+The report groups violations by rule and names each query by its file, a table by
+`schema.table`, and lists every exemption with its reason. A marker or an `all_tenants`
+entry that exempts nothing is a violation, so exemptions disappear with the defects they
+covered. PL/pgSQL and SQL function bodies are not analyzed; the query that calls a
+function is.
 
 ## Catalog Registration
 

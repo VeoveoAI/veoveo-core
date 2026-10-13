@@ -148,6 +148,13 @@ one server notifies on `<schema>.<server>` instead, such as `tasks.time`. A serv
 migrations record their history in `<schema>._sqlx_migrations`. Columns, constraints and
 indexes are `snake_case`.
 
+Every table's comment states its retention: it starts with `Retention:` and says how long
+a row stays and what removes it, such as `COMMENT ON TABLE time.event IS 'Retention: 30
+days after the event ends; the event pruner deletes it.'`. A query that a
+[server schema rule](DATABASE.md#server-schema-rules) exempts says why in a SQL comment
+of the form `-- veoveo: <kind> (<reason>)`, where the kind is `all tenants`, `unbounded`
+or `scan` and the reason is not empty.
+
 ## Runtime And Repository Names
 
 A repository's kind says what it holds, and its code shortens runtime names.

@@ -17,6 +17,8 @@ grants that Postgres enforces.
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | Row-level security, roles and `GRANT` | Isolation between the kernel and registered servers |
 | `xid8` and `pg_snapshot_xmin` | Commit-safe ordering for the audit log |
+| `COMMENT ON TABLE` | Every table's comment states its retention, starting `Retention:` |
+| [pg_query](https://github.com/pganalyze/pg_query.rs) 6.2.1 and `EXPLAIN (GENERIC_PLAN)` | Test-only server schema rules: the parse tree of libpg_query, PostgreSQL 17's parser, and PostgreSQL 18 generic plans |
 
 ## Database, Schemas And Roles
 
@@ -196,6 +198,78 @@ id) > (coalesce($9, '-infinity'), coalesce($10, nil UUID))`, rather than written
 optional equality filters must each seek their own index, such as an audit page, runs in
 a transaction with `SET LOCAL plan_cache_mode = force_custom_plan`. Plan tests prepare a
 verbatim copy of the statement in a test script and check the plan's index conditions.
+
+## Server Schema Rules
+
+Every crate that owns queries, core's and each server's, holds them to four rules in one
+test. `veoveo_test_fixtures::database::Conformance` (feature `database-conformance`)
+migrates a fixture database, reads every compile-checked query from the workspace's
+`.sqlx` directory, parses it with PostgreSQL's own parser through `pg_query`, plans it,
+and panics with one report that lists every violation and every exemption. The checks
+run only in tests, so they cost the running service nothing.
+
+```rust
+#[tokio::test]
+async fn queries_and_schema_follow_the_database_rules() {
+    Conformance::new()
+        .server(&ServerSlug::parse("time").unwrap(), persistence::migrator())
+        .queries_from(concat!(env!("CARGO_MANIFEST_DIR"), "/.sqlx"))
+        .sources(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
+        .check()
+        .await;
+}
+```
+
+`server` applies the server's migrations as one of its logins, as startup does, checks
+the server's schema and plans each query as that login. `schema` adds another checked
+schema, and `sources` keeps the queries whose `.sql` files lie in a directory.
+
+| Rule | A query or table passes when |
+|---|---|
+| Tenant predicates | Every reference to a table with a tenant column, in FROM, JOIN, subqueries, WITH queries, UPDATE and DELETE, has an equality on that column to a bind parameter, or to the tenant column of another relation in the statement that is itself constrained. An outer join's condition constrains only its nullable side. Every INSERT supplies the tenant column unless the column is generated |
+| Row bounds | A SELECT has a LIMIT, pins a primary or unique key by equality, or aggregates without GROUP BY. An UPDATE or DELETE has a WHERE clause and either pins a primary or unique key of its target or selects its rows through a subquery with a LIMIT |
+| Index use | The generic plan, with `enable_seqscan = off`, reaches every row of a checked table through an index. A Seq Scan fails, and so does an index scan without an index condition, except a top-N read under a LIMIT that filters nothing. A scan under a LIMIT fails when its filter tests a key column of its index that no index condition seeks, as an optional keyset bound does under a generic plan |
+| Schema rules | Every table of a checked schema has a primary key, every foreign key has an index whose leading columns are the key's columns, and every table's comment states its retention |
+
+Tenant columns are `tenant` and `tenant_id` unless the check names others with
+`tenant_columns`, such as `partition` for `audit.record`. A tenant value also travels
+through a statement: a column equated to a bind parameter, a WITH query's output column
+that holds a constrained tenant, and the primary key of a tenant-scoped row all count. An
+UPDATE whose target is pinned by the key that a tenant-scoped WITH query returned is
+therefore scoped too.
+
+A key column is pinned by an equality to a bind parameter, a constant, an uncorrelated
+scalar subquery, `= ANY` of a parameter array, `IN` a bounded subquery, or a column of
+another bounded relation. A partial unique index counts when its predicate only requires
+columns the query pins. A table whose primary key is one boolean column checked to be
+true holds at most one row, so it counts as keyed, and the index-use and foreign-key
+rules skip it.
+
+A query exempts itself from one rule with a comment that gives the reason:
+
+| Marker | Exempts |
+|---|---|
+| `-- veoveo: all tenants (<reason>)` | Tenant predicates |
+| `-- veoveo: unbounded (<reason>)` | Row bounds |
+| `-- veoveo: scan (<reason>)` | Index use |
+
+`all_tenants(table, reason)` exempts every query on a table that callers address by an
+identifier alone, such as the Gateway's refresh-token families, which a token digest
+selects. A marker without a reason, an unknown marker and an exemption that no finding
+needs are violations, so an exemption leaves with the defect it covered. The report lists
+every exemption with its reason, so review sees each one.
+
+A table states its retention in its comment, `COMMENT ON TABLE time.event IS 'Retention:
+…'`: how long a row stays and what removes it.
+
+The store supplies the shapes that pass these rules. `PageSize<MAX>` admits a page size
+up to the maximum the contract chooses, and its `page` turns rows read with
+`LIMIT fetch_limit()`, one more than the page, into a `Page` whose next position exists
+only when the extra row came back. `CursorScope` binds a `KeysetCursor`, an
+`OpaqueCursor` over `KeysetCodec`, to the listing, the tenant and a digest of the
+filters that produced it, so a cursor from another scope fails to parse. Deletes follow
+[Batched Maintenance](#batched-maintenance) through `MaintenanceBatch` and
+`Pruned::in_batches`.
 
 ## Column Types
 
