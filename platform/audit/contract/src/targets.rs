@@ -1,11 +1,11 @@
 //! Installation-bound target admission. Owner codecs never activate owner runtimes.
-use crate::{AuditTarget, model::CoreAuditTarget};
+use crate::{AuditRegistry, AuditRegistryBuilder, AuditTarget, model::CoreAuditTarget};
 use schemars::JsonSchema;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::{
     any::{Any, TypeId},
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     marker::PhantomData,
     sync::Arc,
 };
@@ -43,7 +43,7 @@ pub struct AuditTargetRegistration<T> {
 impl<T: AuditTargetOwner> AuditTargetRegistration<T> {
     pub fn target(
         &self,
-        registry: &AuditTargetRegistry,
+        registry: &AuditRegistry,
         value: T,
     ) -> Result<AuditTarget, AuditTargetError> {
         if !Arc::ptr_eq(&self.identity, &registry.identity) {
@@ -53,7 +53,7 @@ impl<T: AuditTargetOwner> AuditTargetRegistration<T> {
     }
     pub fn get<'a>(
         &self,
-        registry: &AuditTargetRegistry,
+        registry: &AuditRegistry,
         target: &'a AuditTarget,
     ) -> Result<&'a T, AuditTargetError> {
         if !Arc::ptr_eq(&self.identity, &registry.identity) {
@@ -70,47 +70,22 @@ impl<T: AuditTargetOwner> AuditTargetRegistration<T> {
 }
 type Payload = Arc<dyn Any + Send + Sync>;
 type Decode = fn(Value) -> Result<(Value, Payload), AuditTargetError>;
-struct Codec {
+pub(crate) struct Codec {
     type_id: TypeId,
     decode: Decode,
-    schema: Value,
-}
-#[derive(Clone)]
-pub struct AuditTargetRegistry {
-    identity: Arc<()>,
-    codecs: Arc<BTreeMap<String, Codec>>,
-}
-impl std::fmt::Debug for AuditTargetRegistry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuditTargetRegistry")
-            .field("kinds", &self.codecs.keys())
-            .finish()
-    }
-}
-pub struct AuditTargetRegistryBuilder {
-    identity: Arc<()>,
-    codecs: BTreeMap<String, Codec>,
+    pub(crate) schema: Value,
 }
 const CORE: &[&str] = &[
-    "platform_resource",
+    "resource",
     "server",
-    "artifact",
     "task",
-    "task_route",
     "principal",
     "work_context",
-    "tool",
-    "resource",
-    "resource_template",
-    "prompt",
-    "discovery",
-    "profile",
-    "client",
     "audit_log",
     "installation",
 ];
-impl AuditTargetRegistryBuilder {
-    pub fn register<T: AuditTargetOwner>(
+impl AuditRegistryBuilder {
+    pub fn register_target<T: AuditTargetOwner>(
         &mut self,
     ) -> Result<AuditTargetRegistration<T>, AuditTargetError> {
         if T::KIND.is_empty()
@@ -174,12 +149,6 @@ impl AuditTargetRegistryBuilder {
             marker: PhantomData,
         })
     }
-    pub fn build(self) -> AuditTargetRegistry {
-        AuditTargetRegistry {
-            identity: self.identity,
-            codecs: Arc::new(self.codecs),
-        }
-    }
 }
 fn decode_owner<T: AuditTargetOwner>(wire: Value) -> Result<(Value, Payload), AuditTargetError> {
     let payload: T = serde_json::from_value(wire.clone()).map_err(|_| AuditTargetError::Invalid)?;
@@ -189,16 +158,7 @@ fn decode_owner<T: AuditTargetOwner>(wire: Value) -> Result<(Value, Payload), Au
     }
     Ok((admitted, Arc::new(payload)))
 }
-impl AuditTargetRegistry {
-    pub fn builder() -> AuditTargetRegistryBuilder {
-        AuditTargetRegistryBuilder {
-            identity: Arc::new(()),
-            codecs: BTreeMap::new(),
-        }
-    }
-    pub fn empty() -> Self {
-        Self::builder().build()
-    }
+impl AuditRegistry {
     pub fn registration<T: AuditTargetOwner>(
         &self,
     ) -> Result<AuditTargetRegistration<T>, AuditTargetError> {
@@ -256,40 +216,6 @@ impl AuditTargetRegistry {
             payload,
         }))
     }
-    pub(crate) fn compose_schema(
-        &self,
-        mut root: schemars::Schema,
-    ) -> Result<schemars::Schema, AuditTargetError> {
-        let object = root.as_object_mut().ok_or(AuditTargetError::Invalid)?;
-        let defs = object
-            .get_mut("$defs")
-            .and_then(Value::as_object_mut)
-            .ok_or(AuditTargetError::Invalid)?;
-        let mut branches = Vec::new();
-        for codec in self.codecs.values() {
-            let mut schema = codec.schema.clone();
-            let schema_object = schema.as_object_mut().ok_or(AuditTargetError::Invalid)?;
-            schema_object.remove("$schema");
-            if let Some(Value::Object(owner_defs)) = schema_object.remove("$defs") {
-                for (name, definition) in owner_defs {
-                    if defs.insert(name.clone(), definition).is_some() {
-                        return Err(AuditTargetError::SchemaCollision(name));
-                    }
-                }
-            }
-            branches.push(schema);
-        }
-        if let Some(target) = defs.get_mut("AuditTarget") {
-            target
-                .get_mut("oneOf")
-                .and_then(Value::as_array_mut)
-                .ok_or(AuditTargetError::Invalid)?
-                .extend(branches);
-        } else {
-            return Err(AuditTargetError::Invalid);
-        }
-        Ok(root)
-    }
 }
 /// Construction is private; wire equality deliberately excludes registry metadata.
 #[derive(Clone)]
@@ -317,7 +243,7 @@ impl Serialize for AdmittedAuditTarget {
 
 /// The admitted owner profile is generated closed objects, scalar constraints,
 /// arrays and local definitions. Unrecognized schema mechanics fail registration.
-fn check_closed_schema(schema: &Value, root: &Value) -> Result<(), AuditTargetError> {
+pub(crate) fn check_closed_schema(schema: &Value, root: &Value) -> Result<(), AuditTargetError> {
     let naming_root =
         schemars::Schema::try_from(root.clone()).map_err(|_| AuditTargetError::Invalid)?;
     check_schema_node(

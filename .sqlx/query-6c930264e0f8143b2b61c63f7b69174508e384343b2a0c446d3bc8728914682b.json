@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Store a copy of a record under a new identity with an occurrence time its draft does\n-- not have.\nINSERT INTO audit.record (draft, occurred_at)\nSELECT jsonb_set(r.draft, '{id}', to_jsonb($2::uuid)), r.occurred_at + interval '1 second'\nFROM audit.record AS r\nWHERE r.id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6c930264e0f8143b2b61c63f7b69174508e384343b2a0c446d3bc8728914682b"
+}

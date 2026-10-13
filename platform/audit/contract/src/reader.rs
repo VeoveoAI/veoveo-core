@@ -1,4 +1,4 @@
-//! Reader projections preserve domain identities and the closed activity vocabulary.
+//! Reader projections preserve domain identities, owner targets and declared details.
 use crate::*;
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -11,7 +11,7 @@ pub struct AuditRecordSummary {
     pub occurred_at: DateTime<Utc>,
     pub actor: Option<veoveo_types::PrincipalId>,
     pub class: AuditClass,
-    pub detail: AuditDetail,
+    pub detail: AuditDetailFields,
     pub target: AuditTarget,
     pub outcome: AuditOutcome,
     pub reason: AuditReason,
@@ -26,7 +26,7 @@ impl From<AuditRecord> for AuditRecordSummary {
             id: draft.id(),
             occurred_at: draft.occurred_at(),
             actor: draft.actor().map(|actor| actor.principal.clone()),
-            class: draft.detail().class(),
+            class: draft.class().clone(),
             detail: draft.detail().clone(),
             target: draft.target().clone(),
             outcome: draft.outcome(),
@@ -83,7 +83,9 @@ struct AuditReaderApi {
     daily_page: AuditDailyPage,
     view: AuditViewSession,
 }
-pub fn reader_schema(registry: &AuditTargetRegistry) -> Result<schemars::Schema, AuditTargetError> {
+/// The reader API schema for generated clients, admitting exactly the registry's
+/// targets, classes and declared details.
+pub fn reader_schema(registry: &AuditRegistry) -> Result<schemars::Schema, AuditTargetError> {
     registry.compose_schema(base_reader_schema())
 }
 

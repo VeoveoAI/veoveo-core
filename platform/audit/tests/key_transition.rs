@@ -3,7 +3,7 @@
 mod support;
 
 use std::{collections::BTreeSet, num::NonZeroU32, sync::Arc, time::Duration};
-use support::{AuditDb, archive, draft, state, within};
+use support::{AuditDb, archive, draft, state, task_cancel, within};
 use veoveo_audit::{
     integrity::{AuditKeyRing, AuditSigningKey, AuditVerifier, IntegrityError},
     sealer::AuditSealer,
@@ -11,9 +11,7 @@ use veoveo_audit::{
 };
 
 fn record() -> AuditDraft {
-    draft(AuditDetail::AccountChange {
-        activity: AccountActivity::Update,
-    })
+    draft(task_cancel())
 }
 
 fn verifier(keys: &AuditKeyRing, anchor: Option<AuditCheckpoint>) -> AuditVerifier<'_> {

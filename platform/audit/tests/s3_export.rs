@@ -62,11 +62,18 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
     let mut expected_ids = Vec::new();
     // Waiting for each delivery makes the second write exercise an idle worker's
     // notification wakeup, and produces two independently verifiable signed blocks.
-    for method in [AuditReadMethod::ResourceRead, AuditReadMethod::AuditView] {
+    for detail in [
+        AuditRegistry::platform()
+            .detail(&platform::TaskUpdate {})
+            .unwrap(),
+        AuditRegistry::platform()
+            .detail(&platform::AuditView {})
+            .unwrap(),
+    ] {
         let draft = AuditDraft::builder(
             AuditRequest::background(),
             AuditTarget::Installation,
-            AuditDetail::Read { method },
+            detail,
             AuditOutcome::Allowed,
             AuditReason::Accepted,
         )
@@ -121,7 +128,7 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
             {
                 let event: ExportedEvent = serde_json::from_slice(line).unwrap();
                 let record: AuditRecord =
-                    db.a.targets()
+                    db.a.registry()
                         .decoder()
                         .from_value(event.unmapped.veoveo)
                         .unwrap();

@@ -15,8 +15,6 @@ pub struct AuditIdentityError(&'static str);
 pub struct AuditRecordId(Uuid);
 #[veoveo_types::id(uuid(AuditRecordIdProfile), fresh)]
 pub struct AuditRequestId(Uuid);
-#[veoveo_types::id(uuid(AuditRecordIdProfile), fresh)]
-pub struct AuditEpisodeId(Uuid);
 #[cfg_attr(
     feature = "postgres",
     veoveo_types::id(hex(AuditTraceIdProfile), postgres)
@@ -124,7 +122,6 @@ mod identity_profiles {
     fn uuid_owners_keep_frozen_schema_and_canonical_profile() {
         check::<AuditRecordId>("AuditRecordId");
         check::<AuditRequestId>("AuditRequestId");
-        check::<AuditEpisodeId>("AuditEpisodeId");
     }
     #[test]
     fn audit_hex_profiles_preserve_lengths_lowercase_and_nonzero() {

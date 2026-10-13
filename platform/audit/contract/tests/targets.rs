@@ -24,9 +24,9 @@ impl<'de> serde::Deserialize<'de> for Widget {
 impl AuditTargetOwner for Widget {
     const KIND: &'static str = "widget";
 }
-fn registry() -> (AuditTargetRegistry, AuditTargetRegistration<Widget>) {
-    let mut builder = AuditTargetRegistry::builder();
-    let key = builder.register::<Widget>().unwrap_or_else(|error| {
+fn registry() -> (AuditRegistry, AuditTargetRegistration<Widget>) {
+    let mut builder = AuditRegistry::builder();
+    let key = builder.register_target::<Widget>().unwrap_or_else(|error| {
         panic!(
             "{error}: {}",
             serde_json::to_value(schemars::schema_for!(Widget)).unwrap()
@@ -78,26 +78,23 @@ fn unknown_malformed_duplicate_and_unbound_targets_fail() {
         );
     }
     assert!(matches!(
-        AuditTargetRegistry::empty()
-            .decoder()
-            .from_str::<AuditTarget>(
-                r#"{"kind":"widget","id":"00000000-0000-0000-0000-000000000000"}"#
-            ),
+        AuditRegistry::platform().decoder().from_str::<AuditTarget>(
+            r#"{"kind":"widget","id":"00000000-0000-0000-0000-000000000000"}"#
+        ),
         Err(AuditDecodeError::Target(AuditTargetError::Unbound(_)))
     ));
-    let mut builder = AuditTargetRegistry::builder();
-    builder.register::<Widget>().unwrap_or_else(|error| {
+    let mut builder = AuditRegistry::builder();
+    builder.register_target::<Widget>().unwrap_or_else(|error| {
         panic!(
             "{error}: {}",
             serde_json::to_value(schemars::schema_for!(Widget)).unwrap()
         )
     });
-    assert!(builder.register::<Widget>().is_err());
+    assert!(builder.register_target::<Widget>().is_err());
 }
 #[test]
 fn reader_schema_is_composition_closed() {
-    let empty =
-        serde_json::to_value(reader_schema(&AuditTargetRegistry::empty()).unwrap()).unwrap();
+    let empty = serde_json::to_value(reader_schema(&AuditRegistry::platform()).unwrap()).unwrap();
     assert!(empty.pointer("/$defs/ComputerId").is_none());
     assert!(
         !empty
@@ -122,18 +119,16 @@ fn reader_schema_is_composition_closed() {
 }
 #[test]
 fn core_draft_contextual_decode_keeps_validation() {
+    let registry = AuditRegistry::platform();
     let draft = AuditDraft::builder(
         AuditRequest::background(),
         AuditTarget::Installation,
-        AuditDetail::Read {
-            method: AuditReadMethod::AuditView,
-        },
+        registry.detail(&platform::AuditView {}).unwrap(),
         AuditOutcome::Succeeded,
         AuditReason::Accepted,
     )
     .build()
     .unwrap();
-    let registry = AuditTargetRegistry::empty();
     let json = serde_json::to_value(&draft).unwrap();
     assert_eq!(
         registry
@@ -142,7 +137,7 @@ fn core_draft_contextual_decode_keeps_validation() {
             .unwrap(),
         draft
     );
-    let mut invalid = json;
+    let mut invalid = json.clone();
     invalid["partition"] = serde_json::json!({"kind":"tenant","tenant":"wrong"});
     assert!(
         registry
@@ -150,6 +145,46 @@ fn core_draft_contextual_decode_keeps_validation() {
             .from_value::<AuditDraft>(invalid)
             .is_err()
     );
+    let mut undeclared = json;
+    undeclared["class"] = "fixture.unknown".into();
+    assert!(matches!(
+        registry.decoder().from_value::<AuditDraft>(undeclared),
+        Err(AuditDecodeError::Detail(AuditDetailError::Undeclared(_)))
+    ));
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct Note {
+    count: u32,
+}
+impl AuditDetailType for Note {
+    const CLASS: &'static str = "fixture.note";
+}
+
+#[test]
+fn reader_schema_admits_exactly_the_declared_classes_and_details() {
+    let mut builder = AuditRegistry::builder();
+    builder.declare::<Note>().unwrap();
+    let registry = builder.build();
+    let reader = serde_json::to_value(reader_schema(&registry).unwrap()).unwrap();
+    let classes = reader.pointer("/$defs/AuditClass/enum").unwrap();
+    assert_eq!(
+        classes,
+        &serde_json::json!([
+            "audit.export",
+            "audit.view",
+            "fixture.note",
+            "task.cancel",
+            "task.update"
+        ])
+    );
+    let fields = serde_json::json!({"$ref":"#/$defs/AuditDetailFields","$defs":reader["$defs"]});
+    let validator = jsonschema::validator_for(&fields).unwrap();
+    assert!(validator.is_valid(&serde_json::json!({"count": 2})));
+    assert!(validator.is_valid(&serde_json::json!({})));
+    assert!(!validator.is_valid(&serde_json::json!({"count": "two"})));
+    assert!(!validator.is_valid(&serde_json::json!({"note": "free text"})));
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -178,16 +213,16 @@ impl AuditTargetOwner for OpenPayload {
 }
 #[test]
 fn rejects_core_collision_type_substitution_and_open_payload() {
-    let mut builder = AuditTargetRegistry::builder();
+    let mut builder = AuditRegistry::builder();
     assert!(matches!(
-        builder.register::<ImpersonatedCore>(),
+        builder.register_target::<ImpersonatedCore>(),
         Err(AuditTargetError::Collision(_))
     ));
     assert!(matches!(
-        builder.register::<OpenPayload>(),
+        builder.register_target::<OpenPayload>(),
         Err(AuditTargetError::Invalid)
     ));
-    builder.register::<Widget>().unwrap_or_else(|error| {
+    builder.register_target::<Widget>().unwrap_or_else(|error| {
         panic!(
             "{error}: {}",
             serde_json::to_value(schemars::schema_for!(Widget)).unwrap()
@@ -241,7 +276,7 @@ impl AuditTargetOwner for DefinitionOwner {
 #[test]
 fn owner_definitions_cannot_replace_core_definitions() {
     assert!(
-        matches!(AuditTargetRegistry::builder().register::<DefinitionOwner>(),Err(AuditTargetError::SchemaCollision(name)) if name=="AuditTarget")
+        matches!(AuditRegistry::builder().register_target::<DefinitionOwner>(),Err(AuditTargetError::SchemaCollision(name)) if name=="AuditTarget")
     );
 }
 
@@ -275,8 +310,8 @@ impl AuditTargetOwner for TupleOwner {
 }
 #[test]
 fn composed_tuple_schema_and_decoder_reject_unconstrained_trailing_objects() {
-    let mut builder = AuditTargetRegistry::builder();
-    builder.register::<TupleOwner>().unwrap();
+    let mut builder = AuditRegistry::builder();
+    builder.register_target::<TupleOwner>().unwrap();
     let registry = builder.build();
     let reader = serde_json::to_value(reader_schema(&registry).unwrap()).unwrap();
     let target_schema = serde_json::json!({"$ref":"#/$defs/AuditTarget","$defs":reader["$defs"]});
@@ -327,16 +362,16 @@ impl AuditTargetOwner for IntegerDefinitionOwner {
 }
 #[test]
 fn owner_definitions_cannot_replace_other_owner_definitions() {
-    let mut builder = AuditTargetRegistry::builder();
-    builder.register::<TextDefinitionOwner>().unwrap();
+    let mut builder = AuditRegistry::builder();
+    builder.register_target::<TextDefinitionOwner>().unwrap();
     assert!(
-        matches!(builder.register::<IntegerDefinitionOwner>(), Err(AuditTargetError::SchemaCollision(name)) if name == "OwnerShared")
+        matches!(builder.register_target::<IntegerDefinitionOwner>(), Err(AuditTargetError::SchemaCollision(name)) if name == "OwnerShared")
     );
 }
 
 #[test]
 fn query_and_page_cursors_admit_current_names_and_refuse_retired_mixed_or_duplicate_keys() {
-    let registry = AuditTargetRegistry::empty();
+    let registry = AuditRegistry::platform();
     let decoder = registry.decoder();
     let cursor = AuditCursor {
         order: AuditOrder::OldestFirst,

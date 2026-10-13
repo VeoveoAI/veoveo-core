@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- The columns the database generated or assigned for one record.\nSELECT\n    r.partition,\n    r.outcome,\n    r.actor,\n    r.profile,\n    r.trace_id,\n    r.day,\n    r.recorded_at,\n    r.txid::text AS \"txid!\"\nFROM audit.record AS r\nWHERE r.id = $1\n",
+  "query": "-- The columns the database generated or assigned for one record.\nSELECT\n    r.partition,\n    r.class,\n    r.outcome,\n    r.actor,\n    r.trace_id,\n    r.day,\n    r.recorded_at,\n    r.txid::text AS \"txid!\"\nFROM audit.record AS r\nWHERE r.id = $1\n",
   "describe": {
     "columns": [
       {
@@ -16,6 +16,17 @@
       },
       {
         "ordinal": 1,
+        "name": "class",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit.record",
+            "name": "class"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
         "name": "outcome",
         "type_info": "Text",
         "origin": {
@@ -26,24 +37,13 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "actor",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "audit.record",
             "name": "actor"
-          }
-        }
-      },
-      {
-        "ordinal": 3,
-        "name": "profile",
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "audit.record",
-            "name": "profile"
           }
         }
       },
@@ -95,7 +95,7 @@
     "nullable": [
       false,
       false,
-      true,
+      false,
       true,
       false,
       false,
@@ -103,5 +103,5 @@
       null
     ]
   },
-  "hash": "c61fe67aa1cb62b0509ac07bc4c347267fe663f7c9878debd76ebd256b0b05a9"
+  "hash": "098af79544f7e04888f94c587d54d505872e4c198c0505cbaae44d5dcd28b03e"
 }

@@ -7,84 +7,102 @@
 | RFC 9562 | Canonical UUIDv7 record and HTTP request identities |
 | W3C Trace Context | Nonzero lowercase 32-hex trace IDs and 16-hex span IDs |
 | RFC 9162, RFC 8785 and RFC 8032 | Typed block heads with decimal-string block sequences and record positions, Merkle roots and Ed25519 signatures |
-| JSON Schema draft 2020-12 | Composed closed target union, local definitions, scalar constraints and arrays; owner registration rejects open schemas, unresolved or nonlocal references and undeclared schema mechanics |
-| Naming vocabulary keyword `namingProfile` | Source annotation admitted through the foundational parser against the complete owner schema; Audit still enforces closed target payloads |
+| JSON Schema draft 2020-12 through jsonschema 0.51.0 | Owner target and detail schemas: closed objects, local definitions, scalar constraints and arrays. Registration rejects open schemas, unresolved or nonlocal references and undeclared schema mechanics. Validation resolves no remote reference |
+| Naming vocabulary keyword `namingProfile` | Source annotation admitted through the foundational parser against the complete owner schema; Audit still enforces closed payloads |
 | RFC 3339 and JSON | Typed timestamps, tagged closed enums and checked deserialization |
-| `https://veoveo.ai/formats/audit-record` | One reviewed record shape across platform producers and readers |
+| `https://veoveo.ai/formats/audit-record` | One record shape across producers and readers |
 | `https://veoveo.ai/formats/audit-block` | Signed block heads, members and checkpoints |
 | PostgreSQL 18 through sqlx 0.9.0 | The `postgres` feature only: `text` bindings for `AuditClass`, `AuditOutcome`, `AuditExportRejection` and `AuditTraceId`, a `uuid` binding for `AuditRecordId`, and `audit.append` for transactional appends |
 
-This library owns the protocol-independent audit vocabulary. It depends on foundational
-names and lightweight Artifact identities. Computers supplies its Audit target codec
-through the installation registry. Producers, MCP adapters and the `veoveo-audit` crate
-depend on this crate. Without the `postgres` feature it has no database driver, so a
-producer that only builds drafts does not link sqlx.
+This library defines the audit record envelope and the registry that admits each owner's
+targets and details. It names no protocol, server or domain: every record's action is a
+class its owner declared. It depends only on foundational names. Producers and the
+`veoveo-audit` crate depend on it. Without the `postgres` feature it has no database
+driver, so a producer that only builds drafts does not link sqlx.
 
-The draft builder derives the partition from the authenticated actor. Accepted outcomes
-require the accepted reason. Serialization and input admission share these checks.
-Details expose only reviewed enums, identifiers, digests, counters and timestamps.
-`tests/detail_schema.rs` walks the generated detail schema and rejects free text,
-open maps and unreviewed string wrappers. It also recognizes the reviewed, inlined
-SHA-256 pattern. These identifier allowlists belong to this contract and must be
-reviewed when a detail gains a new identifier type.
-Numeric counters must fit the exact I-JSON integer range before a draft can be stored.
-Tool, discovery and Task details must match the corresponding typed target, and a
-registration detail targets the registered server. The Gateway records each namespace
-claim, migration, registration, declaration update, removal and lease expiry; lease
-renewals produce no record. A platform
-Task uses its Task identity; an external Task uses its opaque gateway route and
-server identity. These identities have separate variants.
-A partition's storage key, `installation` or `tenant:` followed by the tenant,
-distinguishes the installation partition from a tenant literally named `installation`.
+## Records
+
+A draft carries the actor, the invocation authority, the request correlation, a target,
+a class, a detail, an outcome, a reason, its occurrence time and an optional latency.
+The builder derives the partition from the actor's tenant, and accepted outcomes require
+the accepted reason. Serialization and input admission share these checks, and the
+latency must fit the exact I-JSON integer range. A partition's storage key,
+`installation` or `tenant:` followed by the tenant, distinguishes the installation
+partition from a tenant literally named `installation`.
+
+The actor names its principal, principal kind, tenant, OAuth client and delegating
+principal. The authority names the Work Context, policy revision, scopes and data labels
+the call ran with. Attribution that belongs to one component, such as the Gateway's
+profile or session family, travels in that component's detail.
+
+A target is a resource by its URI, a server, a Task, a principal, a Work Context, an
+audit partition, the installation, or a target an owner registered. The reason
+vocabulary covers authorization, authentication, admission and availability outcomes
+that any owner can report.
+
+## Classes And Details
+
+An `AuditClass` is `<owner>.<name>`: the owner follows server slug syntax and the name is
+a snake_case action, such as `task.update`. An owner declares each class with the JSON
+Schema of its detail. `AuditDetailType` ties a Rust detail type to its class, and
+`AuditDetailDeclaration::of` generates its declaration. A declaration's schema must be a
+closed object in the admitted schema profile.
+
+The platform declares `task.update`, `task.cancel`, `audit.view` and `audit.export`, and
+every registry holds them. No other owner may declare a class under `task` or `audit`.
+`AuditRegistry::detail` admits a value only when it matches its class's declaration, and
+`AuditRegistry::read` returns a recorded detail as its owner's type. Writers check every
+detail against the declared schema before they append it. Readers require only that the
+class is declared, so records keep reading after their owner's schema changes.
+
+`tests/detail_schema.rs` walks the platform's declared details and rejects free text,
+open maps and unreviewed string wrappers. Owners hold their own details to the same
+review.
+
+## Reads
 
 The reader's policy owner supplies an `AuditReadScope`. The audit store checks it before
 query execution and includes its admitted partition in SQL before decoding or limiting
-rows.
-The public structured `AuditCursor` emits `lastId` and carries its partition and ordering;
-query admission rejects a cursor for another partition or ordering. Query and page readers
-reject retired `last_id`, mixed and duplicate keys. Installation upgrades drain active Audit
-queries and update Gateway and generated Console readers together; this unversioned query
-keyset has no compatibility alias. Signed record, draft, block and checkpoint bytes keep their
-frozen profiles. Daily counts
-use UTC day bounds and a keyset of day, class and outcome; readers can traverse every
-page without silently truncating at a fixed total.
+rows. The public structured `AuditCursor` emits `lastId` and carries its partition and
+ordering; query admission rejects a cursor for another partition or ordering, and query
+and page readers reject the `last_id` spelling, mixed and duplicate keys. Daily counts
+use UTC day bounds and a keyset of day, class and outcome, so readers can traverse every
+page without truncating at a fixed total.
 
-The audit domain owns `AuditScope::Read`. Protocol cores carry its `ScopeName` without
-defining the domain vocabulary. Gateway readers check that scope on the current actor.
+The audit domain owns `AuditScope::Read`. Readers check that scope on the current actor.
 The actor's tenant selects its tenant partition; the `administrator` and `auditor`
 roles also admit installation records.
 
-`AuditRecordSummary` keeps typed targets and activities through browser delivery.
-`reader_schema(registry)` composes this projection, page queries, daily counts and view receipts
-for the existing client generator. A view receipt refers to a committed access record;
-it grants no authority. Each read verifies the current actor, profile, selected
-partition and receipt lifetime. JSON Lines exports contain a header, records and a
-completion footer. Readers require that footer before accepting a complete download.
+`AuditRecordSummary` keeps typed targets, classes and details through browser delivery.
+`reader_schema(registry)` composes this projection, page queries, daily counts and view
+receipts for client generation; its class definition enumerates the registry's classes
+and its detail definition admits their declared schemas. A view receipt refers to a
+committed `audit.view` record and grants no authority. Each read verifies the current
+actor, the selected partition and the receipt's fifteen-minute lifetime. JSON Lines
+exports contain a header, records and a completion footer, and readers require that
+footer before accepting a complete download.
 
 `AuditContext` carries verified actor, request correlation and invocation authority into
-a domain operation. The MCP adapter derives it from `GatewayRequestContext` only after
-validating the source-principal, actor and invocation relationship. Domain services keep
-that attribution for background expiry and terminal records. Dictation summaries expose
-an end reason, accepted chunk count and audio duration; they cannot carry transcript text.
-
-Implementation and qualification are in progress under the
-[audit acceptance](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/docs/CONTRACT_CONSISTENCY_PLAN.md#unified-audit-log).
+a domain operation, which keeps that attribution for background expiry and terminal
+records.
 
 Destination IDs wrap configuration hashes separately from content digests. Export
 intents bind both content and signed-block hashes. Closed rejection codes carry no
 provider response text and survive replica changes.
 
-## Activity Vocabularies
+## Outcome And Reason Vocabularies
 
-Activity enums use the foundation's `Vocabulary` derive. Their snake_case spellings,
-variant order and Serde unit-enum profile form part of the frozen audit format.
-Owner-local tests compare every activity enum's JSON and schema with its previous
-declaration and check nonhuman unit-variant ordinals. The derive introduces no audit
-variants or authorization decisions.
+`AuditOutcome` and `AuditReason` use the foundation's `Vocabulary` derive. Their
+snake_case spellings, variant order and Serde unit-enum profile form part of the audit
+format. `activity/vocabulary_baseline.rs` compares each enum's JSON and schema with its
+declaration and checks nonhuman unit-variant ordinals.
 
 ## Identity Declaration Mechanics
 
-Audit identities use `Id` with Audit-owned canonical RFC UUIDv7 and lowercase nonzero hexadecimal admission. Their owner schema functions preserve each UUID pattern, trace/span length and nonzero constraint. Serde uses checked String conversion for these IDs; the independent Activity enum wire profile does not change.
+Audit identities use `Id` with Audit-owned canonical RFC UUIDv7 and lowercase nonzero
+hexadecimal admission. Their owner schema functions preserve each UUID pattern,
+trace/span length and nonzero constraint. Serde uses checked String conversion for
+these IDs. `AuditClass` uses the text form with its own grammar and schema.
 
 ## Integrity Counters
 
@@ -97,40 +115,44 @@ validator and decimal parser require the canonical unsigned spelling, and Serde
 converts through String in both human-readable and binary formats, so JSON and JCS
 never round a counter through an IEEE-754 number.
 
-## Owner Target Admission
+## Owner Admission
 
-`AuditTargetRegistry` binds each owner discriminator to its typed decoder and closed
-JSON Schema. `AuditTargetRegistration<T>` constructs and retrieves the registered owner
-type. The immutable registry shares its identity through clones; a target from another
-registry cannot enter an append or query. Target equality compares admitted JSON.
-Serialization emits the owner object directly and excludes registry identity and cached
-payloads.
+`AuditRegistry` holds each owner's target codecs and detail declarations together with
+the platform's. `register_target::<T>()` binds a target discriminator to its typed
+decoder and closed JSON Schema, and `AuditTargetRegistration<T>` constructs and
+retrieves the registered owner type. The immutable registry shares its identity through
+clones; a target from another registry cannot enter an append or query. Target equality
+compares admitted JSON, and serialization emits the owner object directly without
+registry identity or cached payloads.
 
 `AuditDecoder` admits target-bearing drafts, records, queries, summaries, pages and
 export lines with an explicit registry. Its JSON parser rejects duplicate object
-fields before creating a JSON value. Private input models carry unadmitted values;
-the decoder then applies target admission and the draft's existing relationship
-checks. Attribution-only `AuditContext` has no registry state.
+fields before creating a JSON value. Private input models carry unadmitted values; the
+decoder then applies target admission, checks that the class is declared and applies
+the draft's own checks. Attribution-only `AuditContext` has no registry state.
 
-Owner registration rejects unknown, repeated and core-colliding discriminators.
-Schema composition rejects duplicate definition names and joins owner branches into
-the target's closed union. An installation keeps supported read codecs registered
-when it disables an owner's workload. Missing codecs produce a configuration error
-when reading existing records. Registering a codec installs no runtime or database
-schema.
+Target registration rejects unknown, repeated and platform-colliding discriminators.
+A detail declaration that repeats an identical declaration changes nothing; a different
+schema for a declared class is refused. Schema composition rejects conflicting
+definition names and joins owner branches into the composed unions. An installation
+keeps supported read codecs and declarations registered when it disables an owner's
+workload; a missing codec or declaration produces a configuration error when reading
+existing records. Registering a codec or declaration installs no runtime.
 
 The audit store decodes every stored draft with its configured registry. Every returned
-row, including pagination's extra row, validates its record identity and partition.
-Queries validate target registry identity before executing SQL and match the entire
-target object. Transactional appends receive the same registry.
+row, including pagination's extra row, validates its record identity, partition, class
+and occurrence time. Queries validate target registry identity before executing SQL and
+match the entire target object. Transactional appends receive the same registry.
 
 ## Transactional Append
 
 With the `postgres` feature, `AuditTransactionWrite` admits up to 4,096 drafts against
-a target registry and appends them on the caller's connection with `audit.append`, so
-the records commit or roll back with the caller's own writes. It stores each draft as
-`jsonb` with its class and its occurrence time truncated to microseconds, the precision
-PostgreSQL keeps; `stored_time` names that truncation for readers. Repeating an append
-of the same drafts changes nothing. A draft that reuses a stored identity with other
-content fails with `AuditAppendError::IdentityConflict`, and the caller's transaction
-must roll back.
+a registry, checking each target and each detail against its declaration, and appends
+them on the caller's connection with `audit.append`, so the records commit or roll back
+with the caller's own writes. It stores each draft as `jsonb` with its occurrence time
+truncated to microseconds, the precision PostgreSQL keeps; `stored_time` names that
+truncation for readers. The database generates the record's class from its draft and
+requires the class to be declared in `audit.detail_type`; an undeclared class fails with
+`AuditAppendError::UndeclaredClass`. Repeating an append of the same drafts changes
+nothing. A draft that reuses a stored identity with other content fails with
+`AuditAppendError::IdentityConflict`, and the caller's transaction must roll back.

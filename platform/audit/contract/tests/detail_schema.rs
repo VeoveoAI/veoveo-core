@@ -1,7 +1,8 @@
-//! Detail payloads may contain reviewed identifiers, timestamps and closed vocabularies.
+//! The platform's declared details contain only reviewed identifiers, timestamps and
+//! closed vocabularies.
 use serde_json::Value;
 use std::collections::BTreeSet;
-use veoveo_audit_contract::AuditDetail;
+use veoveo_audit_contract::AuditRegistry;
 
 // Adding an identifier here requires reviewing its validation and disclosure surface.
 const IDENTIFIERS: &[&str] = &[
@@ -11,16 +12,9 @@ const IDENTIFIERS: &[&str] = &[
     "PrincipalId",
     "GroupId",
     "RoleId",
-    // Server-owned observations carry reviewed provenance, never resource bodies.
-    "CollectionId",
-    "Revision",
     "TenantId",
     "WorkContextId",
-    // Installation profile route id: validated path token, never a credential or URI.
-    "GatewayProfileId",
     "DataLabelId",
-    "ExternalSystemId",
-    "ExternalRecordId",
 ];
 // Sha256Digest deliberately inlines this closed scalar schema instead of a $ref.
 const INLINE_IDENTIFIER_PATTERNS: &[&str] = &["^sha256:[0-9a-f]{64}$", "^[0-9a-f]{64}$"];
@@ -98,9 +92,17 @@ fn check(
 }
 
 #[test]
-fn every_detail_string_has_a_closed_vocabulary_or_reviewed_identifier() {
-    let schema = serde_json::to_value(schemars::schema_for!(AuditDetail)).unwrap();
-    check(&schema, &schema, "AuditDetail", &mut BTreeSet::new()).unwrap();
+fn every_platform_detail_string_has_a_closed_vocabulary_or_reviewed_identifier() {
+    for declaration in AuditRegistry::platform().declarations() {
+        let schema = declaration.schema();
+        check(
+            schema,
+            schema,
+            declaration.class().as_str(),
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+    }
 }
 
 #[test]

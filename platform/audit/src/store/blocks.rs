@@ -76,7 +76,7 @@ impl AuditStore {
             return Err(AuditValidationError::Cursor.into());
         }
         if let Some(target) = &query.target {
-            self.targets().validate(target)?;
+            self.registry().validate(target)?;
         }
         let partition = &block.head.partition;
         admit(scope, partition)?;
@@ -104,7 +104,7 @@ impl AuditStore {
             "src/store/blocks/filtered_members.sql",
             &storage,
             &ids as &[AuditRecordId],
-            query.class as Option<AuditClass>,
+            query.class.as_ref() as Option<&AuditClass>,
             query.actor.as_ref().map(PrincipalId::as_str),
             query.target.as_ref().map(target_document),
             query.outcome as Option<AuditOutcome>,
@@ -118,7 +118,7 @@ impl AuditStore {
         let mut records = rows
             .into_iter()
             .map(|row| {
-                let record = row.checked(self.targets(), partition)?;
+                let record = row.checked(self.registry(), partition)?;
                 Ok((record.draft.id(), record))
             })
             .collect::<Result<std::collections::BTreeMap<_, _>, AuditStoreError>>()?;

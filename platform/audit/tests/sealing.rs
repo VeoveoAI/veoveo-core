@@ -2,15 +2,15 @@
 mod support;
 
 use std::{num::NonZeroU32, sync::Arc, time::Duration};
-use support::{AuditDb, archive, draft, seal_all, state, within};
+use support::{AuditDb, archive, draft, note, seal_all, state, within};
 use veoveo_audit::{
     integrity::{AuditKeyRing, AuditSigningKey, AuditVerifier},
     sealer::{AuditSealer, SealBacklog},
     *,
 };
 
-fn read(method: AuditReadMethod) -> AuditDraft {
-    draft(AuditDetail::Read { method })
+fn read(count: u32) -> AuditDraft {
+    draft(note(count))
 }
 
 fn installation() -> (AuditReadScope, AuditPartition) {
@@ -41,12 +41,12 @@ async fn an_open_transaction_holds_back_records_that_commit_after_it() {
         )
         .await
         .unwrap();
-        let earlier = read(AuditReadMethod::Status);
-        let later = read(AuditReadMethod::Usage);
+        let earlier = read(2);
+        let later = read(3);
         // The earlier transaction writes its record first and stays open while a later
         // transaction commits.
         let mut open = audit.db.a.pool().begin().await.unwrap();
-        AuditTransactionWrite::new(audit.a.targets(), earlier.clone())
+        AuditTransactionWrite::new(audit.a.registry(), earlier.clone())
             .unwrap()
             .append(&mut open)
             .await
@@ -91,15 +91,15 @@ async fn positions_follow_transaction_order_without_gaps_across_blocks() {
         // The first transaction takes its ID before the second one writes, then inserts
         // its record after the second one committed. Its record has the higher
         // insertion sequence and still precedes the other in the partition.
-        let first = read(AuditReadMethod::Status);
-        let second = read(AuditReadMethod::Usage);
+        let first = read(2);
+        let second = read(3);
         let mut transaction = audit.db.a.pool().begin().await.unwrap();
         let first_txid = sqlx::query_file_scalar!("tests/queries/sealing/assign_txid.sql")
             .fetch_one(&mut *transaction)
             .await
             .unwrap();
         audit.b.append(std::slice::from_ref(&second)).await.unwrap();
-        AuditTransactionWrite::new(audit.a.targets(), first.clone())
+        AuditTransactionWrite::new(audit.a.registry(), first.clone())
             .unwrap()
             .append(&mut transaction)
             .await
@@ -108,9 +108,7 @@ async fn positions_follow_transaction_order_without_gaps_across_blocks() {
         assert!(first_txid.parse::<u64>().unwrap() > 0);
         assert_eq!(seal_all(&sealer).await, 2);
 
-        let rest = (0..3)
-            .map(|_| read(AuditReadMethod::ResourceRead))
-            .collect::<Vec<_>>();
+        let rest = (0..3).map(|_| read(1)).collect::<Vec<_>>();
         for record in &rest {
             audit.a.append(std::slice::from_ref(record)).await.unwrap();
         }
@@ -169,9 +167,7 @@ async fn a_standby_takes_over_and_shutdown_seals_every_committed_record() {
             "a replica waiting for the role is ready"
         );
 
-        let backlog = (0..193)
-            .map(|_| read(AuditReadMethod::ResourceRead))
-            .collect::<Vec<_>>();
+        let backlog = (0..193).map(|_| read(1)).collect::<Vec<_>>();
         audit.a.append(&backlog).await.unwrap();
         peer.release().await.unwrap();
         state(&mut first_health, AuditHealthState::Active).await;
@@ -187,9 +183,9 @@ async fn a_standby_takes_over_and_shutdown_seals_every_committed_record() {
 
         let writer = AuditWriter::start(audit.a.clone());
         for _ in 0..16 {
-            writer.record(read(AuditReadMethod::Status)).await.unwrap();
+            writer.record(read(2)).await.unwrap();
         }
-        writer.record_completion(read(AuditReadMethod::Usage)).await;
+        writer.record_completion(read(3)).await;
         writer.shutdown(Duration::from_secs(10)).await.unwrap();
         first.shutdown(Duration::from_secs(15)).await.unwrap();
         let sealed = archive(&audit.b, &scope, &partition)
@@ -204,7 +200,7 @@ async fn a_standby_takes_over_and_shutdown_seals_every_committed_record() {
         );
 
         state(&mut second_health, AuditHealthState::Active).await;
-        let after_takeover = read(AuditReadMethod::Status);
+        let after_takeover = read(2);
         audit
             .a
             .append(std::slice::from_ref(&after_takeover))
@@ -243,7 +239,7 @@ async fn shutdown_reports_a_failed_seal_and_keeps_the_record_unsealed() {
         )
         .unwrap();
         state(&mut service.health(), AuditHealthState::Active).await;
-        let record = read(AuditReadMethod::Status);
+        let record = read(2);
         audit.a.append(std::slice::from_ref(&record)).await.unwrap();
         assert!(
             matches!(

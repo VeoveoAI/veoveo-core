@@ -19,9 +19,7 @@ pub(super) fn record(detail: AuditDetail, target: AuditTarget, identified: bool)
             kind: AuditPrincipalKind::User,
             tenant: None,
             oauth_client: None,
-            session_family: None,
             delegating_principal: None,
-            managed_agent: None,
         });
     }
     AuditRecord {
@@ -30,15 +28,15 @@ pub(super) fn record(detail: AuditDetail, target: AuditTarget, identified: bool)
     }
 }
 #[test]
-fn ocsf_preserves_unknown_identity_and_distinguishes_work_context_from_account() {
+fn ocsf_maps_identified_records_to_api_activity_named_by_class() {
     let context = AuditTarget::WorkContext {
         tenant: "tenant".parse().unwrap(),
         context: "operations".parse().unwrap(),
     };
     let anonymous = record(
-        AuditDetail::AccountChange {
-            activity: AccountActivity::Update,
-        },
+        veoveo_audit_contract::AuditRegistry::platform()
+            .detail(&veoveo_audit_contract::platform::TaskCancel {})
+            .unwrap(),
         context.clone(),
         false,
     );
@@ -51,30 +49,19 @@ fn ocsf_preserves_unknown_identity_and_distinguishes_work_context_from_account()
         serde_json::to_value(&anonymous).unwrap()
     );
     let identified = record(
-        AuditDetail::AccountChange {
-            activity: AccountActivity::Update,
-        },
+        veoveo_audit_contract::AuditRegistry::platform()
+            .detail(&veoveo_audit_contract::platform::TaskCancel {})
+            .unwrap(),
         context,
         true,
     );
     let wire = serde_json::to_value(ocsf::Event::from_record(&identified)).unwrap();
     assert_eq!(wire["class_uid"], 6003);
-    assert_eq!(wire["type_uid"], 600303);
+    assert_eq!(wire["type_uid"], 600399);
+    assert_eq!(wire["activity_name"], "task.cancel");
+    assert_eq!(wire["api"]["operation"], "task.cancel");
+    assert_eq!(wire["actor"]["user"]["uid"], "operator");
     assert_eq!(wire["status"], "Allowed");
-    let user = record(
-        AuditDetail::AccountChange {
-            activity: AccountActivity::Delete,
-        },
-        AuditTarget::Principal {
-            tenant: "tenant".parse().unwrap(),
-            principal: "former-user".parse().unwrap(),
-        },
-        true,
-    );
-    let wire = serde_json::to_value(ocsf::Event::from_record(&user)).unwrap();
-    assert_eq!(wire["class_uid"], 3001);
-    assert_eq!(wire["activity_id"], 6);
-    assert_eq!(wire["user"]["uid"], "former-user");
 }
 #[test]
 fn destination_identity_covers_storage_and_retention_but_never_credentials() {
@@ -100,9 +87,9 @@ fn destination_identity_covers_storage_and_retention_but_never_credentials() {
 #[test]
 fn export_retry_bytes_and_otlp_correlation_are_stable() {
     let record = record(
-        AuditDetail::Read {
-            method: AuditReadMethod::AuditView,
-        },
+        veoveo_audit_contract::AuditRegistry::platform()
+            .detail(&veoveo_audit_contract::platform::AuditView {})
+            .unwrap(),
         AuditTarget::AuditLog {
             partition: AuditPartition::Installation,
         },
@@ -124,7 +111,7 @@ fn export_retry_bytes_and_otlp_correlation_are_stable() {
     let log = &wire["resourceLogs"][0]["scopeLogs"][0]["logRecords"][0];
     assert_eq!(log["traceId"], records[0].draft.request().trace_id.as_str());
     assert_eq!(log["spanId"], records[0].draft.request().span_id.as_str());
-    assert_eq!(log["eventName"], "veoveo.audit.api_activity");
+    assert_eq!(log["eventName"], "veoveo.audit.audit.view");
     assert!(log["timeUnixNano"].is_string());
     assert!(encode(&vec!["oversized"; 100], 4).is_err());
 }

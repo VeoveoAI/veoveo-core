@@ -3,14 +3,15 @@
 //! because they run on the connection that holds the sealer role.
 use std::sync::Arc;
 use veoveo_audit_contract::{
-    AuditAppendError, AuditPartition, AuditReadScope, AuditTargetError, AuditTargetRegistry,
-    AuditValidationError,
+    AuditAppendError, AuditDetailError, AuditPartition, AuditReadScope, AuditRegistry,
+    AuditTargetError, AuditValidationError,
 };
 use veoveo_platform_store::{
     ChangeOperation, ChangeSignal, ChangeStream, Channel, PlatformStore, StoreError,
 };
 
 mod blocks;
+mod declarations;
 pub(crate) mod delivery;
 mod live;
 mod records;
@@ -22,6 +23,8 @@ pub use live::{AuditLiveChange, AuditLiveStream};
 
 /// SQLSTATE that `audit.append` raises for a reused identity.
 const IDENTITY_CONFLICT: &str = "VV501";
+/// SQLSTATE of a record whose class `audit.detail_type` does not hold.
+const UNDECLARED_CLASS: &str = "23503";
 /// SQLSTATE that the export functions raise when a block or intent disagrees.
 const BLOCK_CONFLICT: &str = "VV503";
 /// SQLSTATE that `audit.record_export` raises for a destination's recorded refusal.
@@ -32,6 +35,8 @@ pub enum AuditStoreError {
     #[error(transparent)]
     Target(#[from] AuditTargetError),
     #[error(transparent)]
+    Detail(#[from] AuditDetailError),
+    #[error(transparent)]
     Validation(#[from] AuditValidationError),
     #[error("audit partition access denied")]
     AccessDenied,
@@ -41,6 +46,8 @@ pub enum AuditStoreError {
     BatchLimit,
     #[error("an audit record identity already holds different content")]
     IdentityConflict,
+    #[error("an audit record's class is not declared in the database; declare it first")]
+    UndeclaredClass,
     #[error(
         "audit destination permanently rejected this delivery; configure a corrected destination before resuming export"
     )]
@@ -61,6 +68,7 @@ impl From<sqlx::Error> for AuditStoreError {
             .map(|code| code.into_owned());
         match code.as_deref() {
             Some(IDENTITY_CONFLICT) => Self::IdentityConflict,
+            Some(UNDECLARED_CLASS) => Self::UndeclaredClass,
             Some(BLOCK_CONFLICT) => Self::Integrity,
             Some(EXPORT_REJECTED) => Self::ExportRejected,
             _ => Self::Database(error),
@@ -72,6 +80,8 @@ impl From<AuditAppendError> for AuditStoreError {
     fn from(error: AuditAppendError) -> Self {
         match error {
             AuditAppendError::Target(error) => Self::Target(error),
+            AuditAppendError::Detail(error) => Self::Detail(error),
+            AuditAppendError::UndeclaredClass => Self::UndeclaredClass,
             AuditAppendError::BatchLimit => Self::BatchLimit,
             AuditAppendError::IdentityConflict => Self::IdentityConflict,
             AuditAppendError::Database(error) => Self::Database(error),
@@ -93,20 +103,20 @@ impl AuditStoreError {
 }
 
 /// The audit log in the installation database, read and written with one immutable
-/// target registry. Clones share the pool and the registry.
+/// audit registry. Clones share the pool and the registry.
 #[derive(Clone, Debug)]
 pub struct AuditStore {
     store: PlatformStore,
-    targets: Arc<AuditTargetRegistry>,
+    registry: Arc<AuditRegistry>,
 }
 
 impl AuditStore {
-    pub fn new(store: PlatformStore, targets: Arc<AuditTargetRegistry>) -> Self {
-        Self { store, targets }
+    pub fn new(store: PlatformStore, registry: Arc<AuditRegistry>) -> Self {
+        Self { store, registry }
     }
 
-    pub fn targets(&self) -> &AuditTargetRegistry {
-        &self.targets
+    pub fn registry(&self) -> &AuditRegistry {
+        &self.registry
     }
 
     pub fn platform(&self) -> &PlatformStore {

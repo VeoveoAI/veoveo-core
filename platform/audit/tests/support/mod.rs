@@ -1,16 +1,46 @@
-//! Audit stores over the PostgreSQL test fixture, as two Gateway replicas see them.
+//! Audit stores over the PostgreSQL test fixture, as two replicas see them.
 #![allow(dead_code, reason = "each test binary uses part of the shared support")]
 
 #[path = "../../../../testing/fixtures/store.rs"]
 pub mod store;
 
-use std::{sync::Arc, time::Duration};
+#[path = "../../../../testing/fixtures/audit_owner.rs"]
+pub mod audit_owner;
+
+use std::{
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 use veoveo_audit::{
     AuditActor, AuditBlock, AuditDetail, AuditDraft, AuditHealth, AuditHealthState, AuditOutcome,
-    AuditPartition, AuditPrincipalKind, AuditReadScope, AuditReason, AuditRecord, AuditRequest,
-    AuditStore, AuditTarget, AuditTargetRegistry,
+    AuditPartition, AuditPrincipalKind, AuditReadScope, AuditReason, AuditRecord, AuditRegistry,
+    AuditRequest, AuditStore, AuditTarget, platform,
     sealer::{AuditSealer, SealBacklog},
 };
+
+/// The platform's classes and the fixture owner's `fixture.note`.
+pub fn registry() -> AuditRegistry {
+    let mut builder = AuditRegistry::builder();
+    audit_owner::declare_audit_detail(&mut builder).unwrap();
+    builder.build()
+}
+
+static DETAILS: LazyLock<AuditRegistry> = LazyLock::new(registry);
+
+/// A `fixture.note` detail; distinct counts give distinct details.
+pub fn note(count: u32) -> AuditDetail {
+    DETAILS.detail(&audit_owner::Note { count }).unwrap()
+}
+
+/// The platform's `task.update` detail.
+pub fn task_update() -> AuditDetail {
+    DETAILS.detail(&platform::TaskUpdate {}).unwrap()
+}
+
+/// The platform's `task.cancel` detail.
+pub fn task_cancel() -> AuditDetail {
+    DETAILS.detail(&platform::TaskCancel {}).unwrap()
+}
 
 /// One fixture database and an audit store on each of its two owner pools.
 pub struct AuditDb {
@@ -21,16 +51,19 @@ pub struct AuditDb {
 
 impl AuditDb {
     pub async fn new() -> Self {
-        Self::with_targets(Arc::new(AuditTargetRegistry::empty())).await
+        Self::with_registry(Arc::new(registry())).await
     }
 
-    pub async fn with_targets(targets: Arc<AuditTargetRegistry>) -> Self {
+    /// Stores over `registry`, whose declarations are already recorded.
+    pub async fn with_registry(registry: Arc<AuditRegistry>) -> Self {
         let db = store::TestDb::new().await;
-        Self {
-            a: AuditStore::new(db.a.clone(), targets.clone()),
-            b: AuditStore::new(db.b.clone(), targets),
+        let audit = Self {
+            a: AuditStore::new(db.a.clone(), registry.clone()),
+            b: AuditStore::new(db.b.clone(), registry),
             db,
-        }
+        };
+        audit.a.declare().await.unwrap();
+        audit
     }
 }
 
@@ -115,8 +148,6 @@ pub fn user(tenant: &str, name: &str) -> AuditActor {
         kind: AuditPrincipalKind::User,
         tenant: Some(tenant.parse().unwrap()),
         oauth_client: None,
-        session_family: None,
         delegating_principal: None,
-        managed_agent: None,
     }
 }

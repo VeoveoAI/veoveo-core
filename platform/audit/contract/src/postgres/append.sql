@@ -1,1 +1,1 @@
-SELECT audit.append($1, $2, $3)
+SELECT audit.append($1, $2)

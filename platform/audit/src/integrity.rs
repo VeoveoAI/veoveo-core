@@ -342,9 +342,9 @@ mod tests {
             draft: AuditDraft::builder(
                 AuditRequest::background(),
                 AuditTarget::Installation,
-                AuditDetail::Read {
-                    method: AuditReadMethod::AuditView,
-                },
+                veoveo_audit_contract::AuditRegistry::platform()
+                    .detail(&veoveo_audit_contract::platform::AuditView {})
+                    .unwrap(),
                 AuditOutcome::Allowed,
                 AuditReason::Accepted,
             )
@@ -453,9 +453,9 @@ mod tests {
         old.draft = AuditDraft::builder(
             old.draft.request().clone(),
             AuditTarget::Installation,
-            AuditDetail::Read {
-                method: AuditReadMethod::Status,
-            },
+            veoveo_audit_contract::AuditRegistry::platform()
+                .detail(&veoveo_audit_contract::platform::TaskUpdate {})
+                .unwrap(),
             AuditOutcome::Allowed,
             AuditReason::Accepted,
         )
@@ -495,9 +495,9 @@ mod tests {
             record.draft = AuditDraft::builder(
                 record.draft.request().clone(),
                 AuditTarget::Installation,
-                AuditDetail::Read {
-                    method: AuditReadMethod::AuditView,
-                },
+                veoveo_audit_contract::AuditRegistry::platform()
+                    .detail(&veoveo_audit_contract::platform::AuditView {})
+                    .unwrap(),
                 AuditOutcome::Allowed,
                 AuditReason::Accepted,
             )

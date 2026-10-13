@@ -1,7 +1,7 @@
 //! Independent OCSF 1.9.0 qualification using the upstream validator.
 //! Sends only synthetic fixtures; no installation records or credentials are read.
-#[path = "../../../testing/fixtures/computer_target.rs"]
-mod computer_target;
+#[path = "../../../testing/fixtures/audit_owner.rs"]
+mod audit_owner;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -43,43 +43,34 @@ struct CaseResult {
     validation: Validation,
 }
 
+fn registry() -> AuditRegistry {
+    let mut builder = AuditRegistry::builder();
+    audit_owner::register_audit_target(&mut builder).unwrap();
+    audit_owner::declare_audit_detail(&mut builder).unwrap();
+    builder.build()
+}
+
 fn cases() -> Vec<(&'static str, AuditDetail, AuditTarget, bool)> {
+    let registry = registry();
+    let note = registry.detail(&audit_owner::Note { count: 1 }).unwrap();
     vec![
         (
             "anonymous",
-            AuditDetail::Read {
-                method: AuditReadMethod::ResourceRead,
-            },
+            registry.detail(&platform::TaskUpdate {}).unwrap(),
             AuditTarget::Installation,
             false,
         ),
         (
-            "read",
-            AuditDetail::Read {
-                method: AuditReadMethod::ResourceRead,
-            },
-            AuditTarget::PlatformResource {
+            "resource",
+            note.clone(),
+            AuditTarget::Resource {
                 uri: veoveo_types::ResourceUri::new("veoveo://fixture/resource").unwrap(),
             },
             true,
         ),
         (
-            "authentication",
-            AuditDetail::Authentication {
-                activity: AuthenticationActivity::Login,
-                method: veoveo_types::AuthMethod::OidcAuthorizationCodePkce,
-                reason: veoveo_types::AuthReasonCode::AuthAllow,
-            },
-            AuditTarget::Profile {
-                profile: "fixture".parse().unwrap(),
-            },
-            true,
-        ),
-        (
-            "account",
-            AuditDetail::AccountChange {
-                activity: AccountActivity::Delete,
-            },
+            "principal",
+            registry.detail(&platform::TaskCancel {}).unwrap(),
             AuditTarget::Principal {
                 tenant: "fixture".parse().unwrap(),
                 principal: "removed-user".parse().unwrap(),
@@ -88,9 +79,7 @@ fn cases() -> Vec<(&'static str, AuditDetail, AuditTarget, bool)> {
         ),
         (
             "work-context",
-            AuditDetail::AccountChange {
-                activity: AccountActivity::Update,
-            },
+            note.clone(),
             AuditTarget::WorkContext {
                 tenant: "fixture".parse().unwrap(),
                 context: "operations".parse().unwrap(),
@@ -98,39 +87,13 @@ fn cases() -> Vec<(&'static str, AuditDetail, AuditTarget, bool)> {
             true,
         ),
         (
-            "artifact",
-            AuditDetail::Artifact {
-                activity: ArtifactActivity::Download,
-                requested: None,
-                subject: None,
-                release_state: None,
-                related: None,
-                bytes: Some(16),
-                window_start: None,
-            },
-            AuditTarget::Artifact {
-                artifact: uuid::Uuid::now_v7().to_string().parse().unwrap(),
-            },
-            true,
-        ),
-        (
-            "live-view",
-            AuditDetail::LiveView {
-                activity: LiveViewActivity::Issue,
-            },
-            AuditTarget::PlatformResource {
-                uri: veoveo_types::ResourceUri::new("veoveo://fixture/live-view").unwrap(),
-            },
-            true,
-        ),
-        (
-            "computer",
-            AuditDetail::Computer {
-                activity: ComputerActivity::Create,
-                stage: ComputerAuditStage::Reserved,
-                task: None,
-            },
-            computer_target(),
+            "owner-target",
+            note,
+            registry
+                .target(audit_owner::ItemAuditTarget {
+                    item: audit_owner::ItemId::new(),
+                })
+                .unwrap(),
             true,
         ),
     ]
@@ -174,27 +137,15 @@ async fn upstream_accepts_each_export_class_and_outcome() {
                 if identified {
                     request.source_ip = Some("192.0.2.1".parse().unwrap());
                 }
-                let mut detail = detail.clone();
-                if let AuditDetail::Authentication { reason, .. } = &mut detail {
-                    *reason = match outcome {
-                        AuditOutcome::Allowed | AuditOutcome::Succeeded => {
-                            veoveo_types::AuthReasonCode::AuthAllow
-                        }
-                        AuditOutcome::Denied => veoveo_types::AuthReasonCode::PolicyDenied,
-                        AuditOutcome::Failed => veoveo_types::AuthReasonCode::AuthStateUnavailable,
-                    };
-                }
                 let mut draft =
-                    AuditDraft::builder(request, target.clone(), detail, outcome, reason);
+                    AuditDraft::builder(request, target.clone(), detail.clone(), outcome, reason);
                 if identified {
                     draft = draft.actor(AuditActor {
                         principal: "synthetic-user".parse().unwrap(),
                         tenant: Some("fixture".parse().unwrap()),
                         kind: AuditPrincipalKind::User,
                         oauth_client: None,
-                        session_family: None,
                         delegating_principal: None,
-                        managed_agent: None,
                     });
                 }
                 let record = AuditRecord {
@@ -236,15 +187,4 @@ async fn upstream_accepts_each_export_class_and_outcome() {
     })
     .await
     .expect("OCSF qualification exceeded 180 seconds");
-}
-
-fn computer_target() -> AuditTarget {
-    let mut builder = AuditTargetRegistry::builder();
-    computer_target::register_audit_target(&mut builder).unwrap();
-    builder
-        .build()
-        .target(computer_target::ComputerAuditTarget {
-            computer: computer_target::ComputerId::new(),
-        })
-        .unwrap()
 }

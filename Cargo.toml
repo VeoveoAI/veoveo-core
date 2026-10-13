@@ -41,7 +41,8 @@ futures = "0.3.34"
 http = "1.5.0"
 iri-string = { version = "=0.7.14", default-features = false, features = ["std"] }
 hex = "=0.4.3"
-jsonschema = "=0.51.0"
+# Local `$defs` only: audit details and schema tests resolve no remote references.
+jsonschema = { version = "=0.51.0", default-features = false }
 # AWS-LC provides constant-time RSA; the RustCrypto backend carries RUSTSEC-2023-0071.
 jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 object_store = { version = "=0.14.1", default-features = false, features = ["aws"] }

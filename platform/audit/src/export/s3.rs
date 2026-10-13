@@ -324,9 +324,9 @@ mod tests {
                     .unwrap(),
             };
             let records = vec![super::super::tests::record(
-                veoveo_audit_contract::AuditDetail::Read {
-                    method: veoveo_audit_contract::AuditReadMethod::AuditView,
-                },
+                veoveo_audit_contract::AuditRegistry::platform()
+                    .detail(&veoveo_audit_contract::platform::AuditView {})
+                    .unwrap(),
                 veoveo_audit_contract::AuditTarget::Installation,
                 true,
             )];

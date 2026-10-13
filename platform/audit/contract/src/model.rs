@@ -2,11 +2,10 @@ use crate::*;
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, net::IpAddr, num::NonZeroU64};
+use std::{collections::BTreeSet, net::IpAddr};
 use veoveo_types::{
-    DataLabelId, GatewayProfileId, GatewayRefreshFamilyId, LocalToolName, OAuthClientId,
-    PolicyVersion, PrincipalId, PromptName, ResourceTemplateUri, ResourceUri, ScopeName,
-    ServerSlug, TaskId, TenantId, WorkContextId,
+    DataLabelId, OAuthClientId, PolicyVersion, PrincipalId, ResourceUri, ScopeName, ServerSlug,
+    TaskId, TenantId, WorkContextId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -37,50 +36,34 @@ pub enum AuditPrincipalKind {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct AuditManagedExecution {
-    pub instance: veoveo_types::AgentManagedInstanceId,
-    pub generation: NonZeroU64,
-    pub dispatch_epoch: NonZeroU64,
-    pub episode: Option<AuditEpisodeId>,
-}
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct AuditActor {
     pub principal: PrincipalId,
     pub kind: AuditPrincipalKind,
     pub tenant: Option<TenantId>,
     pub oauth_client: Option<OAuthClientId>,
-    pub session_family: Option<GatewayRefreshFamilyId>,
     pub delegating_principal: Option<PrincipalId>,
-    pub managed_agent: Option<AuditManagedExecution>,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuditAuthority {
-    pub profile: Option<GatewayProfileId>,
     pub work_context: Option<WorkContextId>,
     pub policy_revision: Option<PolicyVersion>,
     pub scopes: BTreeSet<ScopeName>,
     pub data_labels: BTreeSet<DataLabelId>,
 }
+/// What a record is about: a platform object, any resource by its URI, or an owner's
+/// registered target.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AuditTarget {
-    PlatformResource {
+    Resource {
         uri: ResourceUri,
     },
     Server {
         server: ServerSlug,
     },
-    Artifact {
-        artifact: veoveo_artifact_contract::ArtifactId,
-    },
     Task {
         task: TaskId,
-    },
-    TaskRoute {
-        server: ServerSlug,
-        route: veoveo_types::CanonicalTaskId,
     },
     Principal {
         tenant: TenantId,
@@ -89,32 +72,6 @@ pub enum AuditTarget {
     WorkContext {
         tenant: TenantId,
         context: WorkContextId,
-    },
-    Tool {
-        server: ServerSlug,
-        tool: LocalToolName,
-    },
-    Resource {
-        server: ServerSlug,
-        uri: ResourceUri,
-    },
-    ResourceTemplate {
-        server: ServerSlug,
-        uri: ResourceTemplateUri,
-    },
-    Prompt {
-        server: ServerSlug,
-        prompt: PromptName,
-    },
-    Discovery {
-        server: Option<ServerSlug>,
-        collection: DiscoveryKind,
-    },
-    Profile {
-        profile: GatewayProfileId,
-    },
-    Client {
-        client: OAuthClientId,
     },
     AuditLog {
         partition: AuditPartition,
@@ -126,21 +83,14 @@ pub enum AuditTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum CoreAuditTarget {
-    PlatformResource {
+    Resource {
         uri: ResourceUri,
     },
     Server {
         server: ServerSlug,
     },
-    Artifact {
-        artifact: veoveo_artifact_contract::ArtifactId,
-    },
     Task {
         task: TaskId,
-    },
-    TaskRoute {
-        server: ServerSlug,
-        route: veoveo_types::CanonicalTaskId,
     },
     Principal {
         tenant: TenantId,
@@ -149,32 +99,6 @@ pub(crate) enum CoreAuditTarget {
     WorkContext {
         tenant: TenantId,
         context: WorkContextId,
-    },
-    Tool {
-        server: ServerSlug,
-        tool: LocalToolName,
-    },
-    Resource {
-        server: ServerSlug,
-        uri: ResourceUri,
-    },
-    ResourceTemplate {
-        server: ServerSlug,
-        uri: ResourceTemplateUri,
-    },
-    Prompt {
-        server: ServerSlug,
-        prompt: PromptName,
-    },
-    Discovery {
-        server: Option<ServerSlug>,
-        collection: DiscoveryKind,
-    },
-    Profile {
-        profile: GatewayProfileId,
-    },
-    Client {
-        client: OAuthClientId,
     },
     AuditLog {
         partition: AuditPartition,
@@ -232,7 +156,8 @@ pub(crate) struct AuditDraftWire {
     pub(crate) actor: Option<AuditActor>,
     pub(crate) authority: AuditAuthority,
     pub(crate) target: AuditTarget,
-    pub(crate) detail: AuditDetail,
+    pub(crate) class: AuditClass,
+    pub(crate) detail: AuditDetailFields,
     pub(crate) outcome: AuditOutcome,
     pub(crate) reason: AuditReason,
     pub(crate) request: AuditRequest,
@@ -241,8 +166,6 @@ pub(crate) struct AuditDraftWire {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum AuditValidationError {
-    #[error("audit detail and target do not describe the same action")]
-    Target,
     #[error("audit counters must fit the exact I-JSON integer range")]
     CounterRange,
     #[error("audit partition must match the authenticated actor's tenant")]
@@ -278,54 +201,8 @@ impl TryFrom<AuditDraftWire> for AuditDraft {
         if accepted != (wire.reason == AuditReason::Accepted) {
             return Err(AuditValidationError::Outcome);
         }
-        let target_matches = match (&wire.detail, &wire.target) {
-            (
-                AuditDetail::ToolAdmission | AuditDetail::ToolCompletion { .. },
-                AuditTarget::Tool { .. },
-            ) => true,
-            (AuditDetail::ToolAdmission | AuditDetail::ToolCompletion { .. }, _) => false,
-            (
-                AuditDetail::Discovery { collection, .. },
-                AuditTarget::Discovery {
-                    collection: target, ..
-                },
-            ) => collection == target,
-            (AuditDetail::Discovery { .. }, _) => false,
-            (
-                AuditDetail::Task { .. },
-                AuditTarget::Task { .. } | AuditTarget::TaskRoute { .. },
-            ) => true,
-            (AuditDetail::Task { .. }, _) => false,
-            (AuditDetail::Registration { .. }, AuditTarget::Server { .. }) => true,
-            (AuditDetail::Registration { .. }, _) => false,
-            _ => true,
-        };
-        if !target_matches {
-            return Err(AuditValidationError::Target);
-        }
         const MAX_COUNTER: u64 = (1u64 << 53) - 1;
-        let counters_ok = wire.latency_ms.is_none_or(|value| value <= MAX_COUNTER)
-            && wire
-                .actor
-                .as_ref()
-                .and_then(|actor| actor.managed_agent.as_ref())
-                .is_none_or(|agent| {
-                    agent.generation.get() <= MAX_COUNTER
-                        && agent.dispatch_epoch.get() <= MAX_COUNTER
-                })
-            && match &wire.detail {
-                AuditDetail::ToolCompletion { duration_ms, .. } => *duration_ms <= MAX_COUNTER,
-                AuditDetail::Artifact { bytes, .. } => {
-                    bytes.is_none_or(|bytes| bytes <= MAX_COUNTER)
-                }
-                AuditDetail::DictationSummary {
-                    chunks,
-                    duration_ms,
-                    ..
-                } => *chunks <= MAX_COUNTER && *duration_ms <= MAX_COUNTER,
-                _ => true,
-            };
-        if !counters_ok {
+        if wire.latency_ms.is_some_and(|value| value > MAX_COUNTER) {
             return Err(AuditValidationError::CounterRange);
         }
         Ok(Self(wire))
@@ -344,6 +221,7 @@ impl AuditDraft {
         outcome: AuditOutcome,
         reason: AuditReason,
     ) -> AuditDraftBuilder {
+        let (class, detail) = detail.into_parts();
         AuditDraftBuilder(AuditDraftWire {
             id: AuditRecordId::new(),
             format: AuditRecordFormat::AuditRecord,
@@ -351,6 +229,7 @@ impl AuditDraft {
             actor: None,
             authority: AuditAuthority::default(),
             target,
+            class,
             detail,
             outcome,
             reason,
@@ -374,7 +253,10 @@ impl AuditDraft {
     pub fn target(&self) -> &AuditTarget {
         &self.0.target
     }
-    pub fn detail(&self) -> &AuditDetail {
+    pub fn class(&self) -> &AuditClass {
+        &self.0.class
+    }
+    pub fn detail(&self) -> &AuditDetailFields {
         &self.0.detail
     }
     pub fn outcome(&self) -> AuditOutcome {
@@ -447,28 +329,15 @@ impl AuditRequest {
 impl From<CoreAuditTarget> for AuditTarget {
     fn from(value: CoreAuditTarget) -> Self {
         match value {
-            CoreAuditTarget::PlatformResource { uri } => Self::PlatformResource { uri },
+            CoreAuditTarget::Resource { uri } => Self::Resource { uri },
             CoreAuditTarget::Server { server } => Self::Server { server },
-            CoreAuditTarget::Artifact { artifact } => Self::Artifact { artifact },
             CoreAuditTarget::Task { task } => Self::Task { task },
-            CoreAuditTarget::TaskRoute { server, route } => Self::TaskRoute { server, route },
             CoreAuditTarget::Principal { tenant, principal } => {
                 Self::Principal { tenant, principal }
             }
             CoreAuditTarget::WorkContext { tenant, context } => {
                 Self::WorkContext { tenant, context }
             }
-            CoreAuditTarget::Tool { server, tool } => Self::Tool { server, tool },
-            CoreAuditTarget::Resource { server, uri } => Self::Resource { server, uri },
-            CoreAuditTarget::ResourceTemplate { server, uri } => {
-                Self::ResourceTemplate { server, uri }
-            }
-            CoreAuditTarget::Prompt { server, prompt } => Self::Prompt { server, prompt },
-            CoreAuditTarget::Discovery { server, collection } => {
-                Self::Discovery { server, collection }
-            }
-            CoreAuditTarget::Profile { profile } => Self::Profile { profile },
-            CoreAuditTarget::Client { client } => Self::Client { client },
             CoreAuditTarget::AuditLog { partition } => Self::AuditLog { partition },
             CoreAuditTarget::Installation => Self::Installation,
         }

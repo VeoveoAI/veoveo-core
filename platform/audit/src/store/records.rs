@@ -4,11 +4,11 @@ use super::{AuditStore, AuditStoreError, admit, row::RecordRow};
 use std::time::Duration;
 use veoveo_audit_contract::{
     AUDIT_APPEND_LIMIT, AuditClass, AuditCursor, AuditDailyCount, AuditDailyCursor, AuditDailyPage,
-    AuditDailyQuery, AuditDetail, AuditDraft, AuditOrder, AuditOutcome, AuditPage, AuditPartition,
-    AuditQuery, AuditReadMethod, AuditReadScope, AuditRecord, AuditRecordId, AuditTarget,
-    AuditTraceId, AuditTransactionWrite,
+    AuditDailyQuery, AuditDetailType, AuditDraft, AuditOrder, AuditOutcome, AuditPage,
+    AuditPartition, AuditQuery, AuditReadScope, AuditRecord, AuditRecordId, AuditTarget,
+    AuditTraceId, AuditTransactionWrite, platform,
 };
-use veoveo_types::{GatewayProfileId, PrincipalId};
+use veoveo_types::PrincipalId;
 
 impl AuditStore {
     /// Append drafts in one transaction of their own and return once it commits. A
@@ -18,7 +18,7 @@ impl AuditStore {
         if drafts.is_empty() {
             return Ok(());
         }
-        let records = AuditTransactionWrite::batch(self.targets(), drafts.iter().cloned())?;
+        let records = AuditTransactionWrite::batch(self.registry(), drafts.iter().cloned())?;
         let mut attempt = 0;
         loop {
             match self.append_once(&records).await {
@@ -48,7 +48,7 @@ impl AuditStore {
     ) -> Result<AuditPage, AuditStoreError> {
         query.validate()?;
         if let Some(target) = &query.target {
-            self.targets().validate(target)?;
+            self.registry().validate(target)?;
         }
         admit(scope, &query.partition)?;
         let partition = query.partition.storage_key();
@@ -68,7 +68,7 @@ impl AuditStore {
                     "src/store/records/page_oldest_first.sql",
                     partition,
                     after as Option<AuditRecordId>,
-                    query.class as Option<AuditClass>,
+                    query.class.as_ref() as Option<&AuditClass>,
                     actor,
                     target,
                     query.outcome as Option<AuditOutcome>,
@@ -86,7 +86,7 @@ impl AuditStore {
                     "src/store/records/page_newest_first.sql",
                     partition,
                     after as Option<AuditRecordId>,
-                    query.class as Option<AuditClass>,
+                    query.class.as_ref() as Option<&AuditClass>,
                     actor,
                     target,
                     query.outcome as Option<AuditOutcome>,
@@ -102,7 +102,7 @@ impl AuditStore {
         transaction.commit().await?;
         let mut records = rows
             .into_iter()
-            .map(|row| row.checked(self.targets(), &query.partition))
+            .map(|row| row.checked(self.registry(), &query.partition))
             .collect::<Result<Vec<_>, _>>()?;
         let more = records.len() > usize::from(query.limit);
         records.truncate(usize::from(query.limit));
@@ -132,7 +132,7 @@ impl AuditStore {
             query.from,
             query.until,
             cursor.map(|cursor| cursor.day),
-            cursor.map(|cursor| cursor.class) as Option<AuditClass>,
+            cursor.map(|cursor| &cursor.class) as Option<&AuditClass>,
             cursor.map(|cursor| cursor.outcome) as Option<AuditOutcome>,
             i64::from(query.limit) + 1,
         )
@@ -158,22 +158,21 @@ impl AuditStore {
             .map(|count| AuditDailyCursor {
                 partition: query.partition.clone(),
                 day: count.day,
-                class: count.class,
+                class: count.class.clone(),
                 outcome: count.outcome,
             });
         Ok(AuditDailyPage { counts, next })
     }
 
-    /// Whether `view` is the caller's own committed audit-view receipt for `partition`,
-    /// issued under `profile` within the last fifteen minutes. The receipt identity
-    /// grants nothing by itself.
+    /// Whether `view` is the caller's own committed `audit.view` receipt for
+    /// `partition`, issued within the last fifteen minutes. The receipt identity grants
+    /// nothing by itself.
     pub async fn view_admitted(
         &self,
         scope: &AuditReadScope,
         partition: &AuditPartition,
         actor_partition: &AuditPartition,
         actor: &PrincipalId,
-        profile: &GatewayProfileId,
         view: AuditRecordId,
     ) -> Result<bool, AuditStoreError> {
         admit(scope, partition)?;
@@ -181,30 +180,26 @@ impl AuditStore {
         let target = AuditTarget::AuditLog {
             partition: partition.clone(),
         };
-        let detail = AuditDetail::Read {
-            method: AuditReadMethod::AuditView,
-        };
+        let class = AuditClass::parse(platform::AuditView::CLASS).expect("platform class");
         let row = sqlx::query_file_as!(
             RecordRow,
             "src/store/records/view.sql",
             view as AuditRecordId,
             actor_partition.storage_key(),
             actor.as_str(),
-            profile.as_str(),
             target_document(&target),
-            serde_json::to_value(&detail).expect("a typed audit detail serializes"),
+            &class as &AuditClass,
         )
         .fetch_optional(self.pool())
         .await?;
         let Some(row) = row else {
             return Ok(false);
         };
-        let record = row.checked(self.targets(), actor_partition)?;
+        let record = row.checked(self.registry(), actor_partition)?;
         let draft = &record.draft;
         if draft.actor().map(|actor| &actor.principal) != Some(actor)
-            || draft.authority().profile.as_ref() != Some(profile)
             || draft.target() != &target
-            || draft.detail() != &detail
+            || draft.class() != &class
             || draft.outcome() != AuditOutcome::Allowed
         {
             return Err(AuditStoreError::Integrity);
@@ -231,7 +226,7 @@ impl AuditStore {
         .await?;
         rows.into_iter()
             .map(|row| {
-                let record = row.checked(self.targets(), partition)?;
+                let record = row.checked(self.registry(), partition)?;
                 Ok((record.draft.id(), record))
             })
             .collect()

@@ -4,7 +4,7 @@ mod support;
 use chrono::{DateTime, TimeDelta, Utc};
 use futures::StreamExt;
 use std::{collections::BTreeSet, num::NonZeroU32, sync::Arc, time::Duration};
-use support::{AuditDb, user, within};
+use support::{AuditDb, note, user, within};
 use veoveo_audit::{integrity::AuditSigningKey, *};
 
 fn draft(
@@ -16,9 +16,7 @@ fn draft(
     AuditDraft::builder(
         request.clone(),
         AuditTarget::Installation,
-        AuditDetail::Read {
-            method: AuditReadMethod::ResourceRead,
-        },
+        note(1),
         outcome,
         if outcome == AuditOutcome::Allowed {
             AuditReason::Accepted
@@ -68,7 +66,7 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
         .unwrap();
         let mut query = AuditQuery::new(partition.clone());
         query.limit = 1;
-        query.class = Some(AuditClass::ApiActivity);
+        query.class = Some(AuditClass::parse("fixture.note").unwrap());
         query.outcome = Some(AuditOutcome::Allowed);
         query.actor = Some(alice.principal.clone());
         query.target = Some(AuditTarget::Installation);
@@ -106,24 +104,19 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
             Err(AuditStoreError::AccessDenied)
         ));
 
-        let profile: veoveo_types::GatewayProfileId = "operator".parse().unwrap();
         for (age, admitted) in [(0, true), (30, false)] {
             let receipt = AuditDraft::builder(
                 AuditRequest::background(),
                 AuditTarget::AuditLog {
                     partition: partition.clone(),
                 },
-                AuditDetail::Read {
-                    method: AuditReadMethod::AuditView,
-                },
+                AuditRegistry::platform()
+                    .detail(&platform::AuditView {})
+                    .unwrap(),
                 AuditOutcome::Allowed,
                 AuditReason::Accepted,
             )
             .actor(alice.clone())
-            .authority(AuditAuthority {
-                profile: Some(profile.clone()),
-                ..Default::default()
-            })
             .occurred_at(now - TimeDelta::minutes(age))
             .build()
             .unwrap();
@@ -132,48 +125,24 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
                 .append(std::slice::from_ref(&receipt))
                 .await
                 .unwrap();
-            let view = |partition: AuditPartition,
-                        actor: veoveo_types::PrincipalId,
-                        profile: veoveo_types::GatewayProfileId| {
+            let view = |partition: AuditPartition, actor: veoveo_types::PrincipalId| {
                 let audit = audit.b.clone();
                 let scope = scope.clone();
                 let actor_partition = AuditPartition::Tenant("alpha".parse().unwrap());
                 let receipt = receipt.id();
                 async move {
                     audit
-                        .view_admitted(
-                            &scope,
-                            &partition,
-                            &actor_partition,
-                            &actor,
-                            &profile,
-                            receipt,
-                        )
+                        .view_admitted(&scope, &partition, &actor_partition, &actor, receipt)
                         .await
                         .unwrap()
                 }
             };
             assert_eq!(
-                view(partition.clone(), alice.principal.clone(), profile.clone()).await,
+                view(partition.clone(), alice.principal.clone()).await,
                 admitted
             );
-            assert!(!view(partition.clone(), "bob".parse().unwrap(), profile.clone()).await);
-            assert!(
-                !view(
-                    partition.clone(),
-                    alice.principal.clone(),
-                    "other".parse().unwrap()
-                )
-                .await
-            );
-            assert!(
-                !view(
-                    AuditPartition::Installation,
-                    alice.principal.clone(),
-                    profile.clone()
-                )
-                .await
-            );
+            assert!(!view(partition.clone(), "bob".parse().unwrap()).await);
+            assert!(!view(AuditPartition::Installation, alice.principal.clone()).await);
         }
     })
     .await;

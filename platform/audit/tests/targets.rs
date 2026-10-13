@@ -2,20 +2,17 @@
 //! admitted by one immutable registry.
 mod support;
 
-#[path = "../../../testing/fixtures/computer_target.rs"]
-mod computer_target;
-
-use computer_target::{ComputerAuditTarget, ComputerId, register_audit_target};
 use futures::StreamExt;
 use std::{sync::Arc, time::Duration};
-use support::{AuditDb, seal_all, within};
+use support::audit_owner::{ItemAuditTarget, ItemId, declare_audit_detail, register_audit_target};
+use support::{AuditDb, note, seal_all, within};
 use veoveo_audit::{
     integrity::{AuditSigningKey, record_root},
     sealer::AuditSealer,
     *,
 };
 
-/// Another owner whose payload carries the same UUID as a Computer target.
+/// Another owner whose payload carries the same UUID as an item target.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(from = "ShadowWire", into = "ShadowWire")]
 struct ShadowTarget {
@@ -24,7 +21,7 @@ struct ShadowTarget {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 enum ShadowWire {
-    #[serde(rename = "shadow_computer")]
+    #[serde(rename = "shadow_item")]
     Shadow { lookup_id: uuid::Uuid },
 }
 impl From<ShadowWire> for ShadowTarget {
@@ -45,17 +42,18 @@ impl schemars::JsonSchema for ShadowTarget {
         "ShadowTarget".into()
     }
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","const":"shadow_computer"},"lookup_id":{"type":"string","format":"uuid"}},"required":["kind","lookup_id"]})
+        schemars::json_schema!({"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","const":"shadow_item"},"lookup_id":{"type":"string","format":"uuid"}},"required":["kind","lookup_id"]})
     }
 }
 impl AuditTargetOwner for ShadowTarget {
-    const KIND: &'static str = "shadow_computer";
+    const KIND: &'static str = "shadow_item";
 }
 
-fn targets() -> Arc<AuditTargetRegistry> {
-    let mut builder = AuditTargetRegistry::builder();
+fn targets() -> Arc<AuditRegistry> {
+    let mut builder = AuditRegistry::builder();
     register_audit_target(&mut builder).unwrap();
-    builder.register::<ShadowTarget>().unwrap();
+    declare_audit_detail(&mut builder).unwrap();
+    builder.register_target::<ShadowTarget>().unwrap();
     Arc::new(builder.build())
 }
 
@@ -63,11 +61,7 @@ fn draft(target: AuditTarget) -> AuditDraft {
     AuditDraft::builder(
         AuditRequest::background(),
         target,
-        AuditDetail::Computer {
-            activity: ComputerActivity::Create,
-            stage: ComputerAuditStage::Reserved,
-            task: None,
-        },
+        note(1),
         AuditOutcome::Succeeded,
         AuditReason::Accepted,
     )
@@ -79,11 +73,9 @@ fn draft(target: AuditTarget) -> AuditDraft {
 async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_export_lines() {
     within(Duration::from_secs(90), async {
         let registry = targets();
-        let audit = AuditDb::with_targets(registry.clone()).await;
-        let selected = ComputerId::new();
-        let target = registry
-            .target(ComputerAuditTarget { computer: selected })
-            .unwrap();
+        let audit = AuditDb::with_registry(registry.clone()).await;
+        let selected = ItemId::new();
+        let target = registry.target(ItemAuditTarget { item: selected }).unwrap();
         let records = vec![
             draft(target.clone()),
             draft(
@@ -95,8 +87,8 @@ async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_expor
             ),
             draft(
                 registry
-                    .target(ComputerAuditTarget {
-                        computer: ComputerId::new(),
+                    .target(ItemAuditTarget {
+                        item: ItemId::new(),
                     })
                     .unwrap(),
             ),
@@ -131,7 +123,7 @@ async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_expor
         assert_eq!(first.records[0].draft.target(), &target);
         assert!(first.next.is_some());
         let reconnected = AuditStore::new(audit.db.connect().await, registry.clone());
-        assert!(std::ptr::eq(audit.a.targets(), reconnected.targets()));
+        assert!(std::ptr::eq(audit.a.registry(), reconnected.registry()));
         let recovered = reconnected.page(&scope, &query).await.unwrap();
         assert_eq!(recovered.records[0].draft.target(), &target);
         query.cursor = first.next.clone();
@@ -142,7 +134,7 @@ async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_expor
         assert!(second.next.is_none());
 
         let alien = targets()
-            .target(ComputerAuditTarget { computer: selected })
+            .target(ItemAuditTarget { item: selected })
             .unwrap();
         query.cursor = None;
         query.target = Some(alien.clone());
@@ -155,7 +147,7 @@ async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_expor
             Err(AuditStoreError::Target(AuditTargetError::Registry))
         ));
         assert!(matches!(
-            AuditTransactionWrite::new(audit.a.targets(), draft(alien)),
+            AuditTransactionWrite::new(audit.a.registry(), draft(alien)),
             Err(AuditAppendError::Target(AuditTargetError::Registry))
         ));
 
@@ -166,7 +158,7 @@ async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_expor
         let conflict = AuditDraft::builder(
             records[0].request().clone(),
             target.clone(),
-            records[0].detail().clone(),
+            note(1),
             AuditOutcome::Failed,
             AuditReason::Unavailable,
         )
@@ -181,7 +173,7 @@ async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_expor
             .await
             .unwrap();
         assert!(
-            AuditTransactionWrite::batch(audit.a.targets(), [draft(target.clone()), conflict])
+            AuditTransactionWrite::batch(audit.a.registry(), [draft(target.clone()), conflict])
                 .unwrap()
                 .append(&mut transaction)
                 .await
@@ -232,7 +224,7 @@ async fn owner_targets_keep_exact_filters_transactions_streams_sealing_and_expor
             assert!(matches!(
                 audit
                     .b
-                    .targets()
+                    .registry()
                     .decoder()
                     .from_str::<AuditExportLine>(&bytes)
                     .unwrap(),

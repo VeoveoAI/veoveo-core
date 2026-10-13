@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE audit.record SET occurred_at = occurred_at + interval '1 second' WHERE id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "39cb724019a0b3cb402f03b4540e3ff0c8f91f11e866de0338541d985c898153"
+}

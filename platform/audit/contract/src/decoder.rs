@@ -9,9 +9,9 @@ use std::marker::PhantomData;
 use veoveo_types::UniqueJsonValue;
 
 pub struct AuditDecoder<'a> {
-    registry: &'a AuditTargetRegistry,
+    registry: &'a AuditRegistry,
 }
-impl AuditTargetRegistry {
+impl AuditRegistry {
     pub fn decoder(&self) -> AuditDecoder<'_> {
         AuditDecoder { registry: self }
     }
@@ -40,10 +40,12 @@ pub enum AuditDecodeError {
     #[error(transparent)]
     Target(#[from] AuditTargetError),
     #[error(transparent)]
+    Detail(#[from] AuditDetailError),
+    #[error(transparent)]
     Validation(#[from] AuditValidationError),
 }
 pub struct AuditDecodeSeed<'a, T> {
-    registry: &'a AuditTargetRegistry,
+    registry: &'a AuditRegistry,
     marker: PhantomData<T>,
 }
 impl<'de, T: AuditDecode> DeserializeSeed<'de> for AuditDecodeSeed<'_, T> {
@@ -57,11 +59,11 @@ mod sealed {
 }
 /// Implemented only by the admitted Audit models.
 pub trait AuditDecode: sealed::Sealed + Sized {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError>;
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError>;
 }
 impl sealed::Sealed for AuditTarget {}
 impl AuditDecode for AuditTarget {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         Ok(registry.admit(value)?)
     }
 }
@@ -78,7 +80,8 @@ struct AuditDraftWireInput {
     actor: Option<AuditActor>,
     authority: AuditAuthority,
     target: Value,
-    detail: AuditDetail,
+    class: AuditClass,
+    detail: serde_json::Map<String, Value>,
     outcome: AuditOutcome,
     reason: AuditReason,
     request: AuditRequest,
@@ -87,7 +90,7 @@ struct AuditDraftWireInput {
 }
 impl sealed::Sealed for AuditDraft {}
 impl AuditDecode for AuditDraft {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         let wire: AuditDraftWireInput = serde_json::from_value(value)?;
         let admitted = crate::model::AuditDraftWire {
             id: wire.id,
@@ -96,7 +99,8 @@ impl AuditDecode for AuditDraft {
             actor: wire.actor,
             authority: wire.authority,
             target: registry.admit(wire.target)?,
-            detail: wire.detail,
+            detail: registry.admit_detail(&wire.class, wire.detail)?,
+            class: wire.class,
             outcome: wire.outcome,
             reason: wire.reason,
             request: wire.request,
@@ -115,7 +119,7 @@ struct AuditRecordInput {
 }
 impl sealed::Sealed for AuditRecord {}
 impl AuditDecode for AuditRecord {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         let wire: AuditRecordInput = serde_json::from_value(value)?;
         let admitted = Self {
             draft: AuditDraft::decode(registry, wire.draft)?,
@@ -142,7 +146,7 @@ struct AuditQueryInput {
 }
 impl sealed::Sealed for AuditQuery {}
 impl AuditDecode for AuditQuery {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         let wire: AuditQueryInput = serde_json::from_value(value)?;
         let admitted = Self {
             order: wire.order,
@@ -170,7 +174,7 @@ struct AuditPageInput {
 }
 impl sealed::Sealed for AuditPage {}
 impl AuditDecode for AuditPage {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         let wire: AuditPageInput = serde_json::from_value(value)?;
         let admitted = Self {
             records: wire
@@ -191,7 +195,7 @@ struct AuditRecordSummaryInput {
     occurred_at: DateTime<Utc>,
     actor: Option<veoveo_types::PrincipalId>,
     class: AuditClass,
-    detail: AuditDetail,
+    detail: serde_json::Map<String, Value>,
     target: Value,
     outcome: AuditOutcome,
     reason: AuditReason,
@@ -201,14 +205,14 @@ struct AuditRecordSummaryInput {
 }
 impl sealed::Sealed for AuditRecordSummary {}
 impl AuditDecode for AuditRecordSummary {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         let wire: AuditRecordSummaryInput = serde_json::from_value(value)?;
         let admitted = Self {
             id: wire.id,
             occurred_at: wire.occurred_at,
             actor: wire.actor,
+            detail: registry.admit_detail(&wire.class, wire.detail)?,
             class: wire.class,
-            detail: wire.detail,
             target: registry.admit(wire.target)?,
             outcome: wire.outcome,
             reason: wire.reason,
@@ -228,7 +232,7 @@ struct AuditSummaryPageInput {
 }
 impl sealed::Sealed for AuditSummaryPage {}
 impl AuditDecode for AuditSummaryPage {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         let wire: AuditSummaryPageInput = serde_json::from_value(value)?;
         let admitted = Self {
             records: wire
@@ -259,7 +263,7 @@ enum ExportInput {
 }
 impl sealed::Sealed for AuditExportLine {}
 impl AuditDecode for AuditExportLine {
-    fn decode(registry: &AuditTargetRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         Ok(match serde_json::from_value::<ExportInput>(value)? {
             ExportInput::Header {
                 query,

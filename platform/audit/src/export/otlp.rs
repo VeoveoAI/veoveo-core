@@ -46,7 +46,7 @@ struct LogRecord {
     time_unix_nano: String,
     observed_time_unix_nano: String,
     severity_number: u8,
-    event_name: &'static str,
+    event_name: String,
     body: StringValue,
     attributes: Vec<Attribute>,
     trace_id: AuditTraceId,
@@ -146,14 +146,7 @@ impl OtlpDestination {
                     .timestamp_nanos_opt()
                     .filter(|n| *n >= 0)
                     .ok_or(ExportError::Protocol)?;
-                let event_name = match draft.detail().class() {
-                    AuditClass::ApiActivity => "veoveo.audit.api_activity",
-                    AuditClass::Authentication => "veoveo.audit.authentication",
-                    AuditClass::AccountChange => "veoveo.audit.account_change",
-                    AuditClass::ArtifactActivity => "veoveo.audit.artifact_activity",
-                    AuditClass::ComputerActivity => "veoveo.audit.computer_activity",
-                    AuditClass::LiveViewAccess => "veoveo.audit.live_view_access",
-                };
+                let event_name = format!("veoveo.audit.{}", draft.class());
                 let body = String::from_utf8(encode(
                     &super::ocsf::Event::from_record(record),
                     super::MAX_CONTENT_BYTES,

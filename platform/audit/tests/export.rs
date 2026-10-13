@@ -2,12 +2,12 @@
 mod support;
 
 use std::{num::NonZeroU32, sync::Arc, time::Duration};
-use support::{AuditDb, draft, seal_all, within};
+use support::{AuditDb, draft, note, seal_all, within};
 use veoveo_audit::{integrity::AuditSigningKey, sealer::AuditSealer, *};
 use veoveo_types::Sha256Digest;
 
-fn read(method: AuditReadMethod) -> AuditDraft {
-    draft(AuditDetail::Read { method })
+fn read(count: u32) -> AuditDraft {
+    draft(note(count))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,11 +43,7 @@ async fn intents_receipts_and_refusals_fence_retention_across_replicas() {
         let sealer = AuditSealer::acquire(audit.a.clone(), key.clone())
             .await
             .unwrap();
-        audit
-            .a
-            .append(&[read(AuditReadMethod::Status)])
-            .await
-            .unwrap();
+        audit.a.append(&[read(2)]).await.unwrap();
         assert_eq!(seal_all(&sealer).await, 1);
         let block = audit
             .b
@@ -249,7 +245,7 @@ async fn busy_sealing_and_export_acknowledge_each_record_once() {
         // Separate commits overlap sealing passes and collector acknowledgements.
         let mut records = Vec::new();
         for index in 0..48 {
-            let record = read(AuditReadMethod::Status);
+            let record = read(2);
             audit.b.append(std::slice::from_ref(&record)).await.unwrap();
             records.push(record.id());
             if index % 8 == 0 {

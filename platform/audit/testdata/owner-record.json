@@ -7,21 +7,18 @@
     },
     "actor": null,
     "authority": {
-      "profile": null,
       "work_context": null,
       "policy_revision": null,
       "scopes": [],
       "data_labels": []
     },
     "target": {
-      "kind": "computer",
-      "computer": "019f25e8-cf39-7000-8000-000000000001"
+      "kind": "item",
+      "item": "019f25e8-cf39-7000-8000-000000000001"
     },
+    "class": "fixture.note",
     "detail": {
-      "kind": "computer",
-      "activity": "create",
-      "stage": "reserved",
-      "task": null
+      "count": 7
     },
     "outcome": "succeeded",
     "reason": "accepted",

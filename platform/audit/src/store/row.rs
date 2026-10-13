@@ -1,10 +1,10 @@
-//! Stored records and blocks decode through the target registry and are checked
+//! Stored records and blocks decode through the audit registry and are checked
 //! against the columns that selected them.
 use super::AuditStoreError;
 use chrono::{DateTime, Utc};
 use veoveo_audit_contract::{
     AuditBlock, AuditBlockSequence, AuditClass, AuditDecodeError, AuditDraft, AuditPartition,
-    AuditRecord, AuditRecordId, AuditTargetRegistry, stored_time,
+    AuditRecord, AuditRecordId, AuditRegistry, stored_time,
 };
 
 /// One `audit.record` row as readers select it.
@@ -20,18 +20,19 @@ pub(crate) struct RecordRow {
 
 impl RecordRow {
     /// Admit the stored draft and require it to agree with its row.
-    pub fn admitted(self, registry: &AuditTargetRegistry) -> Result<AuditRecord, AuditStoreError> {
+    pub fn admitted(self, registry: &AuditRegistry) -> Result<AuditRecord, AuditStoreError> {
         let draft: AuditDraft =
             registry
                 .decoder()
                 .from_value(self.draft)
                 .map_err(|error| match error {
                     AuditDecodeError::Target(error) => AuditStoreError::Target(error),
+                    AuditDecodeError::Detail(error) => AuditStoreError::Detail(error),
                     _ => AuditStoreError::Integrity,
                 })?;
         if draft.id() != self.id
             || self.partition != draft.partition().storage_key()
-            || draft.detail().class() != self.class
+            || draft.class() != &self.class
             || stored_time(draft.occurred_at()) != self.occurred_at
         {
             return Err(AuditStoreError::Integrity);
@@ -46,7 +47,7 @@ impl RecordRow {
     /// selected.
     pub fn checked(
         self,
-        registry: &AuditTargetRegistry,
+        registry: &AuditRegistry,
         partition: &AuditPartition,
     ) -> Result<AuditRecord, AuditStoreError> {
         let record = self.admitted(registry)?;

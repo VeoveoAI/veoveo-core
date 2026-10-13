@@ -70,7 +70,7 @@ impl AuditStore {
                     draft: row.draft,
                     recorded_at: row.recorded_at,
                 }
-                .admitted(self.targets())?;
+                .admitted(self.registry())?;
                 Ok(SealCandidate {
                     position: CommitPosition {
                         txid: row.txid,

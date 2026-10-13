@@ -4,7 +4,7 @@
 
 | Boundary | Profile |
 |---|---|
-| [OCSF 1.9.0](https://github.com/ocsf/ocsf-schema/tree/v1.9.0) | Typed Base Event, API Activity, Authentication, Account Change and File Hosting Activity mapping; JSON Lines, one event per source record |
+| [OCSF 1.9.0](https://github.com/ocsf/ocsf-schema/tree/v1.9.0) | Base Event and API Activity mapping of the record envelope; JSON Lines, one event per source record |
 | [S3 PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html) and [GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html) | SigV4, conditional object creation, SHA-256 request checksum and downloaded-byte reconciliation; optional Object Lock compliance mode |
 | [OTLP/HTTP](https://opentelemetry.io/docs/specs/otlp/) | JSON Logs requests, string-encoded nanosecond timestamps, hexadecimal trace/span IDs and explicit collector acknowledgement |
 | `veoveo.audit.export/v1` | Destination identity includes the wire mapping version and public destination configuration |
@@ -89,7 +89,7 @@ does not wait for an unavailable archive to recover.
 ## OCSF Mapping
 
 `cargo test -p veoveo-audit --test ocsf -- --ignored --nocapture` submits synthetic
-fixtures for every mapped class and outcome to the upstream
+fixtures for each mapped event shape and outcome to the upstream
 [OCSF 1.9.0 validation API](https://schema.ocsf.io/1.9.0/doc/swagger.json).
 The harness checks the reported schema version, limits each request to 15
 seconds and the run to 180 seconds, and prints structured validation results.
@@ -101,16 +101,11 @@ attribution, reason and timestamps. This supplies the record bytes for verificat
 against the signed block. Admission maps to status Other with label `Allowed`, since
 an admission cannot establish operation completion.
 
-API Activity and File Hosting require an actor and source endpoint. They are emitted
-only when the source record supplies both. Authentication requires an identified
-subject and names the gateway service. Account Change uses the target principal;
-Work Context changes use API Activity. When required facts are absent, Base Event
-preserves the source without inventing an actor, username or address. Domain actions
-without a matching OCSF activity use Other and their closed Veoveo activity name.
-
-Account Change 3001 is supported but deprecated by OCSF 1.9.0. This mapping keeps the
-foundation plan's selected class for principal changes; adopting User Management
-requires a new export mapping version. It does not affect the stored audit model.
+A record with an actor and a source endpoint maps to API Activity 6003 with activity
+Other; its activity name and API operation are the record's class, such as
+`task.update`. Any other record maps to Base Event and preserves the source without
+inventing an actor, username or address. The mapping reads only the envelope, so it
+names no owner, and each owner's detail reaches the archive in `unmapped.veoveo`.
 
 ## Qualification
 

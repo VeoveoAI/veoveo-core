@@ -1,28 +1,32 @@
-//! Computer owner registration preserves the frozen signed record object.
+//! Owner target registration and detail declaration preserve the signed record object.
+mod support;
+
 use chrono::Utc;
+use support::audit_owner::{
+    ItemAuditTarget, ItemId, Note, declare_audit_detail, register_audit_target,
+};
 use veoveo_audit::{
     integrity::{canonical_bytes, record_root},
     *,
 };
-#[path = "../../../testing/fixtures/computer_target.rs"]
-mod computer_target;
-use computer_target::{ComputerAuditTarget, ComputerId, register_audit_target};
-#[test]
-fn owner_target_keeps_canonical_record_bytes_and_merkle_leaf() {
-    let mut builder = AuditTargetRegistry::builder();
+
+fn registry() -> AuditRegistry {
+    let mut builder = AuditRegistry::builder();
     register_audit_target(&mut builder).unwrap();
-    let registry = builder.build();
-    let computer = ComputerId::parse("019f25e8-cf39-7000-8000-000000000001").unwrap();
-    let target = registry.target(ComputerAuditTarget { computer }).unwrap();
+    declare_audit_detail(&mut builder).unwrap();
+    builder.build()
+}
+
+#[test]
+fn owner_target_and_detail_keep_canonical_record_bytes_and_merkle_leaf() {
+    let registry = registry();
+    let item = ItemId::parse("019f25e8-cf39-7000-8000-000000000001").unwrap();
+    let target = registry.target(ItemAuditTarget { item }).unwrap();
     let record = AuditRecord {
         draft: AuditDraft::builder(
             AuditRequest::background(),
             target,
-            AuditDetail::Computer {
-                activity: ComputerActivity::Create,
-                stage: ComputerAuditStage::Reserved,
-                task: None,
-            },
+            registry.detail(&Note { count: 7 }).unwrap(),
             AuditOutcome::Succeeded,
             AuditReason::Accepted,
         )
@@ -30,15 +34,23 @@ fn owner_target_keeps_canonical_record_bytes_and_merkle_leaf() {
         .unwrap(),
         recorded_at: Utc::now(),
     };
-    let mut frozen = serde_json::to_value(&record).unwrap();
-    frozen["draft"]["target"] =
-        serde_json::json!({"kind":"computer","computer":"019f25e8-cf39-7000-8000-000000000001"});
+    let mut wire = serde_json::to_value(&record).unwrap();
+    wire["draft"]["target"] =
+        serde_json::json!({"kind":"item","item":"019f25e8-cf39-7000-8000-000000000001"});
+    wire["draft"]["class"] = "fixture.note".into();
+    wire["draft"]["detail"] = serde_json::json!({"count": 7});
     assert_eq!(
         canonical_bytes(&record).unwrap(),
-        canonical_bytes(&frozen).unwrap()
+        canonical_bytes(&wire).unwrap()
     );
-    let decoded: AuditRecord = registry.decoder().from_value(frozen).unwrap();
+    let decoded: AuditRecord = registry.decoder().from_value(wire).unwrap();
     assert_eq!(record, decoded);
+    assert_eq!(
+        registry
+            .read::<Note>(decoded.draft.class(), decoded.draft.detail())
+            .unwrap(),
+        Note { count: 7 }
+    );
     assert_eq!(
         record_root(&[record]).unwrap(),
         record_root(&[decoded]).unwrap()
@@ -46,16 +58,13 @@ fn owner_target_keeps_canonical_record_bytes_and_merkle_leaf() {
 }
 
 #[test]
-fn literal_frozen_computer_record_hash() {
-    let mut builder = AuditTargetRegistry::builder();
-    register_audit_target(&mut builder).unwrap();
-    let registry = builder.build();
-    let record: AuditRecord = registry
+fn literal_owner_record_hash() {
+    let record: AuditRecord = registry()
         .decoder()
-        .from_str(include_str!("../testdata/computer-record.json"))
+        .from_str(include_str!("../testdata/owner-record.json"))
         .unwrap();
     assert_eq!(
         record_root(&[record]).unwrap().hex(),
-        "5889060b4647cf968f69ed90839480a012b33060a88499fe7d8fda03f3bcf485"
+        "42e8e4072628a28d5b1931aff66dd93454f2e49b1de75dfe0e4dc4567a7adf7d"
     );
 }

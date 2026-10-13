@@ -24,10 +24,19 @@ AS $$
     SELECT valid_digest.digest ~ '^sha256:[0-9a-f]{64}$'
 $$;
 
--- One audit record. Producers supply the draft, its class and its occurrence time; the
--- lookup columns are generated from the draft, so they cannot disagree with it. The
--- database assigns the insertion sequence, the writing transaction and the time of
--- the insert.
+-- An audit class and the JSON Schema of its detail, as the owner that records it
+-- declared them. The class is `<owner>.<name>`. Writers check each detail against the
+-- schema before they append it; a record's class must be declared here.
+CREATE TABLE audit.detail_type (
+    class text PRIMARY KEY CHECK (class ~ '^[a-z][a-z0-9-]{0,47}\.[a-z][a-z0-9_]{0,62}$'),
+    owner text GENERATED ALWAYS AS (split_part(class, '.', 1)) STORED NOT NULL,
+    schema jsonb NOT NULL CHECK (jsonb_typeof(schema) = 'object'),
+    declared_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- One audit record. Producers supply the draft and its occurrence time; the lookup
+-- columns are generated from the draft, so they cannot disagree with it. The database
+-- assigns the insertion sequence, the writing transaction and the time of the insert.
 CREATE TABLE audit.record (
     id uuid GENERATED ALWAYS AS ((draft ->> 'id')::uuid) STORED PRIMARY KEY,
     partition text GENERATED ALWAYS AS (
@@ -36,14 +45,11 @@ CREATE TABLE audit.record (
             WHEN 'tenant' THEN 'tenant:' || (draft #>> '{partition,tenant}')
         END
     ) STORED NOT NULL CHECK (audit.valid_partition(partition)),
-    class text NOT NULL CHECK (class IN (
-        'api_activity', 'authentication', 'account_change', 'artifact_activity',
-        'live_view_access', 'computer_activity'
-    )),
+    class text GENERATED ALWAYS AS (draft ->> 'class') STORED NOT NULL
+        REFERENCES audit.detail_type (class),
     outcome text GENERATED ALWAYS AS (draft ->> 'outcome') STORED NOT NULL
         CHECK (outcome IN ('allowed', 'denied', 'succeeded', 'failed')),
     actor text GENERATED ALWAYS AS (draft #>> '{actor,principal}') STORED,
-    profile text GENERATED ALWAYS AS (draft #>> '{authority,profile}') STORED,
     trace_id text GENERATED ALWAYS AS (draft #>> '{request,trace_id}') STORED NOT NULL,
     occurred_at timestamptz NOT NULL,
     day timestamptz GENERATED ALWAYS AS (
@@ -63,6 +69,9 @@ CREATE INDEX record_commit_order ON audit.record (txid, sequence);
 
 -- Daily counts group one partition's records by UTC day, class and outcome.
 CREATE INDEX record_daily ON audit.record (partition, day, class, outcome);
+
+-- The foreign key to the record's class.
+CREATE INDEX record_class ON audit.record (class);
 
 -- The writing transaction and the database clock are assigned here even when an INSERT
 -- names those columns, because the sealer's ordering depends on them.
@@ -335,8 +344,9 @@ $$;
 
 -- Appends drafts inside the caller's transaction. A draft whose identity is already
 -- stored must match the stored record exactly, so a retry changes nothing and a
--- conflicting reuse of an identity fails the transaction.
-CREATE FUNCTION audit.append(drafts jsonb[], classes text[], occurred timestamptz[])
+-- conflicting reuse of an identity fails the transaction. A draft whose class is not
+-- declared fails the foreign key to `audit.detail_type`.
+CREATE FUNCTION audit.append(drafts jsonb[], occurred timestamptz[])
 RETURNS void
 LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp
@@ -344,23 +354,18 @@ AS $$
 DECLARE
     matched bigint;
 BEGIN
-    IF cardinality(append.drafts) <> cardinality(append.classes)
-        OR cardinality(append.drafts) <> cardinality(append.occurred)
-    THEN
+    IF cardinality(append.drafts) <> cardinality(append.occurred) THEN
         RAISE EXCEPTION 'audit append arrays differ in length'
             USING ERRCODE = 'invalid_parameter_value';
     END IF;
-    INSERT INTO audit.record (draft, class, occurred_at)
-    SELECT i.draft, i.class, i.occurred_at
-    FROM unnest(append.drafts, append.classes, append.occurred)
-        AS i (draft, class, occurred_at)
+    INSERT INTO audit.record (draft, occurred_at)
+    SELECT i.draft, i.occurred_at
+    FROM unnest(append.drafts, append.occurred) AS i (draft, occurred_at)
     ON CONFLICT ON CONSTRAINT record_pkey DO NOTHING;
     SELECT count(*) INTO matched
-    FROM unnest(append.drafts, append.classes, append.occurred)
-        AS i (draft, class, occurred_at)
+    FROM unnest(append.drafts, append.occurred) AS i (draft, occurred_at)
     JOIN audit.record AS r ON r.id = (i.draft ->> 'id')::uuid
         AND r.draft = i.draft
-        AND r.class = i.class
         AND r.occurred_at = i.occurred_at;
     IF matched <> cardinality(append.drafts) THEN
         RAISE EXCEPTION 'an audit record identity already holds different content'

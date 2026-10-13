@@ -1,27 +1,37 @@
 //! Typed audit records shared by persistence, producers and readers.
-//! This crate has no MCP runtime, HTTP client or async runtime. Its `postgres` feature
-//! adds the sqlx bindings and `AuditTransactionWrite`, which appends records inside a
-//! caller's PostgreSQL transaction.
+//! This crate has no protocol runtime, HTTP client or async runtime. Its `postgres`
+//! feature adds the sqlx bindings and `AuditTransactionWrite`, which appends records
+//! inside a caller's PostgreSQL transaction.
 mod activity;
+pub use activity::*;
+mod class;
+pub use class::*;
+mod decoder;
+pub use decoder::*;
 mod destination;
 pub use destination::*;
+mod detail;
+pub use detail::*;
 mod ids;
-mod model;
-mod query;
-mod reader;
-pub use activity::*;
 pub use ids::*;
-pub use model::*;
-pub use query::*;
-pub use reader::*;
 mod integrity;
 pub use integrity::*;
+mod model;
+pub use model::*;
 #[cfg(feature = "postgres")]
 mod postgres;
 #[cfg(feature = "postgres")]
 pub use postgres::*;
+mod query;
+pub use query::*;
+mod reader;
+pub use reader::*;
+mod registry;
+pub use registry::*;
+mod targets;
+pub use targets::*;
 
-/// The audit domain owns this scope; protocol cores only carry its validated name.
+/// The audit domain owns this scope; protocol layers only carry its validated name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]
 #[vocabulary(scope)]
 pub enum AuditScope {
@@ -47,8 +57,3 @@ impl InstallationAuditRole {
         }
     }
 }
-
-mod targets;
-pub use targets::*;
-mod decoder;
-pub use decoder::*;

@@ -2,7 +2,7 @@
 
 `veoveo-audit` stores the installation's audit records in PostgreSQL, seals them into
 signed blocks, exports the blocks and verifies them. The [Audit contract](contract/DESIGN.md)
-owns the record, target and reader types and the transactional append. The
+owns the record, class, detail, target and reader types and the transactional append. The
 [database design](../../docs/DATABASE.md) is normative for schemas, notifications,
 singletons and query style.
 
@@ -27,7 +27,8 @@ Export protocols are in the [export design](src/export/DESIGN.md).
 
 | Relation | Holds |
 |---|---|
-| `audit.record` | One row per record: the draft as `jsonb`, its class and occurrence time, generated lookup columns, the insertion sequence, the writing transaction and the database time of the insert |
+| `audit.detail_type` | Each declared class with its owner, the JSON Schema of its detail and the time of its last declaration |
+| `audit.record` | One row per record: the draft as `jsonb` and its occurrence time, generated lookup columns, the insertion sequence, the writing transaction and the database time of the insert |
 | `audit.sealer` | The sealed position: the transaction and sequence of the last sealed record |
 | `audit.block` | Each signed block document with its partition, sequence, head hash and sealing time |
 | `audit.partition_head` | Each partition's newest block sequence, last position and head hash |
@@ -35,12 +36,19 @@ Export protocols are in the [export design](src/export/DESIGN.md).
 | `audit.export_delivery`, `audit.export_cursor` | Delivery intents, receipts and refusals per block and destination, and each destination's newest acknowledged block |
 | `audit.daily` | A view of record counts per partition, UTC day, class and outcome |
 
-A producer supplies a record's draft, class and occurrence time. The identity,
-partition, outcome, actor, profile and trace columns are generated from the draft, so
-they cannot disagree with it. A trigger assigns the writing transaction and
+A producer supplies a record's draft and occurrence time. The identity, partition,
+class, outcome, actor and trace columns are generated from the draft, so they cannot
+disagree with it, and the class column references `audit.detail_type`, so a record of an
+undeclared class cannot be stored. A trigger assigns the writing transaction and
 `clock_timestamp()` on every insert, and records and blocks reject `UPDATE`. Readers
-decode each draft through the target registry and reject a row whose class or
-occurrence time disagrees with it.
+decode each draft through the audit registry and reject a row whose occurrence time
+disagrees with it.
+
+`AuditStore::declare` records the registry's declarations, the platform's included.
+Every owner declares before its first append; repeating a declaration changes nothing,
+and a changed schema replaces the stored one. `AuditStore::declarations` returns every
+stored declaration, from which a reader builds a registry that reads every owner's
+records.
 
 `tests/database_conformance.rs` holds the audit queries and the `audit` schema to the
 [server schema rules](../../docs/DATABASE.md#server-schema-rules), with each table's
@@ -104,7 +112,7 @@ a reader that rereads at that point misses nothing.
 
 ## Reads
 
-Every read checks the caller's `AuditReadScope` and the target registry before SQL, and
+Every read checks the caller's `AuditReadScope` and the audit registry before SQL, and
 selects one partition. Pages follow record identity order with a keyset cursor; every
 filter, including whole-target equality, runs in SQL before the limit. A page runs in a
 transaction that sets `plan_cache_mode` to `force_custom_plan`, so PostgreSQL plans it
@@ -113,8 +121,8 @@ with its actual filters: an actor filter seeks `record_actor`, a trace filter
 identity. The cursor and time bounds are written so that they stay index ranges in a
 generic plan as well. Daily counts page through `audit.daily` newest day first over at
 most `AUDIT_DAILY_MAX_DAYS`, 366 days, and a later page's days stop at its cursor's day.
-A view receipt admits an audit view only for the same actor and profile within 15
-minutes. Block reads return the members in position order and fail when a member record
+A view receipt, an `audit.view` record, admits an audit view only for the same actor
+within 15 minutes. Block reads return the members in position order and fail when a member record
 is missing. A filtered block read returns every matching member, as an export reads it;
 the query's order and page size do not apply, and a query with a cursor is refused.
 `export_range` reads the newest head and the last retired block in one statement.

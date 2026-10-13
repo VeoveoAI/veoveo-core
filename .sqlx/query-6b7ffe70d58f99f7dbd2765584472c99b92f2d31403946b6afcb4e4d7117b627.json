@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- A record of another class whose draft holds only the members the lookup columns read.\n-- It cannot decode, so a read that returns it fails.\nINSERT INTO audit.record (draft, occurred_at)\nSELECT\n    jsonb_build_object(\n        'id', $2::uuid,\n        'partition', r.draft -> 'partition',\n        'class', 'task.update',\n        'outcome', r.draft -> 'outcome',\n        'actor', r.draft -> 'actor',\n        'authority', r.draft -> 'authority',\n        'request', r.draft -> 'request',\n        'target', r.draft -> 'target'\n    ),\n    r.occurred_at\nFROM audit.record AS r\nWHERE r.id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6b7ffe70d58f99f7dbd2765584472c99b92f2d31403946b6afcb4e4d7117b627"
+}

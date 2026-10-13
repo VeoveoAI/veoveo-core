@@ -13,7 +13,6 @@ postgres = ["dep:sqlx"]
 
 [dependencies]
 veoveo-types.workspace = true
-veoveo-artifact-contract.workspace = true
 chrono.workspace = true
 schemars = { workspace = true, features = ["chrono04", "uuid1"] }
 serde.workspace = true
@@ -21,6 +20,4 @@ serde_json.workspace = true
 sqlx = { workspace = true, optional = true }
 uuid.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
 jsonschema.workspace = true

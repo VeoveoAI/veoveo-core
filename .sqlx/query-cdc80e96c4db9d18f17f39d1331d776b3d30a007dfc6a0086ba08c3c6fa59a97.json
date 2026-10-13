@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT audit.append($1, $2, $3)\n",
+  "query": "SELECT audit.append($1, $2)\n",
   "describe": {
     "columns": [
       {
@@ -13,7 +13,6 @@
     "parameters": {
       "Left": [
         "JsonbArray",
-        "TextArray",
         "TimestamptzArray"
       ]
     },
@@ -21,5 +20,5 @@
       null
     ]
   },
-  "hash": "e1c4e80c60220acf1c53f93cbe03deebc91096848abf487c31163ea6504cd577"
+  "hash": "cdc80e96c4db9d18f17f39d1331d776b3d30a007dfc6a0086ba08c3c6fa59a97"
 }

@@ -1,5 +1,7 @@
-//! OCSF 1.9.0 mapping. Required attributes select the class; unavailable facts
-//! stay unavailable. `unmapped.veoveo` preserves the complete signed source record.
+//! OCSF 1.9.0 mapping of the record envelope. A record with an actor and a source
+//! address is an API Activity whose operation is the record's class; any other record
+//! is a Base Event. Unavailable facts stay unavailable, and `unmapped.veoveo` preserves
+//! the complete signed source record with its owner's detail.
 use serde::Serialize;
 use std::net::IpAddr;
 use veoveo_audit_contract::*;
@@ -10,7 +12,7 @@ pub struct Event<'a> {
     category_uid: u16,
     class_uid: u16,
     activity_id: u8,
-    activity_name: &'static str,
+    activity_name: &'a str,
     type_uid: u32,
     severity_id: u8,
     status_id: u8,
@@ -46,19 +48,7 @@ struct Source<'a> {
 enum Fields<'a> {
     Api {
         actor: Actor<'a>,
-        api: Api,
-        src_endpoint: Endpoint,
-    },
-    Authentication {
-        user: User<'a>,
-        service: Service,
-    },
-    Account {
-        user: User<'a>,
-    },
-    File {
-        actor: Actor<'a>,
-        file: File,
+        api: Api<'a>,
         src_endpoint: Endpoint,
     },
     Base {},
@@ -73,22 +63,12 @@ struct User<'a> {
     type_id: u8,
 }
 #[derive(Serialize)]
-struct Api {
-    operation: &'static str,
-}
-#[derive(Serialize)]
-struct Service {
-    name: &'static str,
+struct Api<'a> {
+    operation: &'a str,
 }
 #[derive(Serialize)]
 struct Endpoint {
     ip: IpAddr,
-}
-#[derive(Serialize)]
-struct File {
-    name: String,
-    uid: String,
-    type_id: u8,
 }
 impl<'a> User<'a> {
     fn actor(actor: &'a AuditActor) -> Self {
@@ -139,102 +119,22 @@ impl<'a> Event<'a> {
         }
     }
 }
-fn classify(record: &AuditRecord) -> (u16, u8, &'static str, Fields<'_>) {
+fn classify(record: &AuditRecord) -> (u16, u8, &str, Fields<'_>) {
     let draft = &record.draft;
-    if let (AuditDetail::Authentication { activity, .. }, Some(actor)) =
-        (draft.detail(), draft.actor())
-    {
-        let (id, name) = match activity {
-            AuthenticationActivity::Login => (1, "Logon"),
-            AuthenticationActivity::Logout => (2, "Logoff"),
-            _ => (99, draft.detail().activity()),
-        };
-        return (
-            3002,
-            id,
-            name,
-            Fields::Authentication {
-                user: User::actor(actor),
-                service: Service {
-                    name: "veoveo-gateway",
-                },
-            },
-        );
-    }
-    if let (AuditDetail::AccountChange { activity }, AuditTarget::Principal { principal, .. }) =
-        (draft.detail(), draft.target())
-    {
-        let (id, name) = match activity {
-            AccountActivity::Create => (1, "Create"),
-            AccountActivity::Delete => (6, "Delete"),
-            _ => (99, draft.detail().activity()),
-        };
-        return (
-            3001,
-            id,
-            name,
-            Fields::Account {
-                user: User {
-                    uid: principal,
-                    type_id: 0,
-                },
-            },
-        );
-    }
+    let class = draft.class().as_str();
     if let (Some(actor), Some(ip)) = (draft.actor(), draft.request().source_ip) {
-        let actor = Actor {
-            user: User::actor(actor),
-        };
-        let src_endpoint = Endpoint { ip };
-        if let (AuditDetail::Artifact { activity, .. }, AuditTarget::Artifact { artifact }) =
-            (draft.detail(), draft.target())
-        {
-            let (id, name) = match activity {
-                ArtifactActivity::Publish => (1, "Upload"),
-                ArtifactActivity::Download => (2, "Download"),
-                ArtifactActivity::Delete => (4, "Delete"),
-                ArtifactActivity::Share => (12, "Share"),
-                ArtifactActivity::Unshare => (13, "Unshare"),
-                _ => (99, draft.detail().activity()),
-            };
-            return (
-                6006,
-                id,
-                name,
-                Fields::File {
-                    actor,
-                    src_endpoint,
-                    file: File {
-                        name: artifact.to_string(),
-                        uid: artifact.to_string(),
-                        type_id: 0,
-                    },
-                },
-            );
-        }
-        let (id, name) = match draft.detail() {
-            AuditDetail::Read { .. } | AuditDetail::Discovery { .. } => (2, "Read"),
-            AuditDetail::AccountChange {
-                activity: AccountActivity::Create,
-            } => (1, "Create"),
-            AuditDetail::AccountChange {
-                activity: AccountActivity::Delete,
-            } => (4, "Delete"),
-            AuditDetail::AccountChange { .. } => (3, "Update"),
-            _ => (99, draft.detail().activity()),
-        };
         return (
             6003,
-            id,
-            name,
+            99,
+            class,
             Fields::Api {
-                actor,
-                src_endpoint,
-                api: Api {
-                    operation: draft.detail().activity(),
+                actor: Actor {
+                    user: User::actor(actor),
                 },
+                src_endpoint: Endpoint { ip },
+                api: Api { operation: class },
             },
         );
     }
-    (0, 99, draft.detail().activity(), Fields::Base {})
+    (0, 99, class, Fields::Base {})
 }

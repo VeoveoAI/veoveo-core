@@ -2,11 +2,11 @@
 mod support;
 
 use std::time::Duration;
-use support::{AuditDb, draft, user, within};
+use support::{AuditDb, draft, note, task_update, user, within};
 use veoveo_audit::*;
 
-fn read(method: AuditReadMethod) -> AuditDraft {
-    draft(AuditDetail::Read { method })
+fn read(count: u32) -> AuditDraft {
+    draft(note(count))
 }
 
 fn all() -> (AuditReadScope, AuditQuery) {
@@ -20,9 +20,7 @@ fn conflicting(original: &AuditDraft) -> AuditDraft {
     AuditDraft::builder(
         original.request().clone(),
         original.target().clone(),
-        AuditDetail::Read {
-            method: AuditReadMethod::Status,
-        },
+        task_update(),
         AuditOutcome::Allowed,
         AuditReason::Accepted,
     )
@@ -36,12 +34,8 @@ fn conflicting(original: &AuditDraft) -> AuditDraft {
 async fn groups_commit_across_replicas_and_a_conflicting_identity_rolls_back_the_group() {
     within(Duration::from_secs(90), async {
         let audit = AuditDb::new().await;
-        let first = (0..65)
-            .map(|_| read(AuditReadMethod::ResourceRead))
-            .collect::<Vec<_>>();
-        let second = (0..65)
-            .map(|_| read(AuditReadMethod::Status))
-            .collect::<Vec<_>>();
+        let first = (0..65).map(|_| read(1)).collect::<Vec<_>>();
+        let second = (0..65).map(|_| read(2)).collect::<Vec<_>>();
         let (a, b) = tokio::join!(audit.a.append(&first), audit.b.append(&second));
         a.unwrap();
         b.unwrap();
@@ -63,7 +57,7 @@ async fn groups_commit_across_replicas_and_a_conflicting_identity_rolls_back_the
             130,
             "an identical retry changes nothing"
         );
-        let pending = read(AuditReadMethod::ResourceRead);
+        let pending = read(1);
         assert!(matches!(
             audit
                 .a
@@ -100,8 +94,8 @@ async fn domain_writes_and_audit_records_commit_or_roll_back_together() {
         };
         let (scope, query) = all();
 
-        let committed = read(AuditReadMethod::ResourceRead);
-        let write = AuditTransactionWrite::new(audit.a.targets(), committed.clone()).unwrap();
+        let committed = read(1);
+        let write = AuditTransactionWrite::new(audit.a.registry(), committed.clone()).unwrap();
         let mut transaction = pool.begin().await.unwrap();
         sqlx::query(include_str!("queries/append/domain_insert.sql"))
             .bind(1)
@@ -136,7 +130,7 @@ async fn domain_writes_and_audit_records_commit_or_roll_back_together() {
             .execute(&mut *transaction)
             .await
             .unwrap();
-        AuditTransactionWrite::new(audit.a.targets(), read(AuditReadMethod::Status))
+        AuditTransactionWrite::new(audit.a.registry(), read(2))
             .unwrap()
             .append(&mut transaction)
             .await
@@ -151,11 +145,9 @@ async fn domain_writes_and_audit_records_commit_or_roll_back_together() {
             .execute(&mut *transaction)
             .await
             .unwrap();
-        let conflict = AuditTransactionWrite::batch(
-            audit.a.targets(),
-            [read(AuditReadMethod::Usage), conflicting(&committed)],
-        )
-        .unwrap();
+        let conflict =
+            AuditTransactionWrite::batch(audit.a.registry(), [read(3), conflicting(&committed)])
+                .unwrap();
         assert!(matches!(
             conflict.append(&mut transaction).await,
             Err(AuditAppendError::IdentityConflict)
@@ -172,9 +164,9 @@ async fn domain_writes_and_audit_records_commit_or_roll_back_together() {
         assert_eq!(domain_rows().await, 1);
         assert_eq!(audit.b.page(&scope, &query).await.unwrap().records.len(), 1);
 
-        let limit = (0..=AUDIT_APPEND_LIMIT).map(|_| read(AuditReadMethod::Status));
+        let limit = (0..=AUDIT_APPEND_LIMIT).map(|_| read(2));
         assert!(matches!(
-            AuditTransactionWrite::batch(audit.a.targets(), limit),
+            AuditTransactionWrite::batch(audit.a.registry(), limit),
             Err(AuditAppendError::BatchLimit)
         ));
     })
@@ -189,15 +181,13 @@ async fn stored_records_are_immutable_and_readers_reject_rows_that_disagree_with
         let original = AuditDraft::builder(
             AuditRequest::background(),
             AuditTarget::Installation,
-            AuditDetail::Read {
-                method: AuditReadMethod::ResourceRead,
-            },
+            note(1),
             AuditOutcome::Allowed,
             AuditReason::Accepted,
         )
         .actor(alice.clone())
         .authority(AuditAuthority {
-            profile: Some("operator".parse().unwrap()),
+            work_context: Some("operations".parse().unwrap()),
             ..Default::default()
         })
         .build()
@@ -217,7 +207,7 @@ async fn stored_records_are_immutable_and_readers_reject_rows_that_disagree_with
         assert_eq!(columns.partition, "tenant:alpha");
         assert_eq!(columns.outcome, "allowed");
         assert_eq!(columns.actor.as_deref(), Some("alice"));
-        assert_eq!(columns.profile.as_deref(), Some("operator"));
+        assert_eq!(columns.class, "fixture.note");
         assert_eq!(columns.trace_id, original.request().trace_id.as_str());
         assert_eq!(
             columns.day,
@@ -248,10 +238,10 @@ async fn stored_records_are_immutable_and_readers_reject_rows_that_disagree_with
         assert_eq!(page.records[0].draft, original);
         assert_eq!(page.records[0].recorded_at, columns.recorded_at);
 
-        // A privileged writer can still store a row whose class disagrees with its
-        // draft. Every reader rejects it after SQL selection.
+        // A privileged writer can still store a row whose occurrence time disagrees with
+        // its draft. Every reader rejects it after SQL selection.
         sqlx::query_file!(
-            "tests/queries/append/insert_misclassified.sql",
+            "tests/queries/append/insert_mistimed.sql",
             original.id() as AuditRecordId,
             AuditRecordId::new() as AuditRecordId,
         )
@@ -273,7 +263,7 @@ async fn the_writer_acknowledges_after_commit_and_refuses_records_after_shutdown
         let writer = AuditWriter::start(audit.a.clone());
         let scope = AuditReadScope::new(None, true);
         futures::future::join_all((0..16).map(|_| {
-            let record = read(AuditReadMethod::Status);
+            let record = read(2);
             let writer = &writer;
             let reader = &audit.b;
             let scope = &scope;
@@ -291,11 +281,11 @@ async fn the_writer_acknowledges_after_commit_and_refuses_records_after_shutdown
             }
         }))
         .await;
-        let completion = read(AuditReadMethod::Usage);
+        let completion = read(3);
         writer.record_completion(completion.clone()).await;
         writer.shutdown(Duration::from_secs(10)).await.unwrap();
         assert!(matches!(
-            writer.record(read(AuditReadMethod::Status)).await,
+            writer.record(read(2)).await,
             Err(AuditWriteError::Closed)
         ));
         let (_, query) = all();
