@@ -42,9 +42,8 @@ BEGIN
 END
 $$;
 
--- The slugs of the servers whose group role the current user belongs to. Row-level
--- security on shared kernel tables admits a row when its server is one of them.
-CREATE FUNCTION kernel.current_servers() RETURNS text[]
+-- The slugs of the servers whose group role `member` has the privileges of.
+CREATE FUNCTION kernel.servers_of(member name) RETURNS text[]
 LANGUAGE sql STABLE
 SET search_path = pg_catalog, pg_temp
 AS $$
@@ -53,7 +52,18 @@ AS $$
     WHERE NOT r.rolcanlogin
         AND r.rolname LIKE 'server\_%'
         AND pg_catalog.pg_has_role(r.oid, 'veoveo_server', 'MEMBER')
-        AND pg_catalog.pg_has_role(current_user, r.oid, 'USAGE')
+        AND pg_catalog.pg_has_role(servers_of.member, r.oid, 'USAGE')
+$$;
+
+-- The slugs of the servers whose group role the current user belongs to. Row-level
+-- security on shared kernel tables admits a row when its server is one of them. A
+-- SECURITY DEFINER function runs as its owner, so it asks for the servers of
+-- session_user, the calling login, instead.
+CREATE FUNCTION kernel.current_servers() RETURNS text[]
+LANGUAGE sql STABLE
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT kernel.servers_of(current_user)
 $$;
 
 -- Creates the server's group role and its schema, owned by that role. The Gateway calls
@@ -238,6 +248,7 @@ END
 $$;
 
 GRANT EXECUTE ON FUNCTION
+    kernel.servers_of(name),
     kernel.current_servers(),
     kernel.start_instance(text),
     kernel.instance_alive(integer),

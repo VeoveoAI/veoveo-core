@@ -1,7 +1,7 @@
 -- Every table states how long its rows stay and what removes them.
 COMMENT ON TABLE audit.detail_type IS
     'Retention: one row per declared class for the life of the installation; records '
-    'refer to their class.';
+    'refer to their class, and a server''s classes stay after it deregisters.';
 
 COMMENT ON TABLE audit.record IS
     'Retention: until retention retires the sealed block that holds it, once every '

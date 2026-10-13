@@ -1,5 +1,7 @@
 -- Audit schema: records, signed blocks, partition heads, export delivery and retention
--- anchors. Only the installation owner reads and writes it.
+-- anchors. The installation owner reads and writes it. A registered server's login
+-- declares its own classes and appends its own records through the two SECURITY
+-- DEFINER functions at the end of this file, and holds no other privilege here.
 
 CREATE SCHEMA audit;
 
@@ -26,12 +28,16 @@ $$;
 
 -- An audit class and the JSON Schema of its detail, as the owner that records it
 -- declared them. The class is `<owner>.<name>`. Writers check each detail against the
--- schema before they append it; a record's class must be declared here.
+-- schema before they append it; a record's class must be declared here. `server` names
+-- the registered server that declared the class through its login, which is always the
+-- class's owner; it is NULL for a class the installation owner declared. It never
+-- changes after the class is first declared.
 CREATE TABLE audit.detail_type (
     class text PRIMARY KEY CHECK (class ~ '^[a-z][a-z0-9-]{0,47}\.[a-z][a-z0-9_]{0,62}$'),
     owner text GENERATED ALWAYS AS (split_part(class, '.', 1)) STORED NOT NULL,
     schema jsonb NOT NULL CHECK (jsonb_typeof(schema) = 'object'),
-    declared_at timestamptz NOT NULL DEFAULT now()
+    declared_at timestamptz NOT NULL DEFAULT now(),
+    server text CHECK (server IS NULL OR server = split_part(class, '.', 1))
 );
 
 -- One audit record. Producers supply the draft and its occurrence time; the lookup
@@ -373,3 +379,114 @@ BEGIN
     END IF;
 END
 $$;
+
+-- Server logins reach the audit schema only through the functions below.
+GRANT USAGE ON SCHEMA audit TO veoveo_server;
+
+-- Declares or replaces the calling server's classes. The calling login is session_user,
+-- because this function runs as its owner. Every class must lie under the prefix of a
+-- server whose group role the login holds, and is stored with that server; a class that
+-- the installation owner or another server declared is refused with insufficient
+-- privilege. Each schema must be a closed object of at most 64 KiB. Repeating a
+-- declaration changes nothing, and a changed schema replaces the server's own one.
+CREATE FUNCTION audit.declare_server_classes(classes text[], schemas jsonb[])
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+    servers text[] := kernel.servers_of(session_user);
+    refused text;
+BEGIN
+    IF cardinality(declare_server_classes.classes)
+            IS DISTINCT FROM cardinality(declare_server_classes.schemas)
+        OR cardinality(declare_server_classes.classes) > 256 THEN
+        RAISE EXCEPTION 'a server declares 0 to 256 classes, each with one schema'
+            USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    SELECT d.class INTO refused
+    FROM unnest(declare_server_classes.classes) AS d (class)
+    WHERE NOT split_part(d.class, '.', 1) = ANY (servers)
+    LIMIT 1;
+    IF FOUND THEN
+        RAISE EXCEPTION 'audit class % lies outside the calling server''s prefix', refused
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    SELECT d.class INTO refused
+    FROM unnest(declare_server_classes.classes, declare_server_classes.schemas)
+        AS d (class, schema)
+    WHERE d.schema IS NULL
+        OR jsonb_typeof(d.schema) <> 'object'
+        OR d.schema -> 'type' IS DISTINCT FROM '"object"'::jsonb
+        OR d.schema -> 'additionalProperties' IS DISTINCT FROM 'false'::jsonb
+        OR octet_length(d.schema::text) > 65536
+    LIMIT 1;
+    IF FOUND THEN
+        RAISE EXCEPTION 'the detail schema of audit class % is not a closed object of at most 64 KiB',
+            refused
+            USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    INSERT INTO audit.detail_type AS t (class, schema, server)
+    SELECT d.class, d.schema, split_part(d.class, '.', 1)
+    FROM unnest(declare_server_classes.classes, declare_server_classes.schemas)
+        AS d (class, schema)
+    ON CONFLICT ON CONSTRAINT detail_type_pkey DO UPDATE SET
+        schema = excluded.schema,
+        declared_at = now()
+    WHERE t.server = excluded.server AND t.schema IS DISTINCT FROM excluded.schema;
+    -- The insert left a class another owner declared untouched; refuse it.
+    SELECT t.class INTO refused
+    FROM audit.detail_type AS t
+    WHERE t.class = ANY (declare_server_classes.classes)
+        AND t.server IS DISTINCT FROM split_part(t.class, '.', 1)
+    LIMIT 1;
+    IF FOUND THEN
+        RAISE EXCEPTION 'audit class % belongs to another owner', refused
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+END
+$$;
+
+-- Appends the calling server's records inside the caller's transaction, through the
+-- installation owner's `audit.append`, so they take the same commit ordering and
+-- positions as every other record and commit or roll back with the caller's writes.
+-- Each record's class must be declared by a server whose group role the calling login
+-- holds; a class the installation owner or another server declared is refused with
+-- insufficient privilege, and an undeclared class fails as `audit.append` fails it.
+CREATE FUNCTION audit.append_server_records(drafts jsonb[], occurred timestamptz[])
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+    servers text[] := kernel.servers_of(session_user);
+    refused text;
+BEGIN
+    IF cardinality(append_server_records.drafts) > 4096 THEN
+        RAISE EXCEPTION 'a server appends at most 4096 audit records at once'
+            USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    SELECT t.class INTO refused
+    FROM unnest(append_server_records.drafts) AS i (draft)
+    JOIN audit.detail_type AS t ON t.class = i.draft ->> 'class'
+    WHERE t.server IS NULL OR NOT t.server = ANY (servers)
+    LIMIT 1;
+    IF FOUND THEN
+        RAISE EXCEPTION 'audit class % belongs to another owner', refused
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    PERFORM audit.append(append_server_records.drafts, append_server_records.occurred);
+END
+$$;
+
+REVOKE EXECUTE ON FUNCTION
+    audit.declare_server_classes(text[], jsonb[]),
+    audit.append_server_records(jsonb[], timestamptz[])
+FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION
+    audit.declare_server_classes(text[], jsonb[]),
+    audit.append_server_records(jsonb[], timestamptz[])
+TO veoveo_server;
