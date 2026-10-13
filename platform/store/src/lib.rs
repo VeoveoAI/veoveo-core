@@ -1,7 +1,7 @@
 //! PostgreSQL access for Veoveo components: the connection pool, the kernel and
 //! identity migrations, process instances, singleton locks, change notifications,
-//! registered servers' roles and schemas, and the identity records. The design is in
-//! `docs/DATABASE.md`.
+//! registered servers' roles and schemas, the identity records, keyset pages and
+//! batched maintenance. The design is in `docs/DATABASE.md`.
 
 mod config;
 mod error;
@@ -12,6 +12,7 @@ mod instance;
 mod maintenance;
 mod names;
 mod notifications;
+mod paging;
 mod servers;
 mod singleton;
 mod store;
@@ -28,6 +29,9 @@ pub use instance::{Instance, InstanceId, PING_INTERVAL, PING_TIMEOUT, REAP_INTER
 pub use maintenance::{MaintenanceBatch, Pruned};
 pub use names::{Channel, KERNEL_SCHEMAS, LoginName, MAX_SERVER_NAME, ServerSchema, SingletonName};
 pub use notifications::{Change, ChangeOperation, ChangeSignal, ChangeStream};
+pub use paging::{
+    CursorError, CursorScope, KeysetCodec, KeysetCursor, Page, PageSize, PageSizeError,
+};
 pub use singleton::Singleton;
 pub use store::{MIGRATOR, PlatformStore};
 pub use work_context::{

@@ -18,6 +18,7 @@ gateway = ["dep:veoveo-gateway-contract", "dep:veoveo-mcp-contract"]
 veoveo-types.workspace = true
 veoveo-gateway-contract = { workspace = true, optional = true }
 veoveo-mcp-contract = { workspace = true, features = ["configuration"], optional = true }
+base64.workspace = true
 chrono.workspace = true
 futures.workspace = true
 percent-encoding.workspace = true
@@ -25,6 +26,7 @@ schemars.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
@@ -35,7 +37,6 @@ uuid = { workspace = true, features = ["serde", "v5"] }
 
 [dev-dependencies]
 hex.workspace = true
-sha2.workspace = true
 tokio = { workspace = true, features = ["full"] }
 uuid = { workspace = true, features = ["v4", "v7"] }
 

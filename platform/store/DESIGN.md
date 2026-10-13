@@ -13,6 +13,7 @@ the crate implements.
 | `postgres://` connection URIs | The URL names host and database and may name the user; the password travels separately |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads: `{"table", "operation", "key", "tenant"}` on the schema's channel, or only on `<schema>.<qualifier>` when the trigger names a qualifier column |
 | Advisory locks | Instances lock `(1987471726, id)`; singletons lock `(1987474279, hashtext(name))` |
+| [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) §5 base64url, JSON | Keyset cursors: unpadded base64url over the JSON object `{"scope", "position"}`; `scope` is a `sha256:` digest under the domain `https://veoveo.ai/formats/keyset-cursor-scope` |
 
 ## Contents
 
@@ -27,6 +28,8 @@ the crate implements.
 | `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
 | `ensure_identity`, `work_context_by_key` | Identity records for the Gateway and registered servers |
 | `MaintenanceBatch`, `Pruned` | Batched deletion of expired rows, described below |
+| `PageSize<MAX>`, `Page` | A page size from 1 to the contract's `MAX`, read with `LIMIT size + 1` so the extra row decides whether a next cursor exists |
+| `CursorScope`, `KeysetCursor`, `KeysetCodec` | An opaque keyset cursor over `OpaqueCursor`, bound to the listing, tenant and filter digest that issued it |
 | `gateway` module, `gateway` feature | The Gateway's state, typed with the Gateway contracts; described below |
 
 Migration versions are grouped by owner schema in hundreds: `01xx` kernel, `02xx`
