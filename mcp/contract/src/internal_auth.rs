@@ -1,7 +1,14 @@
 use veoveo_gateway_contract::ProtectedResourceId;
+mod forwarded;
 mod request;
 mod upload;
+pub use forwarded::{
+    ForwardedTokenVerifier, KEY_DOCUMENT_LIMIT, KEY_FETCH_TIMEOUT, KEY_REFRESH_INTERVAL,
+};
 pub use request::GatewayRequestContext;
+#[cfg(test)]
+#[path = "internal_auth/forwarded_tests.rs"]
+pub(crate) mod forwarded_tests;
 #[cfg(test)]
 #[path = "internal_auth/request_tests.rs"]
 mod request_tests;
@@ -562,6 +569,15 @@ impl GatewayInternalTokenVerifier {
     ) -> Result<GatewayInternalIdentity, InternalTokenError> {
         let claims = self.decode_claims::<AccessTokenClaims>(bearer_token)?;
         self.identity_from_claims(claims)
+    }
+
+    /// The same issuer and audiences with other keys.
+    pub(crate) fn with_trust_bundle(&self, trust_bundle: GatewayInternalTrustBundle) -> Self {
+        Self {
+            issuer: self.issuer.clone(),
+            audiences: self.audiences.clone(),
+            trust_bundle,
+        }
     }
 
     fn decode_claims<T: serde::de::DeserializeOwned>(

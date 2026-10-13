@@ -189,8 +189,11 @@ fn forwarded_tokens_reject_other_types_and_invalid_execution_attribution() {
     header.typ = Some(ACCESS_TOKEN_TYPE.into());
     header.kid = Some(key.key_id().to_owned());
     verifier.verify(&sign(&header, &original)).unwrap();
-    // RFC 9068 §4: tokens of any other type are refused.
-    for typ in [Some("JWT"), None] {
+    // RFC 9068 §4: `at+jwt` or its full media type, and nothing else.
+    let mut media_type = header.clone();
+    media_type.typ = Some("application/at+jwt".into());
+    verifier.verify(&sign(&media_type, &original)).unwrap();
+    for typ in [Some("JWT"), Some("application/jwt"), None] {
         let mut other = header.clone();
         other.typ = typ.map(str::to_owned);
         assert!(matches!(

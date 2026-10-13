@@ -18,7 +18,7 @@
 //! ```ignore
 //! let server = HostedServer::for_domain::<MyDomain>()
 //!     .deployment(&public_deployment, args.allow_loopback_hosts)?
-//!     .internal_trust(registration.access_tokens())?
+//!     .internal_trust(registration.access_tokens(), http.clone())?
 //!     .handler(move || Hosted::new(MyDomain::new(state.clone())))
 //!     .build();
 //! server.serve(address).await

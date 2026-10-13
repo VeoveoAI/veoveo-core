@@ -299,6 +299,46 @@ fn test_gateway_tokens_carry_the_permissions_it_grants() {
     assert!(narrowed.permissions.is_empty());
 }
 
+#[tokio::test]
+async fn tokens_signed_by_a_rotated_gateway_key_pass_after_a_key_refresh() {
+    use crate::internal_auth::forwarded_tests::{KeyServer, generated_key, http};
+    let keys = KeyServer::start().await;
+    let (registered, rotated) = (generated_key(), generated_key());
+    keys.publish(&[&rotated]);
+    let deployment =
+        crate::PublicDeployment::new(format!("https://{}", testing::TEST_HOST)).unwrap();
+    let gateway = TestGateway::new(
+        super::HostedServer::for_domain::<FixtureDomain>()
+            .deployment(&deployment, false)
+            .unwrap()
+            .internal_trust(&keys.trust(&[&registered], "fixture"), http())
+            .unwrap()
+            .handler(|| Hosted::new(FixtureDomain::new()))
+            .build(),
+    );
+    for key in [&registered, &rotated] {
+        let (status, body) = gateway
+            .rpc_with(
+                "tools/list",
+                serde_json::json!({}),
+                Some(&keys.token(key, "fixture")),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["result"]["tools"][0]["name"], "echo");
+    }
+    assert_eq!(keys.jwks_requests(), 1);
+    // The refreshed set retired the registration's key.
+    let (status, _) = gateway
+        .rpc_with(
+            "tools/list",
+            serde_json::json!({}),
+            Some(&keys.token(&registered, "fixture")),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
 /// The status and body of a GET to `path` at the root of `gateway`'s listener.
 async fn get_root(gateway: &TestGateway, path: &str) -> (StatusCode, String) {
     gateway

@@ -27,7 +27,7 @@ in its crate documents and in its contract resource.
 | OAuth 2.0, RFC 8414, RFC 9207, RFC 8707, RFC 9728, and OpenID Connect Discovery 1.0 | private-installation profile with installation or governed managed-client registrations, exact issuer and resource binding, step-up scopes, and `private_key_jwt`; end-user clients do not use Dynamic Client Registration |
 | OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, update and remove themselves through the profile in [the server registration protocol](../ext-registration/DESIGN.md) |
 | Veoveo resumable artifact HTTP upload | repository-owned JSON admission/completion and raw part PUT contract, UUIDv7 idempotency, SHA-256 integrity, and bounded browser-safe 64-bit counters; independent of MCP methods |
-| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `iss` is the Gateway's HTTPS issuer URL, `aud` the server's resource URL (RFC 8707), `client_id` the caller's OAuth client and `jti` a UUIDv7, with the Gateway in the RFC 8693 `act` claim, granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail, and the actor, authority and request context in the `https://veoveo.ai/claims/invocation` claim; specified in [the server registration protocol](../ext-registration/DESIGN.md#forwarded-identity) |
+| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `iss` is the Gateway's HTTPS issuer URL, `aud` the server's resource URL (RFC 8707), `client_id` the caller's OAuth client and `jti` a UUIDv7, with the Gateway in the RFC 8693 `act` claim, granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail, and the actor, authority and request context in the `https://veoveo.ai/claims/invocation` claim; a hosted server verifies it with its registration's keys and refreshes them from the issuer's RFC 8414 `jwks_uri` when a token names an unknown key; specified in [the server registration protocol](../ext-registration/DESIGN.md#forwarded-identity) |
 | Veoveo upload token | the same access token addressed to the upload service's resource URL, naming the `artifact-upload` server and carrying signed control-plane and context digests in the `https://veoveo.ai/claims/artifact-upload` claim; restricted to the HTTP upload service |
 | Veoveo access-token `session_family` | Signed UUIDv7 refresh-family binding for browser tokens; current family revocation is enforced by the gateway, and absence supplies no renewable session authority |
 | Veoveo `request_context` | Signed source principal, verified access-token metadata and required audit request correlation; includes OAuth client, optional session family and managed-agent execution metadata; contains no bearer value and grants no independent renewal permission |
@@ -489,7 +489,7 @@ supplies three things:
 let server = HostedServer::for_domain::<MyDomain>()
     .deployment(&public_deployment, args.allow_loopback_hosts)?
     .allowed_hosts(args.allowed_hosts.iter().cloned())
-    .internal_trust(registration.access_tokens())?
+    .internal_trust(registration.access_tokens(), http.clone())?
     .handler(move || {
         Hosted::new(MyDomain::new(state.clone()))
             .with_tasks(DurableTasks::tasks_only(MyTasks::new(state.clone())))
@@ -499,7 +499,9 @@ server.serve(SocketAddr::from(([0, 0, 0, 0], args.port))).await
 ```
 
 The builder starts from the domain type, which names its checked setup, and offers
-`build` only after the deployment, internal trust and handler are set. The handler
+`build` only after the deployment, internal trust and handler are set. `internal_trust`
+takes the registration's `veoveo_access_tokens` and the `reqwest::Client` that refreshes
+the Gateway's keys, the one the server registered with. The handler
 must be that domain's `Hosted` value: a hand-written `ServerHandler` or another
 domain's handler does not compile. `authenticated_routes`, `admin_routes`,
 `public_routes`, `liveness` and `readiness` add server-specific HTTP. A liveness
@@ -525,7 +527,7 @@ The host gives every server the same behavior:
 | Behavior | Host rule |
 |---|---|
 | Routes | `/livez` and optional `/readyz` at the listener root, whatever the mount; `{mount}/admin/docs/*` and `{mount}/mcp` |
-| Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug; a rejection is 401 with `WWW-Authenticate: Bearer` |
+| Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug, with the Gateway's keys refreshed as [key refresh](../ext-registration/DESIGN.md#key-refresh) describes; a rejection is 401 with `WWW-Authenticate: Bearer` |
 | Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` after the domain's list hooks, sorted, 100 per page, private, five-second cache |
 | Well-known reads | `{scheme}://docs` routes and `{scheme}://contract` |

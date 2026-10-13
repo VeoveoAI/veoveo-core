@@ -1,11 +1,11 @@
 //! Gateway internal authentication for hosted servers.
 //!
-//! The middleware verifies the gateway-signed internal assertion on every request
-//! and places the verified [`GatewayInternalIdentity`] and the raw
-//! [`ForwardedBearer`] into the request extensions. Handlers read them back with
-//! [`gateway_identity`], [`forwarded_bearer`], and [`plane_caller`]. A request that
-//! reached a handler without the middleware fails closed with
-//! [`GATEWAY_ROUTING_REQUIRED`].
+//! The middleware verifies the Gateway's forwarded access token on every request,
+//! refreshing the issuer's keys when the token names one the server does not hold, and
+//! places the verified [`GatewayInternalIdentity`] and the raw [`ForwardedBearer`] into
+//! the request extensions. Handlers read them back with [`gateway_identity`],
+//! [`forwarded_bearer`], and [`plane_caller`]. A request that reached a handler without
+//! the middleware fails closed with [`GATEWAY_ROUTING_REQUIRED`].
 
 use std::{fmt, sync::Arc};
 
@@ -21,7 +21,7 @@ use axum::{
 use rmcp::{ErrorData, RoleServer, service::RequestContext};
 
 use crate::{
-    GATEWAY_ROUTING_REQUIRED, GatewayInternalIdentity, GatewayInternalTokenVerifier, PlaneCaller,
+    ForwardedTokenVerifier, GATEWAY_ROUTING_REQUIRED, GatewayInternalIdentity, PlaneCaller,
     ServerSlug,
 };
 
@@ -54,7 +54,7 @@ impl fmt::Debug for ForwardedBearer {
 /// Middleware state: the verifier bound to this server's audience.
 #[derive(Clone)]
 pub(super) struct InternalAuth {
-    pub(super) verifier: Arc<GatewayInternalTokenVerifier>,
+    pub(super) verifier: Arc<ForwardedTokenVerifier>,
     pub(super) slug: ServerSlug,
 }
 
@@ -63,7 +63,7 @@ pub(super) async fn authenticate(
     mut request: Request,
     next: Next,
 ) -> Response {
-    let (identity, bearer) = match verify(&auth.verifier, request.headers()) {
+    let (identity, bearer) = match verify(&auth.verifier, request.headers()).await {
         Ok(verified) => verified,
         Err(reason) => {
             tracing::warn!(server = auth.slug.as_str(), reason, "rejected MCP request");
@@ -86,8 +86,8 @@ pub(super) async fn authenticate(
     next.run(request).await
 }
 
-fn verify(
-    verifier: &GatewayInternalTokenVerifier,
+async fn verify(
+    verifier: &ForwardedTokenVerifier,
     headers: &HeaderMap,
 ) -> Result<(GatewayInternalIdentity, ForwardedBearer), &'static str> {
     let header = headers
@@ -97,6 +97,7 @@ fn verify(
     let token = bearer_token(header)?;
     let identity = verifier
         .verify(token)
+        .await
         .map_err(|_| "internal authorization did not verify")?;
     Ok((identity, ForwardedBearer(token.to_owned())))
 }

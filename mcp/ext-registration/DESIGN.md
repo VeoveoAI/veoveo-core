@@ -23,11 +23,11 @@ verified by `veoveo-mcp-contract`, described under [Forwarded Identity](#forward
 | JWT, RFC 7519, with JWS, RFC 7515, and EdDSA over Ed25519, RFC 8037 | Software statements and forwarded access tokens. `alg` is `EdDSA`; no other algorithm verifies. Times in OAuth documents are NumericDate seconds. |
 | JWK and JWK Set, RFC 7517, and JWK Thumbprint, RFC 7638 | Ed25519 `OKP` keys with `kid`, `alg: EdDSA` and `use: sig`. Every `kid`, a server's or the Gateway's, is the key's RFC 7638 thumbprint. |
 | JWT assertions, RFC 7523 §3 | Claim rules for the software statement: `iss` and `sub` name the server, `aud` is the URL the request is sent to, `jti` is a UUIDv7, and the lifetime is at most 60 seconds. |
-| JWT access tokens, RFC 9068 | The forwarded identity: `typ: at+jwt`, `iss` is the Gateway's HTTPS issuer URL, `aud` is the target server's resource URL, `client_id` names the OAuth client the caller used, `jti` is a UUIDv7, and `scope`, `groups` and `roles` restate the caller. |
+| JWT access tokens, RFC 9068 | The forwarded identity: `typ: at+jwt`, `iss` is the Gateway's HTTPS issuer URL, `aud` is the target server's resource URL, `client_id` names the OAuth client the caller used, `jti` is a UUIDv7, and `scope`, `groups` and `roles` restate the caller. A server, as resource server, takes the verification keys from the issuer's metadata `jwks_uri` as §4 describes. |
 | Resource indicators, RFC 8707 | A forwarded token's `aud` is an absolute URL: the target server's registered MCP endpoint. |
 | OAuth 2.0 Token Exchange, RFC 8693 §4.1 | The `act` claim of a forwarded token names the Gateway as the party acting for the caller. Nested actor chains are refused. |
 | Rich Authorization Requests, RFC 9396 | `authorization_details` carries one entry of type `https://veoveo.ai/oauth/permissions` whose `actions` are the granted permissions. |
-| Authorization server metadata, RFC 8414 | A server reads `issuer` and `registration_endpoint` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`. |
+| Authorization server metadata, RFC 8414 | A server reads `issuer`, `registration_endpoint` and `jwks_uri` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`, and the JWK Set at `jwks_uri` holds the keys that verify them. |
 | MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
 | JSON Schema 2020-12 | Schemas for every request, response and declaration are generated from the Rust types by Schemars 1.2. |
 | PostgreSQL connection URIs and role names | `veoveo_database` names the installation database as a `postgres://` URL and the server's login as an unquoted PostgreSQL role name. The [database design](../../docs/DATABASE.md) describes the roles and schemas. |
@@ -209,8 +209,9 @@ digits or underscores. The login is a member of the server's group role
 server_<server>`; deregistration drops the login. `veoveo_access_tokens` names the issuer, keys
 and audience of the access tokens the Gateway forwards to this server. The issuer is
 the Gateway's issuer URL, the value its RFC 8414 metadata announces, and the
-audience is the registered MCP endpoint. Every URL here uses `https`, or `http` on a
-local host.
+audience is the registered MCP endpoint. The keys are the server's initial set, which
+[key refresh](#key-refresh) replaces when the Gateway rotates its key. Every URL here
+uses `https`, or `http` on a local host.
 
 ### Software Statement
 
@@ -326,7 +327,8 @@ than a private name. `authorization_details` is omitted when nothing is granted.
 server verifies the token and rejects it when:
 
 - `typ` is neither `at+jwt` nor `application/at+jwt`, or `alg` is not `EdDSA`;
-- `kid` names no key from `veoveo_access_tokens`, or the signature fails;
+- `kid` names no key the server holds after [key refresh](#key-refresh), or the
+  signature fails;
 - `iss` differs from the registered issuer, `aud` differs from the registered
   resource, the invocation claim names another server, or `exp` and `nbf` place the
   current time outside the token's lifetime, with no leeway;
@@ -347,10 +349,35 @@ Both end no later than the caller's own access token.
 The server checks the required permission again with
 `GatewayInternalIdentity::grants`. Per-object rules, such as an owner-only event,
 stay with the server. `veoveo-mcp-contract` issues these tokens with
-`GatewayInternalTokenIssuer::issue` from a `ForwardedRequest`, and
-`GatewayInternalTokenVerifier::from_access_tokens` verifies them against the issuer,
-keys and resource in `veoveo_access_tokens`. The hosted runtime takes the same value
-through `HostedServerBuilder::internal_trust`.
+`GatewayInternalTokenIssuer::issue` from a `ForwardedRequest`.
+`ForwardedTokenVerifier::new` verifies them against the issuer, keys and resource in
+`veoveo_access_tokens` and refreshes the keys through the HTTP client it is given. The
+hosted runtime takes the same values through `HostedServerBuilder::internal_trust`.
+
+### Key Refresh
+
+The Gateway publishes the keys that sign forwarded tokens in the JWK Set its RFC 8414
+metadata names as `jwks_uri`. A server keeps the keys of its registration response in
+memory as its initial set. When a token's `kid` names a key the server does not hold,
+the server, as RFC 9068 §4 describes:
+
+1. reads `{issuer origin}/.well-known/oauth-authorization-server{issuer path}`, the
+   metadata URL RFC 8414 §3.1 derives from the issuer in `veoveo_access_tokens`, and
+   requires its `issuer` to equal that issuer (§3.3);
+2. reads the JWK Set at the metadata's `jwks_uri`, which uses `https`, or `http` on a
+   local host, and carries no credentials, query or fragment;
+3. keeps the set's Ed25519 keys in the shape of `veoveo_access_tokens`, each named by
+   its RFC 7638 thumbprint, and ignores every other entry, as RFC 7517 §5 asks;
+4. replaces its keys with that set when the set holds the token's key, and verifies the
+   token again.
+
+The server fetches at most once every 30 seconds, whatever the outcome, and concurrent
+requests wait for one fetch. Each request has a 5-second timeout and a 64 KiB body
+limit, follows no redirect and expects HTTP 200. A failed fetch, or a set without the
+token's key, leaves the keys unchanged and rejects the token. A token with another
+defect, such as a known key with a bad signature, never causes a fetch. The Gateway
+publishes a new key before it signs with it and keeps a retired key in the set until
+the tokens it signed expire.
 
 ## Registration Client
 
@@ -371,7 +398,7 @@ let registration = client.register().await?;
 let database = registration.database();
 let server = HostedServer::for_domain::<TimeDomain>()
     .deployment(&deployment, false)?
-    .internal_trust(registration.access_tokens())?;
+    .internal_trust(registration.access_tokens(), http.clone())?;
 tokio::spawn(async move { client.maintain(registration, shutdown_signal()).await });
 ```
 
@@ -405,4 +432,7 @@ registration, removal at shutdown, the pinned key and the initial access token. 
 tests cover the pinned key, metadata, audience and lifetime. The forwarded token
 tests in `veoveo-mcp-contract` cover the token type, issuer, audience, actor, `jti`,
 the single authorization detail, the namespace of granted permissions and agreement
-between standard and Veoveo claims.
+between standard and Veoveo claims. Its key refresh tests run an issuer on a loopback
+port: a rotated key, one fetch for concurrent requests, the 30-second interval, a set
+without the token's key, a foreign issuer, a missing or remote plain-HTTP `jwks_uri`, a
+redirect, an oversized document and an unreachable issuer.

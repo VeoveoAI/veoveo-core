@@ -18,7 +18,8 @@
 //! ```
 //!
 //! The signing key is a published test key. Production servers trust only the
-//! keys their registration response names, which never contain it. [`TestGateway::granting`]
+//! keys their registration response and the Gateway's JWK Set name, which never
+//! contain it. The test deployment never refreshes its keys. [`TestGateway::granting`]
 //! sets the permissions its tokens carry.
 
 use std::{collections::BTreeSet, sync::Arc};
@@ -42,9 +43,10 @@ use super::{
     DomainServer, HostedServer, HostedServerBuilder, Missing, Provided, server::Deployment,
 };
 use crate::{
-    ForwardedRequest, GatewayInternalSigningKey, GatewayInternalTokenIssuer,
-    GatewayInternalTokenVerifier, GatewayInternalTrustBundle, GatewayProfileId, OAuthClientId,
-    Principal, PrincipalKind, PublicDeployment, TokenIssuer, TokenSubject,
+    ForwardedRequest, ForwardedTokenVerifier, GatewayInternalSigningKey,
+    GatewayInternalTokenIssuer, GatewayInternalTokenVerifier, GatewayInternalTrustBundle,
+    GatewayProfileId, OAuthClientId, Principal, PrincipalKind, PublicDeployment, TokenIssuer,
+    TokenSubject, server_contract::McpServerContract,
 };
 
 /// The host authority of the test deployment.
@@ -121,47 +123,43 @@ pub fn authority() -> InvocationAuthority {
     }
 }
 
+/// A verifier of `D`'s tokens that holds the test key and never refreshes it.
+fn test_verifier<D: DomainServer>() -> ForwardedTokenVerifier {
+    ForwardedTokenVerifier::fixed(
+        GatewayInternalTokenVerifier::from_access_tokens(
+            &access_token_trust(),
+            D::Contract::slug(),
+        )
+        .unwrap(),
+    )
+}
+
 /// Starts the builder for `D` on the test deployment, trusting the test key.
-pub fn for_domain<D: DomainServer>() -> HostedServerBuilder<
-    D,
-    Provided<Deployment>,
-    Provided<Arc<GatewayInternalTokenVerifier>>,
-    Missing,
-> {
+pub fn for_domain<D: DomainServer>()
+-> HostedServerBuilder<D, Provided<Deployment>, Provided<Arc<ForwardedTokenVerifier>>, Missing> {
     let deployment = PublicDeployment::new(format!("https://{TEST_HOST}")).unwrap();
     HostedServer::for_domain::<D>()
         .deployment(&deployment, false)
         .unwrap()
-        .internal_trust(&access_token_trust())
-        .unwrap()
+        .with_verifier(test_verifier::<D>())
 }
 
 /// Starts the builder for `D` under `/{slug}` on the test host as an internal
 /// server, trusting the test key.
-pub fn internal_for_domain<D: DomainServer>() -> HostedServerBuilder<
-    D,
-    Provided<Deployment>,
-    Provided<Arc<GatewayInternalTokenVerifier>>,
-    Missing,
-> {
+pub fn internal_for_domain<D: DomainServer>()
+-> HostedServerBuilder<D, Provided<Deployment>, Provided<Arc<ForwardedTokenVerifier>>, Missing> {
     HostedServer::for_domain::<D>()
         .internal([TEST_HOST.to_owned()])
-        .internal_trust(&access_token_trust())
-        .unwrap()
+        .with_verifier(test_verifier::<D>())
 }
 
 /// Starts the builder for `D` at the internal root on the test host, trusting
 /// the test key.
-pub fn internal_root_for_domain<D: DomainServer>() -> HostedServerBuilder<
-    D,
-    Provided<Deployment>,
-    Provided<Arc<GatewayInternalTokenVerifier>>,
-    Missing,
-> {
+pub fn internal_root_for_domain<D: DomainServer>()
+-> HostedServerBuilder<D, Provided<Deployment>, Provided<Arc<ForwardedTokenVerifier>>, Missing> {
     HostedServer::for_domain::<D>()
         .internal_root([TEST_HOST.to_owned()])
-        .internal_trust(&access_token_trust())
-        .unwrap()
+        .with_verifier(test_verifier::<D>())
 }
 
 /// A built server and the gateway calls that reach it.

@@ -6,8 +6,9 @@
 //!
 //! - [`deployment`](HostedServerBuilder::deployment): the public deployment, which
 //!   fixes the mount path and the allowed hosts;
-//! - [`internal_trust`](HostedServerBuilder::internal_trust): the gateway trust
-//!   bundle, bound to this server's slug as the token audience;
+//! - [`internal_trust`](HostedServerBuilder::internal_trust): the issuer, keys and
+//!   audience of the Gateway's forwarded access tokens, bound to this server's slug,
+//!   and the HTTP client that refreshes the issuer's keys;
 //! - [`handler`](HostedServerBuilder::handler): the factory for that domain's
 //!   [`Hosted`] handler. A hand-written `ServerHandler`, or a domain other than the
 //!   one the builder started from, does not compile.
@@ -91,7 +92,7 @@ use tower_http::trace::TraceLayer;
 use veoveo_mcp_ext_registration::AccessTokenTrust;
 
 use crate::{
-    GatewayInternalTokenVerifier, PublicDeployment, ServerPublicEndpoint, ServerSlug,
+    ForwardedTokenVerifier, PublicDeployment, ServerPublicEndpoint, ServerSlug,
     canonical_streamable_http_server_config, enforce_serialized_mcp_response, public_allowed_hosts,
     server_contract::McpServerContract, stateless_session_manager,
 };
@@ -315,21 +316,30 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
     }
 
     /// Admits the Gateway's access tokens addressed to this server's slug, from the
-    /// issuer and keys its registration response names in `ai.veoveo/access-tokens`.
+    /// issuer, keys and audience its registration response names in
+    /// `veoveo_access_tokens`. When a token names a key the server does not hold,
+    /// `http` fetches the issuer's JWK Set through its RFC 8414 metadata, at most once
+    /// per [`KEY_REFRESH_INTERVAL`](crate::KEY_REFRESH_INTERVAL).
     pub fn internal_trust(
         self,
         trust: &AccessTokenTrust,
-    ) -> anyhow::Result<HostedServerBuilder<D, Dep, Provided<Arc<GatewayInternalTokenVerifier>>, H>>
-    {
-        let verifier =
-            GatewayInternalTokenVerifier::from_access_tokens(trust, D::Contract::slug())?;
-        Ok(HostedServerBuilder {
+        http: reqwest::Client,
+    ) -> anyhow::Result<HostedServerBuilder<D, Dep, Provided<Arc<ForwardedTokenVerifier>>, H>> {
+        let verifier = ForwardedTokenVerifier::new(trust, D::Contract::slug(), http)?;
+        Ok(self.with_verifier(verifier))
+    }
+
+    pub(super) fn with_verifier(
+        self,
+        verifier: ForwardedTokenVerifier,
+    ) -> HostedServerBuilder<D, Dep, Provided<Arc<ForwardedTokenVerifier>>, H> {
+        HostedServerBuilder {
             domain: self.domain,
             deployment: self.deployment,
             trust: Provided(Arc::new(verifier)),
             handler: self.handler,
             options: self.options,
-        })
+        }
     }
 
     /// Sets the factory for this domain's [`Hosted`] handler, with its task
@@ -415,12 +425,7 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
 }
 
 impl<D, F, T>
-    HostedServerBuilder<
-        D,
-        Provided<Deployment>,
-        Provided<Arc<GatewayInternalTokenVerifier>>,
-        Provided<F>,
-    >
+    HostedServerBuilder<D, Provided<Deployment>, Provided<Arc<ForwardedTokenVerifier>>, Provided<F>>
 where
     D: DomainServer,
     F: Fn() -> Hosted<D, T> + Send + Sync + 'static,
