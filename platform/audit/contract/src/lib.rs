@@ -30,8 +30,6 @@ mod registry;
 pub use registry::*;
 mod stored;
 pub use stored::*;
-mod targets;
-pub use targets::*;
 
 /// The audit domain owns this scope; protocol layers only carry its validated name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]

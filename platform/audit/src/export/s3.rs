@@ -325,9 +325,11 @@ mod tests {
             };
             let records = vec![super::super::tests::record(
                 veoveo_audit_contract::AuditRegistry::platform()
-                    .detail(&veoveo_audit_contract::platform::AuditView {})
+                    .detail(&veoveo_audit_contract::platform::AuditView {
+                        partition: veoveo_audit_contract::AuditPartition::Installation,
+                    })
                     .unwrap(),
-                veoveo_audit_contract::AuditTarget::Installation,
+                None,
                 true,
             )];
             let block = crate::integrity::AuditSigningKey::from_seed(&[7; 32])

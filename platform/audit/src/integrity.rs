@@ -345,12 +345,12 @@ mod tests {
         AuditRecord {
             draft: AuditDraft::builder(
                 AuditRequest::background(),
-                AuditTarget::Installation,
                 veoveo_audit_contract::AuditRegistry::platform()
-                    .detail(&veoveo_audit_contract::platform::AuditView {})
+                    .detail(&veoveo_audit_contract::platform::AuditView {
+                        partition: veoveo_audit_contract::AuditPartition::Installation,
+                    })
                     .unwrap(),
-                AuditOutcome::Allowed,
-                AuditReason::Accepted,
+                AuditOutcome::Success,
             )
             .build()
             .unwrap(),
@@ -456,12 +456,10 @@ mod tests {
         let mut old = fixture();
         old.draft = AuditDraft::builder(
             old.draft.request().clone(),
-            AuditTarget::Installation,
             veoveo_audit_contract::AuditRegistry::platform()
                 .detail(&veoveo_audit_contract::platform::TaskUpdate {})
                 .unwrap(),
-            AuditOutcome::Allowed,
-            AuditReason::Accepted,
+            AuditOutcome::Success,
         )
         .identity(old.draft.id())
         .occurred_at(Utc::now() - TimeDelta::hours(1))
@@ -498,12 +496,12 @@ mod tests {
             let supplied = now + TimeDelta::hours(offset);
             record.draft = AuditDraft::builder(
                 record.draft.request().clone(),
-                AuditTarget::Installation,
                 veoveo_audit_contract::AuditRegistry::platform()
-                    .detail(&veoveo_audit_contract::platform::AuditView {})
+                    .detail(&veoveo_audit_contract::platform::AuditView {
+                        partition: veoveo_audit_contract::AuditPartition::Installation,
+                    })
                     .unwrap(),
-                AuditOutcome::Allowed,
-                AuditReason::Accepted,
+                AuditOutcome::Success,
             )
             .identity(record.draft.id())
             .occurred_at(supplied)

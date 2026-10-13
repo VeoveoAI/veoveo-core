@@ -6,30 +6,25 @@
       "kind": "installation"
     },
     "actor": null,
-    "authority": {
-      "work_context": null,
-      "policy_revision": null,
-      "scopes": [],
-      "data_labels": []
+    "via": {
+      "server": "media",
+      "task": "019f25e8-cf39-7000-8000-000000000004"
     },
-    "target": {
-      "kind": "item",
-      "item": "019f25e8-cf39-7000-8000-000000000001"
-    },
+    "target": "fixture://items/019f25e8-cf39-7000-8000-000000000001",
     "class": "fixture.note",
     "detail": {
       "count": 7
     },
-    "outcome": "succeeded",
-    "reason": "accepted",
+    "outcome": "denied",
+    "reason": "shelf_full",
     "request": {
       "id": "019f25e8-cf39-7000-8000-000000000003",
       "trace_id": "11111111111111111111111111111111",
       "span_id": "1111111111111111",
-      "source_ip": null
+      "source_ip": null,
+      "task": null
     },
-    "occurred_at": "2026-10-04T12:00:00Z",
-    "latency_ms": null
+    "occurred_at": "2026-10-04T12:00:00Z"
   },
   "recorded_at": "2026-10-04T12:00:01Z"
 }

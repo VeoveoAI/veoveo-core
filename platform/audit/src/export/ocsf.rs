@@ -1,7 +1,10 @@
 //! OCSF 1.9.0 mapping of the record envelope. A record with an actor and a source
 //! address is an API Activity whose operation is the record's class; any other record
-//! is a Base Event. Unavailable facts stay unavailable, and `unmapped.veoveo` preserves
-//! the complete signed source record with its owner's detail.
+//! is a Base Event. The outcome maps to `status_id` and the Security Control profile's
+//! `action_id`, the owner's reason to `status_code`, the acting server to
+//! `actor.application` and the target to `resources`. Unavailable facts stay
+//! unavailable, and `unmapped.veoveo` preserves the complete signed source record with
+//! its owner's detail.
 use serde::Serialize;
 use std::net::IpAddr;
 use veoveo_audit_contract::*;
@@ -17,6 +20,13 @@ pub struct Event<'a> {
     severity_id: u8,
     status_id: u8,
     status: &'static str,
+    action_id: u8,
+    action: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status_code: Option<&'a AuditReason>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    resources: Vec<Resource<'a>>,
+    profiles: [&'static str; 1],
     time: i64,
     metadata: Metadata<'a>,
     #[serde(flatten)]
@@ -56,6 +66,19 @@ enum Fields<'a> {
 #[derive(Serialize)]
 struct Actor<'a> {
     user: User<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    application: Option<Application<'a>>,
+}
+/// The server that acted for the user, and the Task the call came from.
+#[derive(Serialize)]
+struct Application<'a> {
+    name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uid: Option<String>,
+}
+#[derive(Serialize)]
+struct Resource<'a> {
+    uid: &'a str,
 }
 #[derive(Serialize)]
 struct User<'a> {
@@ -88,11 +111,11 @@ impl<'a> Event<'a> {
     pub fn from_record(record: &'a AuditStoredRecord) -> Self {
         let draft = record;
         let (class_uid, activity_id, activity_name, fields) = classify(record);
-        let (status_id, status) = match draft.outcome() {
-            AuditOutcome::Succeeded => (1, "Success"),
-            AuditOutcome::Failed | AuditOutcome::Denied => (2, "Failure"),
-            // Admission does not assert that an operation has completed.
-            AuditOutcome::Allowed => (99, "Allowed"),
+        let (status_id, status, action_id, action) = match draft.outcome() {
+            AuditOutcome::Success => (1, "Success", 1, "Allowed"),
+            AuditOutcome::Failure => (2, "Failure", 1, "Allowed"),
+            AuditOutcome::Denied => (2, "Failure", 2, "Denied"),
+            AuditOutcome::Unknown => (0, "Unknown", 0, "Unknown"),
         };
         Self {
             category_uid: class_uid / 1000,
@@ -103,6 +126,17 @@ impl<'a> Event<'a> {
             severity_id: 1,
             status_id,
             status,
+            action_id,
+            action,
+            status_code: draft.reason(),
+            resources: draft
+                .target()
+                .map(|target| Resource {
+                    uid: target.as_str(),
+                })
+                .into_iter()
+                .collect(),
+            profiles: ["security_control"],
             time: draft.occurred_at().timestamp_millis(),
             metadata: Metadata {
                 version: "1.9.0",
@@ -132,6 +166,10 @@ fn classify(record: &AuditStoredRecord) -> (u16, u8, &str, Fields<'_>) {
             Fields::Api {
                 actor: Actor {
                     user: User::actor(actor),
+                    application: draft.via().map(|via| Application {
+                        name: via.server.as_str(),
+                        uid: via.task.map(|task| task.as_uuid().to_string()),
+                    }),
                 },
                 src_endpoint: Endpoint { ip },
                 api: Api { operation: class },

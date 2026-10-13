@@ -4,28 +4,29 @@ use chrono::Utc;
 /// A record as stored, the form export reads.
 pub(super) fn record(
     detail: AuditDetail,
-    target: AuditTarget,
+    target: Option<AuditTarget>,
     identified: bool,
 ) -> AuditStoredRecord {
     let mut request = AuditRequest::background();
     if identified {
         request.source_ip = Some("192.0.2.1".parse().unwrap());
     }
-    let mut builder = AuditDraft::builder(
-        request,
-        target,
-        detail,
-        AuditOutcome::Allowed,
-        AuditReason::Accepted,
-    );
+    let mut builder = AuditDraft::builder(request, detail, AuditOutcome::Success);
+    if let Some(target) = target {
+        builder = builder.target(target);
+    }
     if identified {
-        builder = builder.actor(AuditActor {
-            principal: "operator".parse().unwrap(),
-            kind: AuditPrincipalKind::User,
-            tenant: None,
-            oauth_client: None,
-            delegating_principal: None,
-        });
+        builder = builder
+            .actor(AuditActor {
+                principal: "operator".parse().unwrap(),
+                kind: AuditPrincipalKind::User,
+                tenant: None,
+                work_context: None,
+            })
+            .via(AuditVia {
+                server: "media".parse().unwrap(),
+                task: None,
+            });
     }
     AuditRecord {
         draft: builder.build().unwrap(),
@@ -35,10 +36,9 @@ pub(super) fn record(
 }
 #[test]
 fn ocsf_maps_identified_records_to_api_activity_named_by_class() {
-    let context = AuditTarget::WorkContext {
-        tenant: "tenant".parse().unwrap(),
-        context: "operations".parse().unwrap(),
-    };
+    let context = Some(veoveo_audit_contract::task_target(
+        veoveo_types::TaskId::new(),
+    ));
     let anonymous = record(
         veoveo_audit_contract::AuditRegistry::platform()
             .detail(&veoveo_audit_contract::platform::TaskCancel {})
@@ -67,7 +67,17 @@ fn ocsf_maps_identified_records_to_api_activity_named_by_class() {
     assert_eq!(wire["activity_name"], "task.cancel");
     assert_eq!(wire["api"]["operation"], "task.cancel");
     assert_eq!(wire["actor"]["user"]["uid"], "operator");
-    assert_eq!(wire["status"], "Allowed");
+    assert_eq!(wire["actor"]["application"]["name"], "media");
+    assert_eq!(wire["status_id"], 1);
+    assert_eq!(wire["action_id"], 1);
+    assert_eq!(wire["action"], "Allowed");
+    assert_eq!(wire["profiles"], serde_json::json!(["security_control"]));
+    assert!(
+        wire["resources"][0]["uid"]
+            .as_str()
+            .unwrap()
+            .starts_with("urn:uuid:")
+    );
 }
 #[test]
 fn destination_identity_covers_storage_and_retention_but_never_credentials() {
@@ -94,11 +104,11 @@ fn destination_identity_covers_storage_and_retention_but_never_credentials() {
 fn export_retry_bytes_and_otlp_correlation_are_stable() {
     let record = record(
         veoveo_audit_contract::AuditRegistry::platform()
-            .detail(&veoveo_audit_contract::platform::AuditView {})
+            .detail(&veoveo_audit_contract::platform::AuditView {
+                partition: veoveo_audit_contract::AuditPartition::Installation,
+            })
             .unwrap(),
-        AuditTarget::AuditLog {
-            partition: AuditPartition::Installation,
-        },
+        None,
         true,
     );
     let records = vec![record];

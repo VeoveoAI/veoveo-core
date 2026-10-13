@@ -1,4 +1,4 @@
-//! Reader projections preserve domain identities, owner targets and declared details.
+//! Reader projections preserve domain identities, targets and declared details.
 use crate::*;
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -12,9 +12,10 @@ pub struct AuditRecordSummary {
     pub actor: Option<veoveo_types::PrincipalId>,
     pub class: AuditClass,
     pub detail: AuditDetailFields,
-    pub target: AuditTarget,
+    pub target: Option<AuditTarget>,
+    pub via: Option<AuditVia>,
     pub outcome: AuditOutcome,
-    pub reason: AuditReason,
+    pub reason: Option<AuditReason>,
     pub source_ip: Option<std::net::IpAddr>,
     pub trace_id: AuditTraceId,
     pub request_id: AuditRequestId,
@@ -28,9 +29,10 @@ impl From<AuditRecord> for AuditRecordSummary {
             actor: draft.actor().map(|actor| actor.principal.clone()),
             class: draft.class().clone(),
             detail: draft.detail().clone(),
-            target: draft.target().clone(),
+            target: draft.target().cloned(),
+            via: draft.via().cloned(),
             outcome: draft.outcome(),
-            reason: draft.reason(),
+            reason: draft.reason().cloned(),
             source_ip: draft.request().source_ip,
             trace_id: draft.request().trace_id.clone(),
             request_id: draft.request().id,
@@ -85,7 +87,7 @@ struct AuditReaderApi {
 }
 /// The reader API schema for generated clients, admitting exactly the registry's
 /// targets, classes and declared details.
-pub fn reader_schema(registry: &AuditRegistry) -> Result<schemars::Schema, AuditTargetError> {
+pub fn reader_schema(registry: &AuditRegistry) -> Result<schemars::Schema, AuditSchemaError> {
     registry.compose_schema(base_reader_schema())
 }
 

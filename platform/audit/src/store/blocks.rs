@@ -1,13 +1,12 @@
 //! Partition-scoped reads of signed blocks, their member records and the retained range.
 use super::{
     AuditStore, AuditStoreError, admit,
-    records::target_document,
     row::{BlockRow, RecordRow, sequence, stored_sequence},
 };
 use veoveo_audit_contract::{
     AUDIT_APPEND_LIMIT, AuditBlock, AuditBlockSequence, AuditCheckpoint, AuditClass, AuditOutcome,
-    AuditPartition, AuditPosition, AuditQuery, AuditReadScope, AuditRecord, AuditRecordId,
-    AuditStoredRecord, AuditTraceId, AuditValidationError,
+    AuditPartition, AuditPosition, AuditQuery, AuditReadScope, AuditReason, AuditRecord,
+    AuditRecordId, AuditStoredRecord, AuditTarget, AuditTraceId, AuditValidationError,
 };
 use veoveo_types::{PrincipalId, Sha256Digest};
 
@@ -92,9 +91,6 @@ impl AuditStore {
         if query.cursor.is_some() {
             return Err(AuditValidationError::Cursor.into());
         }
-        if let Some(target) = &query.target {
-            self.registry().validate(target)?;
-        }
         let partition = &block.head.partition;
         admit(scope, partition)?;
         if &query.partition != partition {
@@ -123,11 +119,12 @@ impl AuditStore {
             &ids as &[AuditRecordId],
             query.class.as_ref() as Option<&AuditClass>,
             query.actor.as_ref().map(PrincipalId::as_str),
-            query.target.as_ref().map(target_document),
+            query.target.as_ref().map(AuditTarget::as_str),
             query.outcome as Option<AuditOutcome>,
             query.trace.as_ref() as Option<&AuditTraceId>,
             query.from,
             query.until,
+            query.reason.as_ref().map(AuditReason::as_str),
         )
         .fetch_all(&mut *transaction)
         .await?;

@@ -2,10 +2,10 @@ use crate::*;
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, net::IpAddr};
+use std::net::IpAddr;
 use veoveo_types::{
-    DataLabelId, OAuthClientId, PolicyVersion, PrincipalId, ResourceUri, ScopeName, ServerSlug,
-    TaskId, TenantId, WorkContextId,
+    IdMetadata, IdProfile, IdProfileSpec, IdentifierError, PrincipalId, ServerSlug, TaskId,
+    TenantId, WorkContextId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -34,77 +34,29 @@ pub enum AuditPrincipalKind {
     Service,
     Capability,
 }
+
+/// Who acted: a principal in its tenant and Work Context. A record without an actor is
+/// the system's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuditActor {
     pub principal: PrincipalId,
     pub kind: AuditPrincipalKind,
     pub tenant: Option<TenantId>,
-    pub oauth_client: Option<OAuthClientId>,
-    pub delegating_principal: Option<PrincipalId>,
-}
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct AuditAuthority {
     pub work_context: Option<WorkContextId>,
-    pub policy_revision: Option<PolicyVersion>,
-    pub scopes: BTreeSet<ScopeName>,
-    pub data_labels: BTreeSet<DataLabelId>,
 }
-/// What a record is about: a platform object, any resource by its URI, or an owner's
-/// registered target.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AuditTarget {
-    Resource {
-        uri: ResourceUri,
-    },
-    Server {
-        server: ServerSlug,
-    },
-    Task {
-        task: TaskId,
-    },
-    Principal {
-        tenant: TenantId,
-        principal: PrincipalId,
-    },
-    WorkContext {
-        tenant: TenantId,
-        context: WorkContextId,
-    },
-    AuditLog {
-        partition: AuditPartition,
-    },
-    Installation,
-    #[serde(untagged)]
-    Extension(crate::AdmittedAuditTarget),
-}
+
+/// The server that acted for the actor through the Gateway, and the Task of that server
+/// the call came from. OCSF names it as the actor's application.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum CoreAuditTarget {
-    Resource {
-        uri: ResourceUri,
-    },
-    Server {
-        server: ServerSlug,
-    },
-    Task {
-        task: TaskId,
-    },
-    Principal {
-        tenant: TenantId,
-        principal: PrincipalId,
-    },
-    WorkContext {
-        tenant: TenantId,
-        context: WorkContextId,
-    },
-    AuditLog {
-        partition: AuditPartition,
-    },
-    Installation,
+#[serde(deny_unknown_fields)]
+pub struct AuditVia {
+    pub server: ServerSlug,
+    pub task: Option<TaskId>,
 }
+
+/// Where the record came from: the request, its W3C trace, the peer and the Task the
+/// action ran in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuditRequest {
@@ -112,28 +64,27 @@ pub struct AuditRequest {
     pub trace_id: AuditTraceId,
     pub span_id: AuditSpanId,
     pub source_ip: Option<IpAddr>,
+    pub task: Option<TaskId>,
 }
+
 /// Verified attribution retained by a domain operation for its lifecycle records.
 /// Producers construct this from their authenticated protocol context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuditContext {
     pub actor: AuditActor,
-    pub authority: AuditAuthority,
+    pub via: Option<AuditVia>,
     pub request: AuditRequest,
 }
 impl AuditContext {
-    pub fn draft(
-        &self,
-        target: AuditTarget,
-        detail: AuditDetail,
-        outcome: AuditOutcome,
-        reason: AuditReason,
-    ) -> Result<AuditDraft, AuditValidationError> {
-        AuditDraft::builder(self.request.clone(), target, detail, outcome, reason)
-            .actor(self.actor.clone())
-            .authority(self.authority.clone())
-            .build()
+    /// A record of this context's actor, acting server and request.
+    pub fn draft(&self, detail: AuditDetail, outcome: AuditOutcome) -> AuditDraftBuilder {
+        let builder =
+            AuditDraft::builder(self.request.clone(), detail, outcome).actor(self.actor.clone());
+        match &self.via {
+            Some(via) => builder.via(via.clone()),
+            None => builder,
+        }
     }
 }
 
@@ -154,24 +105,21 @@ pub(crate) struct AuditDraftWire {
     pub(crate) format: AuditRecordFormat,
     pub(crate) partition: AuditPartition,
     pub(crate) actor: Option<AuditActor>,
-    pub(crate) authority: AuditAuthority,
-    pub(crate) target: AuditTarget,
+    pub(crate) via: Option<AuditVia>,
+    pub(crate) target: Option<AuditTarget>,
     pub(crate) class: AuditClass,
     pub(crate) detail: AuditDetailFields,
     pub(crate) outcome: AuditOutcome,
-    pub(crate) reason: AuditReason,
+    pub(crate) reason: Option<AuditReason>,
     pub(crate) request: AuditRequest,
     pub(crate) occurred_at: DateTime<Utc>,
-    pub(crate) latency_ms: Option<u64>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum AuditValidationError {
-    #[error("audit counters must fit the exact I-JSON integer range")]
-    CounterRange,
     #[error("audit partition must match the authenticated actor's tenant")]
     Partition,
-    #[error("an accepted outcome cannot carry a denial reason")]
-    Outcome,
+    #[error("an audit detail holds at most 16 KiB of JSON")]
+    DetailSize,
     #[error("audit cursor belongs to a different partition")]
     Cursor,
     #[error("audit time range must increase")]
@@ -186,26 +134,18 @@ pub enum AuditValidationError {
 impl TryFrom<AuditDraftWire> for AuditDraft {
     type Error = AuditValidationError;
     fn try_from(wire: AuditDraftWire) -> Result<Self, Self::Error> {
-        check_envelope(
-            &wire.partition,
-            wire.actor.as_ref(),
-            wire.outcome,
-            wire.reason,
-            wire.latency_ms,
-        )?;
+        check_envelope(&wire.partition, wire.actor.as_ref(), wire.detail.as_map())?;
         Ok(Self(wire))
     }
 }
 
 /// The envelope rules every record satisfies, whether its owner's types are known or
-/// only its stored document: the partition follows the actor's tenant, an accepted
-/// outcome carries the accepted reason, and the latency fits the exact I-JSON range.
+/// only its stored document: the partition follows the actor's tenant and the detail
+/// holds at most [`MAX_DETAIL_BYTES`] of JSON.
 pub(crate) fn check_envelope(
     partition: &AuditPartition,
     actor: Option<&AuditActor>,
-    outcome: AuditOutcome,
-    reason: AuditReason,
-    latency_ms: Option<u64>,
+    detail: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), AuditValidationError> {
     let expected = actor
         .and_then(|actor| actor.tenant.clone())
@@ -213,13 +153,8 @@ pub(crate) fn check_envelope(
     if &expected != partition {
         return Err(AuditValidationError::Partition);
     }
-    let accepted = matches!(outcome, AuditOutcome::Allowed | AuditOutcome::Succeeded);
-    if accepted != (reason == AuditReason::Accepted) {
-        return Err(AuditValidationError::Outcome);
-    }
-    const MAX_COUNTER: u64 = (1u64 << 53) - 1;
-    if latency_ms.is_some_and(|value| value > MAX_COUNTER) {
-        return Err(AuditValidationError::CounterRange);
+    if detail_size(detail) > MAX_DETAIL_BYTES {
+        return Err(AuditValidationError::DetailSize);
     }
     Ok(())
 }
@@ -229,12 +164,12 @@ impl From<AuditDraft> for AuditDraftWire {
     }
 }
 impl AuditDraft {
+    /// A record of `detail`'s class with `outcome`. The builder adds the actor, the
+    /// acting server, the target, the reason, the identity and the occurrence time.
     pub fn builder(
         request: AuditRequest,
-        target: AuditTarget,
         detail: AuditDetail,
         outcome: AuditOutcome,
-        reason: AuditReason,
     ) -> AuditDraftBuilder {
         let (class, detail) = detail.into_parts();
         AuditDraftBuilder(AuditDraftWire {
@@ -242,15 +177,14 @@ impl AuditDraft {
             format: AuditRecordFormat::AuditRecord,
             partition: AuditPartition::Installation,
             actor: None,
-            authority: AuditAuthority::default(),
-            target,
+            via: None,
+            target: None,
             class,
             detail,
             outcome,
-            reason,
+            reason: None,
             request,
             occurred_at: Utc::now(),
-            latency_ms: None,
         })
     }
     pub fn id(&self) -> AuditRecordId {
@@ -262,11 +196,11 @@ impl AuditDraft {
     pub fn actor(&self) -> Option<&AuditActor> {
         self.0.actor.as_ref()
     }
-    pub fn authority(&self) -> &AuditAuthority {
-        &self.0.authority
+    pub fn via(&self) -> Option<&AuditVia> {
+        self.0.via.as_ref()
     }
-    pub fn target(&self) -> &AuditTarget {
-        &self.0.target
+    pub fn target(&self) -> Option<&AuditTarget> {
+        self.0.target.as_ref()
     }
     pub fn class(&self) -> &AuditClass {
         &self.0.class
@@ -277,17 +211,14 @@ impl AuditDraft {
     pub fn outcome(&self) -> AuditOutcome {
         self.0.outcome
     }
-    pub fn reason(&self) -> AuditReason {
-        self.0.reason
+    pub fn reason(&self) -> Option<&AuditReason> {
+        self.0.reason.as_ref()
     }
     pub fn request(&self) -> &AuditRequest {
         &self.0.request
     }
     pub fn occurred_at(&self) -> DateTime<Utc> {
         self.0.occurred_at
-    }
-    pub fn latency_ms(&self) -> Option<u64> {
-        self.0.latency_ms
     }
 }
 pub struct AuditDraftBuilder(AuditDraftWire);
@@ -300,8 +231,17 @@ impl AuditDraftBuilder {
         self.0.actor = Some(actor);
         self
     }
-    pub fn authority(mut self, authority: AuditAuthority) -> Self {
-        self.0.authority = authority;
+    pub fn via(mut self, via: AuditVia) -> Self {
+        self.0.via = Some(via);
+        self
+    }
+    /// What the record is about, as its owner's URI. A Task is `urn:uuid:<id>`.
+    pub fn target(mut self, target: AuditTarget) -> Self {
+        self.0.target = Some(target);
+        self
+    }
+    pub fn reason(mut self, reason: AuditReason) -> Self {
+        self.0.reason = Some(reason);
         self
     }
     pub fn identity(mut self, id: AuditRecordId) -> Self {
@@ -310,10 +250,6 @@ impl AuditDraftBuilder {
     }
     pub fn occurred_at(mut self, at: DateTime<Utc>) -> Self {
         self.0.occurred_at = at;
-        self
-    }
-    pub fn latency_ms(mut self, milliseconds: u64) -> Self {
-        self.0.latency_ms = Some(milliseconds);
         self
     }
     pub fn build(self) -> Result<AuditDraft, AuditValidationError> {
@@ -337,33 +273,44 @@ impl AuditRequest {
             trace_id: AuditTraceId::parse(trace).expect("UUID trace"),
             span_id: AuditSpanId::parse(span).expect("UUID span"),
             source_ip: None,
+            task: None,
         }
     }
 }
 
-impl From<CoreAuditTarget> for AuditTarget {
-    fn from(value: CoreAuditTarget) -> Self {
-        match value {
-            CoreAuditTarget::Resource { uri } => Self::Resource { uri },
-            CoreAuditTarget::Server { server } => Self::Server { server },
-            CoreAuditTarget::Task { task } => Self::Task { task },
-            CoreAuditTarget::Principal { tenant, principal } => {
-                Self::Principal { tenant, principal }
-            }
-            CoreAuditTarget::WorkContext { tenant, context } => {
-                Self::WorkContext { tenant, context }
-            }
-            CoreAuditTarget::AuditLog { partition } => Self::AuditLog { partition },
-            CoreAuditTarget::Installation => Self::Installation,
-        }
+/// The longest target, in bytes.
+pub const MAX_TARGET_BYTES: usize = 2048;
+
+/// What a record is about: an absolute URI (RFC 3986) of at most 2048 bytes, in its
+/// owner's own address form, such as `artifact://artifacts/{id}`. A Task is the RFC 9562
+/// UUID URN of its identity, from [`task_target`].
+#[cfg_attr(
+    feature = "postgres",
+    veoveo_types::id(text(AuditTargetProfile), postgres)
+)]
+#[cfg_attr(not(feature = "postgres"), veoveo_types::id(text(AuditTargetProfile)))]
+pub struct AuditTarget(String);
+
+fn validate_target(value: &str, _: IdMetadata) -> Result<(), IdentifierError> {
+    if value.len() <= MAX_TARGET_BYTES && iri_string::types::UriAbsoluteStr::new(value).is_ok() {
+        Ok(())
+    } else {
+        Err(IdentifierError::new(
+            value,
+            "must be an absolute URI without a fragment, at most 2048 bytes",
+        ))
     }
 }
 
-impl JsonSchema for AuditTarget {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "AuditTarget".into()
-    }
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        CoreAuditTarget::json_schema(generator)
-    }
+#[doc(hidden)]
+pub struct AuditTargetProfile;
+impl IdProfile for AuditTargetProfile {
+    type Error = IdentifierError;
+    const PROFILE: IdProfileSpec<Self::Error> = IdProfileSpec::text(validate_target);
+}
+
+/// The target an audit record names a Task by: the RFC 9562 UUID URN of its identity.
+pub fn task_target(task: TaskId) -> AuditTarget {
+    AuditTarget::parse(format!("urn:uuid:{}", task.as_uuid()))
+        .expect("a UUID URN is an absolute URI")
 }

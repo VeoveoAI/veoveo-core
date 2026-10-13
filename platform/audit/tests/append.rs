@@ -19,10 +19,8 @@ fn all() -> (AuditReadScope, AuditQuery) {
 fn conflicting(original: &AuditDraft) -> AuditDraft {
     AuditDraft::builder(
         original.request().clone(),
-        original.target().clone(),
         task_update(),
-        AuditOutcome::Allowed,
-        AuditReason::Accepted,
+        AuditOutcome::Success,
     )
     .identity(original.id())
     .occurred_at(original.occurred_at())
@@ -178,20 +176,11 @@ async fn stored_records_are_immutable_and_readers_reject_rows_that_disagree_with
     within(Duration::from_secs(90), async {
         let audit = AuditDb::new().await;
         let alice = user("alpha", "alice");
-        let original = AuditDraft::builder(
-            AuditRequest::background(),
-            AuditTarget::Installation,
-            note(1),
-            AuditOutcome::Allowed,
-            AuditReason::Accepted,
-        )
-        .actor(alice.clone())
-        .authority(AuditAuthority {
-            work_context: Some("operations".parse().unwrap()),
-            ..Default::default()
-        })
-        .build()
-        .unwrap();
+        let original =
+            AuditDraft::builder(AuditRequest::background(), note(1), AuditOutcome::Success)
+                .actor(alice.clone())
+                .build()
+                .unwrap();
         audit
             .a
             .append(std::slice::from_ref(&original))
@@ -205,7 +194,7 @@ async fn stored_records_are_immutable_and_readers_reject_rows_that_disagree_with
         .await
         .unwrap();
         assert_eq!(columns.partition, "tenant:alpha");
-        assert_eq!(columns.outcome, "allowed");
+        assert_eq!(columns.outcome, "success");
         assert_eq!(columns.actor.as_deref(), Some("alice"));
         assert_eq!(columns.class, "fixture.note");
         assert_eq!(columns.trace_id, original.request().trace_id.as_str());

@@ -26,7 +26,6 @@ impl RecordRow {
                 .decoder()
                 .from_value(self.draft)
                 .map_err(|error| match error {
-                    AuditDecodeError::Target(error) => AuditStoreError::Target(error),
                     AuditDecodeError::Detail(error) => AuditStoreError::Detail(error),
                     _ => AuditStoreError::Integrity,
                 })?;

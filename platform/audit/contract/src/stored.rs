@@ -2,8 +2,8 @@
 //! export work on the stored document, so they never need another owner's target codec
 //! or detail declaration; decoding an owner's target and detail is a reader's concern.
 use crate::{
-    AuditActor, AuditAuthority, AuditClass, AuditDecodeError, AuditOutcome, AuditPartition,
-    AuditReason, AuditRecord, AuditRecordFormat, AuditRecordId, AuditRequest, AuditTargetError,
+    AuditActor, AuditClass, AuditDecodeError, AuditOutcome, AuditPartition, AuditReason,
+    AuditRecord, AuditRecordFormat, AuditRecordId, AuditRequest, AuditTarget, AuditVia,
     model::check_envelope,
 };
 use chrono::{DateTime, Utc};
@@ -45,15 +45,14 @@ struct StoredDraft {
     format: AuditRecordFormat,
     partition: AuditPartition,
     actor: Option<AuditActor>,
-    authority: AuditAuthority,
-    target: Map<String, Value>,
+    via: Option<AuditVia>,
+    target: Option<AuditTarget>,
     class: AuditClass,
     detail: Map<String, Value>,
     outcome: AuditOutcome,
-    reason: AuditReason,
+    reason: Option<AuditReason>,
     request: AuditRequest,
     occurred_at: DateTime<Utc>,
-    latency_ms: Option<u64>,
 }
 
 /// A record as stored: the draft document exactly as its producer appended it, admitted
@@ -89,19 +88,10 @@ impl AuditStoredRecord {
     /// owner-defined contents are not decoded.
     pub fn admit(draft: Value, recorded_at: DateTime<Utc>) -> Result<Self, AuditDecodeError> {
         let Value::Object(document) = draft else {
-            return Err(AuditDecodeError::Target(AuditTargetError::Invalid));
+            return Err(AuditDecodeError::NotObject);
         };
         let parsed: StoredDraft = serde_json::from_value(Value::Object(document.clone()))?;
-        if !parsed.target.get("kind").is_some_and(Value::is_string) {
-            return Err(AuditTargetError::Invalid.into());
-        }
-        check_envelope(
-            &parsed.partition,
-            parsed.actor.as_ref(),
-            parsed.outcome,
-            parsed.reason,
-            parsed.latency_ms,
-        )?;
+        check_envelope(&parsed.partition, parsed.actor.as_ref(), &parsed.detail)?;
         Ok(Self {
             document,
             draft: parsed,
@@ -118,19 +108,11 @@ impl AuditStoredRecord {
     pub fn actor(&self) -> Option<&AuditActor> {
         self.draft.actor.as_ref()
     }
-    pub fn authority(&self) -> &AuditAuthority {
-        &self.draft.authority
+    pub fn via(&self) -> Option<&AuditVia> {
+        self.draft.via.as_ref()
     }
-    /// The target's kind, as its owner registered it.
-    pub fn target_kind(&self) -> &str {
-        self.draft
-            .target
-            .get("kind")
-            .and_then(Value::as_str)
-            .expect("an admitted target names its kind")
-    }
-    pub fn target(&self) -> &Map<String, Value> {
-        &self.draft.target
+    pub fn target(&self) -> Option<&AuditTarget> {
+        self.draft.target.as_ref()
     }
     pub fn class(&self) -> &AuditClass {
         &self.draft.class
@@ -141,17 +123,14 @@ impl AuditStoredRecord {
     pub fn outcome(&self) -> AuditOutcome {
         self.draft.outcome
     }
-    pub fn reason(&self) -> AuditReason {
-        self.draft.reason
+    pub fn reason(&self) -> Option<&AuditReason> {
+        self.draft.reason.as_ref()
     }
     pub fn request(&self) -> &AuditRequest {
         &self.draft.request
     }
     pub fn occurred_at(&self) -> DateTime<Utc> {
         self.draft.occurred_at
-    }
-    pub fn latency_ms(&self) -> Option<u64> {
-        self.draft.latency_ms
     }
     pub fn recorded_at(&self) -> DateTime<Utc> {
         self.recorded_at
@@ -185,19 +164,18 @@ impl AuditRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AuditDraft, AuditRegistry, AuditRequest, AuditTarget, platform};
+    use crate::{AuditDraft, AuditRegistry, AuditRequest, platform, task_target};
 
     fn record() -> AuditRecord {
         AuditRecord {
             draft: AuditDraft::builder(
                 AuditRequest::background(),
-                AuditTarget::Installation,
                 AuditRegistry::platform()
                     .detail(&platform::TaskUpdate {})
                     .unwrap(),
-                AuditOutcome::Succeeded,
-                AuditReason::Accepted,
+                AuditOutcome::Success,
             )
+            .target(task_target(veoveo_types::TaskId::new()))
             .build()
             .unwrap(),
             recorded_at: Utc::now(),
@@ -214,32 +192,36 @@ mod tests {
         );
         assert_eq!(stored.id(), record.draft.id());
         assert_eq!(stored.class().as_str(), "task.update");
-        assert_eq!(stored.target_kind(), "installation");
+        assert!(stored.target().unwrap().as_str().starts_with("urn:uuid:"));
     }
 
     #[test]
-    fn unknown_owner_targets_and_details_admit_while_the_envelope_is_checked() {
+    fn unknown_owner_classes_and_details_admit_while_the_envelope_is_checked() {
         let mut draft = serde_json::to_value(&record().draft).unwrap();
-        draft["target"] = serde_json::json!({"kind": "shelf", "shelf": "a-1"});
+        draft["target"] = "inventory://shelves/a-1".into();
         draft["class"] = "inventory.moved".into();
         draft["detail"] = serde_json::json!({"count": 3});
+        draft["reason"] = "shelf_full".into();
         let stored = AuditStoredRecord::admit(draft.clone(), Utc::now()).unwrap();
-        assert_eq!(stored.target_kind(), "shelf");
         assert_eq!(stored.detail()["count"], 3);
+        assert_eq!(stored.reason().unwrap().as_str(), "shelf_full");
 
-        let mut kindless = draft.clone();
-        kindless["target"] = serde_json::json!({"shelf": "a-1"});
+        let mut not_a_uri = draft.clone();
+        not_a_uri["target"] = "a-1".into();
         let mut unknown_member = draft.clone();
         unknown_member["extra"] = true.into();
         let mut wrong_partition = draft.clone();
         wrong_partition["partition"] = serde_json::json!({"kind": "tenant", "tenant": "other"});
-        let mut denied_but_accepted = draft;
-        denied_but_accepted["outcome"] = "denied".into();
+        let mut bad_reason = draft.clone();
+        bad_reason["reason"] = "Shelf Full".into();
+        let mut oversized = draft;
+        oversized["detail"] = serde_json::json!({"text": "x".repeat(crate::MAX_DETAIL_BYTES)});
         for invalid in [
-            kindless,
+            not_a_uri,
             unknown_member,
             wrong_partition,
-            denied_but_accepted,
+            bad_reason,
+            oversized,
         ] {
             assert!(AuditStoredRecord::admit(invalid, Utc::now()).is_err());
         }

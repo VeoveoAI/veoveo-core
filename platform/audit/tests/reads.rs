@@ -13,21 +13,22 @@ fn draft(
     time: DateTime<Utc>,
     outcome: AuditOutcome,
 ) -> AuditDraft {
-    AuditDraft::builder(
-        request.clone(),
-        AuditTarget::Installation,
-        note(1),
-        outcome,
-        if outcome == AuditOutcome::Allowed {
-            AuditReason::Accepted
-        } else {
-            AuditReason::PolicyDenied
-        },
-    )
-    .actor(actor.clone())
+    let builder = AuditDraft::builder(request.clone(), note(1), outcome)
+        .actor(actor.clone())
+        .target(shelf());
+    if outcome == AuditOutcome::Success {
+        builder
+    } else {
+        builder.reason(AuditReason::parse("policy_denied").unwrap())
+    }
     .occurred_at(time)
     .build()
     .unwrap()
+}
+
+/// The fixture owner's target every record of these tests names.
+fn shelf() -> AuditTarget {
+    AuditTarget::parse("fixture://shelves/a-1").unwrap()
 }
 
 async fn next(stream: &mut AuditLiveStream) -> AuditLiveChange {
@@ -46,9 +47,9 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
         let scope = AuditReadScope::new(Some("alpha".parse().unwrap()), true);
         let request = AuditRequest::background();
         let now = Utc::now();
-        let first = draft(&alice, &request, now, AuditOutcome::Allowed);
+        let first = draft(&alice, &request, now, AuditOutcome::Success);
         let denied = draft(&alice, &request, now, AuditOutcome::Denied);
-        let last = draft(&alice, &request, now, AuditOutcome::Allowed);
+        let last = draft(&alice, &request, now, AuditOutcome::Success);
         audit
             .a
             .append(&[first.clone(), denied, last.clone()])
@@ -67,9 +68,9 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
         let mut query = AuditQuery::new(partition.clone());
         query.limit = 1;
         query.class = Some(AuditClass::parse("fixture.note").unwrap());
-        query.outcome = Some(AuditOutcome::Allowed);
+        query.outcome = Some(AuditOutcome::Success);
         query.actor = Some(alice.principal.clone());
-        query.target = Some(AuditTarget::Installation);
+        query.target = Some(shelf());
         query.trace = Some(request.trace_id.clone());
         query.from = Some(now - TimeDelta::seconds(1));
         query.until = Some(now + TimeDelta::seconds(1));
@@ -107,14 +108,12 @@ async fn sql_filters_before_decoding_and_limits_and_binds_view_receipts_to_curre
         for (age, admitted) in [(0, true), (30, false)] {
             let receipt = AuditDraft::builder(
                 AuditRequest::background(),
-                AuditTarget::AuditLog {
-                    partition: partition.clone(),
-                },
                 AuditRegistry::platform()
-                    .detail(&platform::AuditView {})
+                    .detail(&platform::AuditView {
+                        partition: partition.clone(),
+                    })
                     .unwrap(),
-                AuditOutcome::Allowed,
-                AuditReason::Accepted,
+                AuditOutcome::Success,
             )
             .actor(alice.clone())
             .occurred_at(now - TimeDelta::minutes(age))
@@ -163,15 +162,15 @@ async fn scoped_streams_daily_pages_and_sealed_recovery_preserve_partition_and_d
         let now = Utc::now();
         let request = AuditRequest::background();
         let expected = [
-            draft(&alice, &request, now, AuditOutcome::Allowed),
+            draft(&alice, &request, now, AuditOutcome::Success),
             draft(&alice, &request, now, AuditOutcome::Denied),
             draft(
                 &alice,
                 &request,
                 today - TimeDelta::hours(1),
-                AuditOutcome::Allowed,
+                AuditOutcome::Success,
             ),
-            draft(&alice, &request, now, AuditOutcome::Allowed),
+            draft(&alice, &request, now, AuditOutcome::Success),
         ];
         let mut live = audit.b.live(&scope, &partition).await.unwrap();
         let mut sealed = audit.b.blocks_live(&scope, &partition).await.unwrap();
@@ -182,7 +181,7 @@ async fn scoped_streams_daily_pages_and_sealed_recovery_preserve_partition_and_d
             Default::default(),
         )
         .unwrap();
-        let foreign = draft(&user("bravo", "bob"), &request, now, AuditOutcome::Allowed);
+        let foreign = draft(&user("bravo", "bob"), &request, now, AuditOutcome::Success);
         audit.a.append(&[foreign]).await.unwrap();
         audit.a.append(&expected).await.unwrap();
         let mut received = BTreeSet::new();
@@ -272,9 +271,9 @@ async fn scoped_streams_daily_pages_and_sealed_recovery_preserve_partition_and_d
         assert_eq!(
             counts,
             vec![
-                (today, AuditOutcome::Allowed, 2),
                 (today, AuditOutcome::Denied, 1),
-                (today - TimeDelta::days(1), AuditOutcome::Allowed, 1)
+                (today, AuditOutcome::Success, 2),
+                (today - TimeDelta::days(1), AuditOutcome::Success, 1)
             ]
         );
         daily.from = today;
@@ -295,7 +294,7 @@ async fn scoped_streams_daily_pages_and_sealed_recovery_preserve_partition_and_d
 
         drop(live);
         drop(sealed);
-        let missed = draft(&alice, &request, now, AuditOutcome::Allowed);
+        let missed = draft(&alice, &request, now, AuditOutcome::Success);
         audit.a.append(std::slice::from_ref(&missed)).await.unwrap();
         within(
             Duration::from_secs(15),

@@ -37,8 +37,8 @@ impl<'a> AuditDecoder<'a> {
 pub enum AuditDecodeError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Target(#[from] AuditTargetError),
+    #[error("an audit record is not a JSON object")]
+    NotObject,
     #[error(transparent)]
     Detail(#[from] AuditDetailError),
     #[error(transparent)]
@@ -61,12 +61,6 @@ mod sealed {
 pub trait AuditDecode: sealed::Sealed + Sized {
     fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError>;
 }
-impl sealed::Sealed for AuditTarget {}
-impl AuditDecode for AuditTarget {
-    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
-        Ok(registry.admit(value)?)
-    }
-}
 
 use chrono::{DateTime, Utc};
 use veoveo_types::PrincipalId;
@@ -78,15 +72,14 @@ struct AuditDraftWireInput {
     format: AuditRecordFormat,
     partition: AuditPartition,
     actor: Option<AuditActor>,
-    authority: AuditAuthority,
-    target: Value,
+    via: Option<AuditVia>,
+    target: Option<AuditTarget>,
     class: AuditClass,
     detail: serde_json::Map<String, Value>,
     outcome: AuditOutcome,
-    reason: AuditReason,
+    reason: Option<AuditReason>,
     request: AuditRequest,
     occurred_at: DateTime<Utc>,
-    latency_ms: Option<u64>,
 }
 impl sealed::Sealed for AuditDraft {}
 impl AuditDecode for AuditDraft {
@@ -97,15 +90,14 @@ impl AuditDecode for AuditDraft {
             format: wire.format,
             partition: wire.partition,
             actor: wire.actor,
-            authority: wire.authority,
-            target: registry.admit(wire.target)?,
+            via: wire.via,
+            target: wire.target,
             detail: registry.admit_detail(&wire.class, wire.detail)?,
             class: wire.class,
             outcome: wire.outcome,
             reason: wire.reason,
             request: wire.request,
             occurred_at: wire.occurred_at,
-            latency_ms: wire.latency_ms,
         };
         Ok(admitted.try_into()?)
     }
@@ -137,8 +129,9 @@ struct AuditQueryInput {
     cursor: Option<AuditCursor>,
     class: Option<AuditClass>,
     actor: Option<PrincipalId>,
-    target: Option<Value>,
+    target: Option<AuditTarget>,
     outcome: Option<AuditOutcome>,
+    reason: Option<AuditReason>,
     trace: Option<AuditTraceId>,
     from: Option<DateTime<Utc>>,
     until: Option<DateTime<Utc>>,
@@ -146,7 +139,7 @@ struct AuditQueryInput {
 }
 impl sealed::Sealed for AuditQuery {}
 impl AuditDecode for AuditQuery {
-    fn decode(registry: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
+    fn decode(_: &AuditRegistry, value: Value) -> Result<Self, AuditDecodeError> {
         let wire: AuditQueryInput = serde_json::from_value(value)?;
         let admitted = Self {
             order: wire.order,
@@ -154,8 +147,9 @@ impl AuditDecode for AuditQuery {
             cursor: wire.cursor,
             class: wire.class,
             actor: wire.actor,
-            target: wire.target.map(|v| registry.admit(v)).transpose()?,
+            target: wire.target,
             outcome: wire.outcome,
+            reason: wire.reason,
             trace: wire.trace,
             from: wire.from,
             until: wire.until,
@@ -196,9 +190,10 @@ struct AuditRecordSummaryInput {
     actor: Option<veoveo_types::PrincipalId>,
     class: AuditClass,
     detail: serde_json::Map<String, Value>,
-    target: Value,
+    target: Option<AuditTarget>,
+    via: Option<AuditVia>,
     outcome: AuditOutcome,
-    reason: AuditReason,
+    reason: Option<AuditReason>,
     source_ip: Option<std::net::IpAddr>,
     trace_id: AuditTraceId,
     request_id: AuditRequestId,
@@ -213,7 +208,8 @@ impl AuditDecode for AuditRecordSummary {
             actor: wire.actor,
             detail: registry.admit_detail(&wire.class, wire.detail)?,
             class: wire.class,
-            target: registry.admit(wire.target)?,
+            target: wire.target,
+            via: wire.via,
             outcome: wire.outcome,
             reason: wire.reason,
             source_ip: wire.source_ip,

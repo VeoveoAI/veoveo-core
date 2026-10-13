@@ -1,13 +1,18 @@
-//! Owner-declared audit details. Each owner declares a class together with the closed
-//! JSON Schema of its detail, and a registry admits a detail only against its class's
-//! declaration. Writers check every detail against that schema; readers require only
-//! that the class is declared, so a record keeps reading after its owner's schema
-//! changes.
-use crate::{AuditClass, AuditRegistry, AuditRegistryBuilder, targets::check_closed_schema};
+//! Owner-declared audit classes. Each owner declares a class with the OCSF class and
+//! activity it maps to and, as documentation, the JSON Schema of its detail. A registry
+//! admits a detail of a declared class whose JSON is an object of at most 16 KiB; the
+//! owner's types keep the detail's shape, so the audit writer checks no schema.
+use crate::{AuditClass, AuditRegistry, AuditRegistryBuilder};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
-use std::sync::Arc;
+
+/// The most JSON an audit detail holds, in bytes.
+pub const MAX_DETAIL_BYTES: usize = 16 * 1024;
+
+pub(crate) fn detail_size(fields: &Map<String, Value>) -> usize {
+    serde_json::to_vec(fields).map_or(usize::MAX, |bytes| bytes.len())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AuditDetailError {
@@ -15,15 +20,15 @@ pub enum AuditDetailError {
         "audit class `{0}` is not declared; declare the owner's detail before recording or reading it"
     )]
     Undeclared(AuditClass),
-    #[error("audit class `{0}` is declared twice with different schemas")]
+    #[error("audit class `{0}` is declared twice with different declarations")]
     Collision(AuditClass),
     #[error("audit class `{0}` belongs to a platform owner")]
     Reserved(AuditClass),
     #[error("invalid audit class `{0}`")]
     Class(String),
-    #[error("the detail schema of audit class `{0}` is not a closed object schema")]
+    #[error("the detail schema of audit class `{0}` is not a JSON Schema object")]
     Schema(AuditClass),
-    #[error("audit detail does not match the declared schema of `{0}`")]
+    #[error("an audit detail of `{0}` is not a JSON object of at most 16 KiB")]
     Invalid(AuditClass),
     #[error("an audit detail of class `{actual}` was read as `{expected}`")]
     Mismatch {
@@ -32,13 +37,38 @@ pub enum AuditDetailError {
     },
 }
 
-/// A detail type an owner records under one class. Its schema must be a closed object.
+/// The OCSF 1.9 event class and activity a Veoveo audit class maps to, such as API
+/// Activity (6003) with Read (2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AuditOcsfClass {
+    pub class_uid: u32,
+    pub activity_id: u8,
+}
+
+impl AuditOcsfClass {
+    /// OCSF API Activity (6003), whose activities are Create (1), Read (2), Update (3),
+    /// Delete (4) and Other (99).
+    pub const fn api_activity(activity_id: u8) -> Self {
+        Self {
+            class_uid: 6003,
+            activity_id,
+        }
+    }
+
+    /// An API Activity the owner names no OCSF activity for.
+    pub const API_ACTIVITY_OTHER: Self = Self::api_activity(99);
+}
+
+/// A detail type an owner records under one class.
 pub trait AuditDetailType: Serialize + DeserializeOwned + JsonSchema {
     /// The class, `<owner>.<name>`.
     const CLASS: &'static str;
+    /// The OCSF class and activity the export maps the class to.
+    const OCSF: AuditOcsfClass = AuditOcsfClass::API_ACTIVITY_OTHER;
 }
 
-/// The fields of a recorded detail, a JSON object its class's schema admitted.
+/// The fields of a recorded detail: a JSON object of at most 16 KiB.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct AuditDetailFields(Map<String, Value>);
@@ -53,10 +83,8 @@ impl JsonSchema for AuditDetailFields {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "AuditDetailFields".into()
     }
-    /// Without declarations a detail is the empty object; a reader schema replaces this
-    /// definition with the declared detail schemas.
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({"type": "object", "additionalProperties": false})
+        schemars::json_schema!({"type": "object"})
     }
 }
 
@@ -81,11 +109,13 @@ impl AuditDetail {
     }
 }
 
-/// One class's declaration: the class and the closed JSON Schema of its detail.
+/// One class's declaration: the class, the OCSF class and activity it maps to, and the
+/// JSON Schema of its detail as documentation for readers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AuditDetailDeclaration {
     class: AuditClass,
-    schema: Value,
+    ocsf: AuditOcsfClass,
+    schema: Option<Value>,
 }
 
 impl AuditDetailDeclaration {
@@ -95,44 +125,36 @@ impl AuditDetailDeclaration {
             AuditClass::parse(T::CLASS).map_err(|_| AuditDetailError::Class(T::CLASS.into()))?;
         let schema = serde_json::to_value(schemars::schema_for!(T))
             .map_err(|_| AuditDetailError::Schema(class.clone()))?;
-        Self::new(class, schema)
+        Self::new(class, T::OCSF, Some(schema))
     }
 
-    /// A declaration read back from storage or received from its owner. The schema must
-    /// describe a closed object in the admitted schema profile.
-    pub fn new(class: AuditClass, schema: Value) -> Result<Self, AuditDetailError> {
-        let closed_object = schema.get("type") == Some(&Value::String("object".into()))
-            && schema.get("additionalProperties") == Some(&Value::Bool(false));
-        if !closed_object || check_closed_schema(&schema, &schema).is_err() {
+    /// A declaration read back from storage or received from its owner. A schema, when
+    /// present, must be a JSON object.
+    pub fn new(
+        class: AuditClass,
+        ocsf: AuditOcsfClass,
+        schema: Option<Value>,
+    ) -> Result<Self, AuditDetailError> {
+        if schema.as_ref().is_some_and(|schema| !schema.is_object()) {
             return Err(AuditDetailError::Schema(class));
         }
-        Ok(Self { class, schema })
+        Ok(Self {
+            class,
+            ocsf,
+            schema,
+        })
     }
 
     pub fn class(&self) -> &AuditClass {
         &self.class
     }
 
-    pub fn schema(&self) -> &Value {
-        &self.schema
+    pub fn ocsf(&self) -> AuditOcsfClass {
+        self.ocsf
     }
-}
 
-/// A declaration with its compiled validator.
-#[derive(Clone)]
-pub(crate) struct DetailCodec {
-    pub(crate) declaration: AuditDetailDeclaration,
-    validator: Arc<jsonschema::Validator>,
-}
-
-impl DetailCodec {
-    fn new(declaration: AuditDetailDeclaration) -> Result<Self, AuditDetailError> {
-        let validator = jsonschema::validator_for(&declaration.schema)
-            .map_err(|_| AuditDetailError::Schema(declaration.class.clone()))?;
-        Ok(Self {
-            declaration,
-            validator: Arc::new(validator),
-        })
+    pub fn schema(&self) -> Option<&Value> {
+        self.schema.as_ref()
     }
 }
 
@@ -143,14 +165,14 @@ impl AuditRegistryBuilder {
     }
 
     /// Add a declaration, such as one another owner stored. Repeating an identical
-    /// declaration changes nothing; a different schema for a declared class, or a class
-    /// of a platform owner that the platform did not declare, is refused.
+    /// declaration changes nothing; a different declaration of a declared class, or a
+    /// class of a platform owner that the platform did not declare, is refused.
     pub fn declaration(
         &mut self,
         declaration: AuditDetailDeclaration,
     ) -> Result<(), AuditDetailError> {
         if let Some(existing) = self.details.get(&declaration.class) {
-            return if existing.declaration == declaration {
+            return if existing == &declaration {
                 Ok(())
             } else {
                 Err(AuditDetailError::Collision(declaration.class))
@@ -159,21 +181,19 @@ impl AuditRegistryBuilder {
         if platform::OWNERS.contains(&declaration.class.owner()) {
             return Err(AuditDetailError::Reserved(declaration.class));
         }
-        self.details
-            .insert(declaration.class.clone(), DetailCodec::new(declaration)?);
+        self.details.insert(declaration.class.clone(), declaration);
         Ok(())
     }
 
     pub(crate) fn declare_platform(&mut self) {
         for declaration in platform::declarations() {
-            let codec = DetailCodec::new(declaration).expect("platform details compile");
-            self.details.insert(codec.declaration.class.clone(), codec);
+            self.details.insert(declaration.class.clone(), declaration);
         }
     }
 }
 
 impl AuditRegistry {
-    /// Admit an owner's detail against its class's declaration.
+    /// Admit an owner's detail of a declared class.
     pub fn detail<T: AuditDetailType>(&self, value: &T) -> Result<AuditDetail, AuditDetailError> {
         let class =
             AuditClass::parse(T::CLASS).map_err(|_| AuditDetailError::Class(T::CLASS.into()))?;
@@ -187,19 +207,18 @@ impl AuditRegistry {
         Ok(AuditDetail { class, fields })
     }
 
-    /// Check a detail against its class's declared schema, as every writer does.
+    /// Check that a detail's class is declared and its JSON fits the size limit, as
+    /// every writer does.
     pub fn check_detail(
         &self,
         class: &AuditClass,
         fields: &AuditDetailFields,
     ) -> Result<(), AuditDetailError> {
-        let codec = self.codec(class)?;
-        let value = Value::Object(fields.0.clone());
-        if codec.validator.is_valid(&value) {
-            Ok(())
-        } else {
-            Err(AuditDetailError::Invalid(class.clone()))
+        self.declaration(class)?;
+        if detail_size(&fields.0) > MAX_DETAIL_BYTES {
+            return Err(AuditDetailError::Invalid(class.clone()));
         }
+        Ok(())
     }
 
     /// Read a recorded detail as its owner's type.
@@ -216,28 +235,32 @@ impl AuditRegistry {
                 actual: class.clone(),
             });
         }
-        self.codec(class)?;
+        self.declaration(class)?;
         serde_json::from_value(Value::Object(fields.0.clone()))
             .map_err(|_| AuditDetailError::Invalid(class.clone()))
     }
 
     /// Every declaration this registry holds, in class order.
     pub fn declarations(&self) -> impl Iterator<Item = &AuditDetailDeclaration> {
-        self.details.values().map(|codec| &codec.declaration)
+        self.details.values()
     }
 
     /// Admit a stored detail of a declared class. Reading checks only the declaration,
-    /// so records keep reading after their owner's schema changes.
+    /// so records keep reading after their owner's types change.
     pub(crate) fn admit_detail(
         &self,
         class: &AuditClass,
         fields: Map<String, Value>,
     ) -> Result<AuditDetailFields, AuditDetailError> {
-        self.codec(class)?;
+        self.declaration(class)?;
         Ok(AuditDetailFields(fields))
     }
 
-    fn codec(&self, class: &AuditClass) -> Result<&DetailCodec, AuditDetailError> {
+    /// The declaration of `class`.
+    pub fn declaration(
+        &self,
+        class: &AuditClass,
+    ) -> Result<&AuditDetailDeclaration, AuditDetailError> {
         self.details
             .get(class)
             .ok_or_else(|| AuditDetailError::Undeclared(class.clone()))
@@ -258,6 +281,7 @@ pub mod platform {
     pub struct TaskUpdate {}
     impl AuditDetailType for TaskUpdate {
         const CLASS: &'static str = "task.update";
+        const OCSF: AuditOcsfClass = AuditOcsfClass::api_activity(3);
     }
 
     /// A caller cancelled a Task: class `task.cancel`.
@@ -266,15 +290,20 @@ pub mod platform {
     pub struct TaskCancel {}
     impl AuditDetailType for TaskCancel {
         const CLASS: &'static str = "task.cancel";
+        const OCSF: AuditOcsfClass = AuditOcsfClass::api_activity(3);
     }
 
     /// A caller opened a view of an audit partition: class `audit.view`. The record is
     /// the receipt that later reads of the view present.
-    #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
     #[serde(deny_unknown_fields)]
-    pub struct AuditView {}
+    pub struct AuditView {
+        /// The partition the view reads.
+        pub partition: crate::AuditPartition,
+    }
     impl AuditDetailType for AuditView {
         const CLASS: &'static str = "audit.view";
+        const OCSF: AuditOcsfClass = AuditOcsfClass::api_activity(2);
     }
 
     /// A caller exported records of an audit partition: class `audit.export`.
@@ -283,6 +312,7 @@ pub mod platform {
     pub struct AuditExport {}
     impl AuditDetailType for AuditExport {
         const CLASS: &'static str = "audit.export";
+        const OCSF: AuditOcsfClass = AuditOcsfClass::api_activity(2);
     }
 
     pub(crate) fn declarations() -> [AuditDetailDeclaration; 4] {
@@ -292,7 +322,7 @@ pub mod platform {
             AuditDetailDeclaration::of::<AuditView>(),
             AuditDetailDeclaration::of::<AuditExport>(),
         ]
-        .map(|declaration| declaration.expect("platform detail declarations are closed"))
+        .map(|declaration| declaration.expect("platform detail declarations are objects"))
     }
 }
 
@@ -310,11 +340,12 @@ mod tests {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-    struct Open {
-        count: u32,
+    struct Big {
+        text: String,
     }
-    impl AuditDetailType for Open {
-        const CLASS: &'static str = "fixture.open";
+    impl AuditDetailType for Big {
+        const CLASS: &'static str = "fixture.big";
+        const OCSF: AuditOcsfClass = AuditOcsfClass::api_activity(1);
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -327,11 +358,12 @@ mod tests {
     fn registry() -> AuditRegistry {
         let mut builder = AuditRegistry::builder();
         builder.declare::<Note>().unwrap();
+        builder.declare::<Big>().unwrap();
         builder.build()
     }
 
     #[test]
-    fn details_are_checked_against_their_declared_schema() {
+    fn details_need_a_declared_class_and_fit_16_kib() {
         let registry = registry();
         let detail = registry.detail(&Note { count: 3 }).unwrap();
         assert_eq!(detail.class().as_str(), "fixture.note");
@@ -341,12 +373,25 @@ mod tests {
                 .unwrap(),
             Note { count: 3 }
         );
+        // The writer checks no schema: the owner's type keeps the shape.
         let mut extra = detail.fields().as_map().clone();
-        extra.insert("secret".into(), "text".into());
-        assert_eq!(
-            registry.check_detail(detail.class(), &AuditDetailFields(extra)),
-            Err(AuditDetailError::Invalid(detail.class().clone()))
+        extra.insert("more".into(), "text".into());
+        assert!(
+            registry
+                .check_detail(detail.class(), &AuditDetailFields(extra))
+                .is_ok()
         );
+        let fits = Big {
+            text: "x".repeat(MAX_DETAIL_BYTES - 16),
+        };
+        assert!(registry.detail(&fits).is_ok());
+        let over = Big {
+            text: "x".repeat(MAX_DETAIL_BYTES),
+        };
+        assert!(matches!(
+            registry.detail(&over),
+            Err(AuditDetailError::Invalid(_))
+        ));
         let undeclared = AuditClass::parse("fixture.other").unwrap();
         assert_eq!(
             registry.check_detail(&undeclared, detail.fields()),
@@ -359,12 +404,8 @@ mod tests {
     }
 
     #[test]
-    fn declarations_are_closed_unique_and_outside_platform_owners() {
+    fn declarations_carry_their_ocsf_class_and_stay_unique() {
         let mut builder = AuditRegistry::builder();
-        assert!(matches!(
-            builder.declare::<Open>(),
-            Err(AuditDetailError::Schema(_))
-        ));
         assert!(matches!(
             builder.declare::<Platform>(),
             Err(AuditDetailError::Reserved(_))
@@ -372,17 +413,27 @@ mod tests {
         builder.declare::<Note>().unwrap();
         builder.declare::<Note>().unwrap();
         let class = AuditClass::parse(Note::CLASS).unwrap();
-        let other = AuditDetailDeclaration::new(
-            class.clone(),
-            serde_json::json!({"type":"object","additionalProperties":false}),
-        )
-        .unwrap();
+        let other =
+            AuditDetailDeclaration::new(class.clone(), AuditOcsfClass::api_activity(4), None)
+                .unwrap();
         assert_eq!(
             builder.declaration(other),
-            Err(AuditDetailError::Collision(class))
+            Err(AuditDetailError::Collision(class.clone()))
         );
-        let platform = AuditDetailDeclaration::of::<platform::TaskCancel>().unwrap();
-        builder.declaration(platform).unwrap();
+        assert!(matches!(
+            AuditDetailDeclaration::new(
+                class,
+                AuditOcsfClass::API_ACTIVITY_OTHER,
+                Some(Value::Bool(true))
+            ),
+            Err(AuditDetailError::Schema(_))
+        ));
+        let registry = builder.build();
+        let note = registry
+            .declaration(&AuditClass::parse(Note::CLASS).unwrap())
+            .unwrap();
+        assert_eq!(note.ocsf(), AuditOcsfClass::API_ACTIVITY_OTHER);
+        assert!(note.schema().is_some());
     }
 
     #[test]
@@ -398,6 +449,7 @@ mod tests {
         );
         for declaration in registry.declarations() {
             assert!(platform::OWNERS.contains(&declaration.class().owner()));
+            assert_eq!(declaration.ocsf().class_uid, 6003);
         }
     }
 }

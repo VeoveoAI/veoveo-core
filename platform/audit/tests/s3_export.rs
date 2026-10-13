@@ -67,18 +67,14 @@ async fn qualify(exports: AuditExportConfig, s3: &dyn ObjectStore, prefix: &Path
             .detail(&platform::TaskUpdate {})
             .unwrap(),
         AuditRegistry::platform()
-            .detail(&platform::AuditView {})
+            .detail(&platform::AuditView {
+                partition: veoveo_audit_contract::AuditPartition::Installation,
+            })
             .unwrap(),
     ] {
-        let draft = AuditDraft::builder(
-            AuditRequest::background(),
-            AuditTarget::Installation,
-            detail,
-            AuditOutcome::Allowed,
-            AuditReason::Accepted,
-        )
-        .build()
-        .unwrap();
+        let draft = AuditDraft::builder(AuditRequest::background(), detail, AuditOutcome::Success)
+            .build()
+            .unwrap();
         expected_ids.push(draft.id());
         writer.record(draft.clone()).await.unwrap();
         tokio::time::timeout(

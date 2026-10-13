@@ -5,7 +5,7 @@
 //! calls [`AuditTransactionWrite::append`] on the same connection and commits. A
 //! registered server connected through its own login calls
 //! [`AuditTransactionWrite::append_as_server`] instead.
-use crate::{AuditDetailError, AuditDraft, AuditRegistry, AuditTargetError};
+use crate::{AuditDetailError, AuditDraft, AuditRegistry};
 use chrono::{DateTime, SubsecRound, Utc};
 use sqlx::PgConnection;
 
@@ -22,8 +22,6 @@ pub(crate) const FOREIGN_CLASS: &str = "42501";
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuditAppendError {
-    #[error(transparent)]
-    Target(#[from] AuditTargetError),
     #[error(transparent)]
     Detail(#[from] AuditDetailError),
     #[error("an audit record's class is not declared in the database; declare it first")]
@@ -80,8 +78,7 @@ impl AuditTransactionWrite {
         Ok(write)
     }
 
-    /// Admit one more draft: its target must belong to the registry and its detail must
-    /// match its class's declared schema.
+    /// Admit one more draft: its class must be declared and its detail fit the limit.
     pub fn push(
         &mut self,
         registry: &AuditRegistry,
@@ -90,7 +87,6 @@ impl AuditTransactionWrite {
         if self.drafts.len() == AUDIT_APPEND_LIMIT {
             return Err(AuditAppendError::BatchLimit);
         }
-        registry.validate(draft.target())?;
         registry.check_detail(draft.class(), draft.detail())?;
         self.drafts
             .push(serde_json::to_value(draft).expect("an admitted draft serializes"));
@@ -150,8 +146,7 @@ pub fn stored_time(time: DateTime<Utc>) -> DateTime<Utc> {
 mod tests {
     use super::*;
     use crate::{
-        AuditClass, AuditOutcome, AuditReason, AuditRecordId, AuditRequest, AuditTarget,
-        AuditTraceId, platform,
+        AuditClass, AuditOutcome, AuditReason, AuditRecordId, AuditRequest, AuditTraceId, platform,
     };
     use sqlx::{Postgres, Type};
 
@@ -160,6 +155,7 @@ mod tests {
         let text = <String as Type<Postgres>>::type_info();
         assert_eq!(<AuditClass as Type<Postgres>>::type_info(), text);
         assert_eq!(<AuditOutcome as Type<Postgres>>::type_info(), text);
+        assert_eq!(<AuditReason as Type<Postgres>>::type_info(), text);
         assert_eq!(<AuditTraceId as Type<Postgres>>::type_info(), text);
         assert_eq!(
             <AuditRecordId as Type<Postgres>>::type_info(),
@@ -172,10 +168,8 @@ mod tests {
         let registry = AuditRegistry::platform();
         let draft = AuditDraft::builder(
             AuditRequest::background(),
-            AuditTarget::Installation,
             registry.detail(&platform::TaskUpdate {}).unwrap(),
-            AuditOutcome::Allowed,
-            AuditReason::Accepted,
+            AuditOutcome::Success,
         )
         .occurred_at("2026-10-12T01:02:03.123456789Z".parse().unwrap())
         .build()

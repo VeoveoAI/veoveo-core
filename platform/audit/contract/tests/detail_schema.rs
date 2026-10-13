@@ -94,7 +94,9 @@ fn check(
 #[test]
 fn every_platform_detail_string_has_a_closed_vocabulary_or_reviewed_identifier() {
     for declaration in AuditRegistry::platform().declarations() {
-        let schema = declaration.schema();
+        let schema = declaration
+            .schema()
+            .expect("platform classes document their detail");
         check(
             schema,
             schema,

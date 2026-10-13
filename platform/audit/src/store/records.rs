@@ -1,12 +1,12 @@
-//! Appends and partition-scoped record reads. Policy admission and target registry
-//! checks run before SQL, and every returned row is admitted before it is returned.
+//! Appends and partition-scoped record reads. Policy admission runs before SQL, and
+//! every returned row is admitted before it is returned.
 use super::{AuditStore, AuditStoreError, admit, row::RecordRow};
 use std::time::Duration;
 use veoveo_audit_contract::{
     AUDIT_APPEND_LIMIT, AuditClass, AuditCursor, AuditDailyCount, AuditDailyCursor, AuditDailyPage,
     AuditDailyQuery, AuditDetailType, AuditDraft, AuditOrder, AuditOutcome, AuditPage,
-    AuditPartition, AuditQuery, AuditReadScope, AuditRecord, AuditRecordId, AuditStoredRecord,
-    AuditTarget, AuditTraceId, AuditTransactionWrite, platform,
+    AuditPartition, AuditQuery, AuditReadScope, AuditReason, AuditRecord, AuditRecordId,
+    AuditStoredRecord, AuditTarget, AuditTraceId, AuditTransactionWrite, platform,
 };
 use veoveo_types::PrincipalId;
 
@@ -47,14 +47,12 @@ impl AuditStore {
         query: &AuditQuery,
     ) -> Result<AuditPage, AuditStoreError> {
         query.validate()?;
-        if let Some(target) = &query.target {
-            self.registry().validate(target)?;
-        }
         admit(scope, &query.partition)?;
         let partition = query.partition.storage_key();
         let after = query.cursor.as_ref().map(|cursor| cursor.last_id);
         let actor = query.actor.as_ref().map(PrincipalId::as_str);
-        let target = query.target.as_ref().map(target_document);
+        let target = query.target.as_ref().map(AuditTarget::as_str);
+        let reason = query.reason.as_ref().map(AuditReason::as_str);
         let trace = query.trace.as_ref();
         let limit = i64::from(query.limit) + 1;
         let mut transaction = self.pool().begin().await?;
@@ -76,6 +74,7 @@ impl AuditStore {
                     query.from,
                     query.until,
                     limit,
+                    reason,
                 )
                 .fetch_all(&mut *transaction)
                 .await?
@@ -94,6 +93,7 @@ impl AuditStore {
                     query.from,
                     query.until,
                     limit,
+                    reason,
                 )
                 .fetch_all(&mut *transaction)
                 .await?
@@ -177,9 +177,7 @@ impl AuditStore {
     ) -> Result<bool, AuditStoreError> {
         admit(scope, partition)?;
         admit(scope, actor_partition)?;
-        let target = AuditTarget::AuditLog {
-            partition: partition.clone(),
-        };
+        let viewed = serde_json::to_value(partition).expect("a partition serializes");
         let class = AuditClass::parse(platform::AuditView::CLASS).expect("platform class");
         let row = sqlx::query_file_as!(
             RecordRow,
@@ -187,7 +185,7 @@ impl AuditStore {
             view as AuditRecordId,
             actor_partition.storage_key(),
             actor.as_str(),
-            target_document(&target),
+            viewed,
             &class as &AuditClass,
         )
         .fetch_optional(self.pool())
@@ -198,9 +196,9 @@ impl AuditStore {
         let record = row.checked(self.registry(), actor_partition)?;
         let draft = &record.draft;
         if draft.actor().map(|actor| &actor.principal) != Some(actor)
-            || draft.target() != &target
+            || draft.detail().as_map().get("partition") != Some(&viewed)
             || draft.class() != &class
-            || draft.outcome() != AuditOutcome::Allowed
+            || draft.outcome() != AuditOutcome::Success
         {
             return Err(AuditStoreError::Integrity);
         }
@@ -261,9 +259,4 @@ impl AuditStore {
         .fetch_all(self.pool())
         .await?)
     }
-}
-
-/// A target as the stored draft holds it, for whole-object comparison in SQL.
-pub(crate) fn target_document(target: &AuditTarget) -> serde_json::Value {
-    serde_json::to_value(target).expect("an admitted audit target serializes")
 }

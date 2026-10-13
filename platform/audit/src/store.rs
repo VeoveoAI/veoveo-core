@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use veoveo_audit_contract::{
     AuditAppendError, AuditDetailError, AuditPartition, AuditReadScope, AuditRegistry,
-    AuditTargetError, AuditValidationError,
+    AuditValidationError,
 };
 use veoveo_platform_store::{
     ChangeOperation, ChangeSignal, ChangeStream, Channel, PlatformStore, StoreError,
@@ -34,8 +34,6 @@ const EXPORT_REJECTED: &str = "VV504";
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuditStoreError {
-    #[error(transparent)]
-    Target(#[from] AuditTargetError),
     #[error(transparent)]
     Detail(#[from] AuditDetailError),
     #[error(transparent)]
@@ -84,7 +82,6 @@ impl From<sqlx::Error> for AuditStoreError {
 impl From<AuditAppendError> for AuditStoreError {
     fn from(error: AuditAppendError) -> Self {
         match error {
-            AuditAppendError::Target(error) => Self::Target(error),
             AuditAppendError::Detail(error) => Self::Detail(error),
             AuditAppendError::UndeclaredClass => Self::UndeclaredClass,
             AuditAppendError::BatchLimit => Self::BatchLimit,

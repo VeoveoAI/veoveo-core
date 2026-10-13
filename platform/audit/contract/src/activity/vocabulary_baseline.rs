@@ -11,60 +11,13 @@ mod baseline {
         schemars::JsonSchema,
     )]
     #[serde(rename_all = "snake_case")]
+    /// The outcome of a recorded action. OCSF maps it to `status_id`, Success, Failure or
+    /// Unknown, and the Security Control profile's `action_id`, Allowed or Denied.
     pub enum AuditOutcome {
-        Allowed,
+        Success,
         Denied,
-        Succeeded,
-        Failed,
-    }
-    #[derive(
-        Debug,
-        Clone,
-        Copy,
-        PartialEq,
-        Eq,
-        serde::Serialize,
-        serde::Deserialize,
-        schemars::JsonSchema,
-    )]
-    #[serde(rename_all = "snake_case")]
-    pub enum AuditReason {
-        Accepted,
-        PolicyDenied,
-        TenantMismatch,
-        InsufficientClearance,
-        InsufficientAccess,
-        Unauthenticated,
-        InvalidCredential,
-        ExpiredCredential,
-        Replay,
-        Revoked,
-        InvalidRequest,
-        NotFound,
-        Conflict,
-        Unavailable,
-        QuotaExceeded,
-        Cancelled,
-        TimedOut,
-        UpstreamFailure,
-        InternalFailure,
-        UnknownServer,
-        UnknownResource,
-        UnknownTask,
-        UnknownPrincipal,
-        UnknownScope,
-        UnknownDataLabel,
-        UnknownTenant,
-        UnknownTokenIssuer,
-        MissingPrincipal,
-        MissingTenant,
-        MissingGroup,
-        MissingRole,
-        MissingScope,
-        MissingDataLabel,
-        MissingPrincipalAssurance,
-        TokenAudienceMismatch,
-        TokenNotYetValid,
+        Failure,
+        Unknown,
     }
 }
 fn compare<
@@ -88,160 +41,21 @@ fn compare<
 #[test]
 fn frozen_activity_vocabulary_wire_and_schemas() {
     compare(
-        super::AuditOutcome::Allowed,
-        baseline::AuditOutcome::Allowed,
+        super::AuditOutcome::Success,
+        baseline::AuditOutcome::Success,
     );
     compare(super::AuditOutcome::Denied, baseline::AuditOutcome::Denied);
     compare(
-        super::AuditOutcome::Succeeded,
-        baseline::AuditOutcome::Succeeded,
+        super::AuditOutcome::Failure,
+        baseline::AuditOutcome::Failure,
     );
-    compare(super::AuditOutcome::Failed, baseline::AuditOutcome::Failed);
+    compare(
+        super::AuditOutcome::Unknown,
+        baseline::AuditOutcome::Unknown,
+    );
     assert_eq!(
         schemars::schema_for!(super::AuditOutcome),
         schemars::schema_for!(baseline::AuditOutcome)
-    );
-    compare(
-        super::AuditReason::Accepted,
-        baseline::AuditReason::Accepted,
-    );
-    compare(
-        super::AuditReason::PolicyDenied,
-        baseline::AuditReason::PolicyDenied,
-    );
-    compare(
-        super::AuditReason::TenantMismatch,
-        baseline::AuditReason::TenantMismatch,
-    );
-    compare(
-        super::AuditReason::InsufficientClearance,
-        baseline::AuditReason::InsufficientClearance,
-    );
-    compare(
-        super::AuditReason::InsufficientAccess,
-        baseline::AuditReason::InsufficientAccess,
-    );
-    compare(
-        super::AuditReason::Unauthenticated,
-        baseline::AuditReason::Unauthenticated,
-    );
-    compare(
-        super::AuditReason::InvalidCredential,
-        baseline::AuditReason::InvalidCredential,
-    );
-    compare(
-        super::AuditReason::ExpiredCredential,
-        baseline::AuditReason::ExpiredCredential,
-    );
-    compare(super::AuditReason::Replay, baseline::AuditReason::Replay);
-    compare(super::AuditReason::Revoked, baseline::AuditReason::Revoked);
-    compare(
-        super::AuditReason::InvalidRequest,
-        baseline::AuditReason::InvalidRequest,
-    );
-    compare(
-        super::AuditReason::NotFound,
-        baseline::AuditReason::NotFound,
-    );
-    compare(
-        super::AuditReason::Conflict,
-        baseline::AuditReason::Conflict,
-    );
-    compare(
-        super::AuditReason::Unavailable,
-        baseline::AuditReason::Unavailable,
-    );
-    compare(
-        super::AuditReason::QuotaExceeded,
-        baseline::AuditReason::QuotaExceeded,
-    );
-    compare(
-        super::AuditReason::Cancelled,
-        baseline::AuditReason::Cancelled,
-    );
-    compare(
-        super::AuditReason::TimedOut,
-        baseline::AuditReason::TimedOut,
-    );
-    compare(
-        super::AuditReason::UpstreamFailure,
-        baseline::AuditReason::UpstreamFailure,
-    );
-    compare(
-        super::AuditReason::InternalFailure,
-        baseline::AuditReason::InternalFailure,
-    );
-    compare(
-        super::AuditReason::UnknownServer,
-        baseline::AuditReason::UnknownServer,
-    );
-    compare(
-        super::AuditReason::UnknownResource,
-        baseline::AuditReason::UnknownResource,
-    );
-    compare(
-        super::AuditReason::UnknownTask,
-        baseline::AuditReason::UnknownTask,
-    );
-    compare(
-        super::AuditReason::UnknownPrincipal,
-        baseline::AuditReason::UnknownPrincipal,
-    );
-    compare(
-        super::AuditReason::UnknownScope,
-        baseline::AuditReason::UnknownScope,
-    );
-    compare(
-        super::AuditReason::UnknownDataLabel,
-        baseline::AuditReason::UnknownDataLabel,
-    );
-    compare(
-        super::AuditReason::UnknownTenant,
-        baseline::AuditReason::UnknownTenant,
-    );
-    compare(
-        super::AuditReason::UnknownTokenIssuer,
-        baseline::AuditReason::UnknownTokenIssuer,
-    );
-    compare(
-        super::AuditReason::MissingPrincipal,
-        baseline::AuditReason::MissingPrincipal,
-    );
-    compare(
-        super::AuditReason::MissingTenant,
-        baseline::AuditReason::MissingTenant,
-    );
-    compare(
-        super::AuditReason::MissingGroup,
-        baseline::AuditReason::MissingGroup,
-    );
-    compare(
-        super::AuditReason::MissingRole,
-        baseline::AuditReason::MissingRole,
-    );
-    compare(
-        super::AuditReason::MissingScope,
-        baseline::AuditReason::MissingScope,
-    );
-    compare(
-        super::AuditReason::MissingDataLabel,
-        baseline::AuditReason::MissingDataLabel,
-    );
-    compare(
-        super::AuditReason::MissingPrincipalAssurance,
-        baseline::AuditReason::MissingPrincipalAssurance,
-    );
-    compare(
-        super::AuditReason::TokenAudienceMismatch,
-        baseline::AuditReason::TokenAudienceMismatch,
-    );
-    compare(
-        super::AuditReason::TokenNotYetValid,
-        baseline::AuditReason::TokenNotYetValid,
-    );
-    assert_eq!(
-        schemars::schema_for!(super::AuditReason),
-        schemars::schema_for!(baseline::AuditReason)
     );
 }
 

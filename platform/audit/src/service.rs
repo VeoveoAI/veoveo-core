@@ -147,7 +147,6 @@ fn fatal(error: &SealError) -> bool {
                     | AuditStoreError::ExportRejected
                     | AuditStoreError::IdentityConflict
                     | AuditStoreError::BatchLimit
-                    | AuditStoreError::Target(_)
                     | AuditStoreError::Validation(_),
             )
     )

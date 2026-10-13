@@ -13,8 +13,8 @@ use std::{
 };
 use veoveo_audit::{
     AuditActor, AuditBlock, AuditDetail, AuditDraft, AuditHealth, AuditHealthState, AuditOutcome,
-    AuditPartition, AuditPrincipalKind, AuditReadScope, AuditReason, AuditRecord, AuditRegistry,
-    AuditRequest, AuditStore, AuditTarget, platform,
+    AuditPartition, AuditPrincipalKind, AuditReadScope, AuditRecord, AuditRegistry, AuditRequest,
+    AuditStore, platform,
     sealer::{AuditSealer, SealBacklog},
 };
 
@@ -89,15 +89,9 @@ pub async fn state(health: &mut AuditHealth, expected: AuditHealthState) {
 
 /// An installation record of a background operation.
 pub fn draft(detail: AuditDetail) -> AuditDraft {
-    AuditDraft::builder(
-        AuditRequest::background(),
-        AuditTarget::Installation,
-        detail,
-        AuditOutcome::Allowed,
-        AuditReason::Accepted,
-    )
-    .build()
-    .unwrap()
+    AuditDraft::builder(AuditRequest::background(), detail, AuditOutcome::Success)
+        .build()
+        .unwrap()
 }
 
 /// Seal until every committed record is sealed; return how many records were sealed.
@@ -147,7 +141,6 @@ pub fn user(tenant: &str, name: &str) -> AuditActor {
         principal: name.parse().unwrap(),
         kind: AuditPrincipalKind::User,
         tenant: Some(tenant.parse().unwrap()),
-        oauth_client: None,
-        delegating_principal: None,
+        work_context: None,
     }
 }
