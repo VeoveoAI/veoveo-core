@@ -1,4 +1,3 @@
--- veoveo: all tenants (usage kinds are installation-wide declarations, not tenant rows)
 -- The installation owner declares or replaces usage kinds. Repeating a declaration
 -- changes nothing.
 INSERT INTO usage.kind AS t (kind, service_category, unit, monetary)
