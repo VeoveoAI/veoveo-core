@@ -5,7 +5,6 @@ members = [
     "mcp/ext-apps",
     "mcp/ext-knowledge",
     "mcp/ext-registration",
-    "platform/artifacts/client",
     "platform/artifacts/contract",
     "platform/audit",
     "platform/audit/contract",
@@ -107,5 +106,4 @@ veoveo-types = { path = "platform/types" }
 veoveo-platform-store = { path = "platform/store" }
 veoveo-mcp-ext-registration = { path = "mcp/ext-registration", default-features = false }
 veoveo-gateway-contract = { path = "platform/gateway/contract" }
-veoveo-artifact-client = { path = "platform/artifacts/client" }
 veoveo-artifact-contract = { path = "platform/artifacts/contract" }

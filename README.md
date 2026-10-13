@@ -20,7 +20,6 @@ revision of this repository.
 | `platform/audit` | `veoveo-audit` | The audit log in PostgreSQL: group-committed appends, partition-scoped reads and change streams, the singleton sealer, signed blocks, export, retention and verification |
 | `platform/audit/contract` | `veoveo-audit-contract` | Audit record, target, block and reader types, and the append inside a caller's PostgreSQL transaction |
 | `platform/artifacts/contract` | `veoveo-artifact-contract` | Artifact identities, metadata and release states |
-| `platform/artifacts/client` | `veoveo-artifact-client` | HTTP client for the Artifact plane: objects, streamed transfers, write capabilities, grants, share links, release states and access requests |
 | `platform/knowledge/contract` | `veoveo-knowledge-contract` | Knowledge source and retrieval types |
 | `platform/runtimes/embedding/contract` | `veoveo-embedding-contract` | Embedding request and profile types |
 | `platform/gateway/contract` | `veoveo-gateway-contract` | Gateway catalog registry, actions and admission types |

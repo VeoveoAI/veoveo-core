@@ -2356,7 +2356,6 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
- "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -3689,20 +3688,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "veoveo-artifact-client"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "reqwest",
- "serde_json",
- "tokio",
- "tokio-util",
- "veoveo-artifact-contract",
- "veoveo-mcp-contract",
- "veoveo-types",
-]
 
 [[package]]
 name = "veoveo-artifact-contract"
