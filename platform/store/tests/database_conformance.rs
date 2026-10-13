@@ -11,7 +11,7 @@ mod store;
 #[path = "../../../testing/fixtures/database.rs"]
 mod database;
 
-use database::{Conformance, Rule};
+use database::Conformance;
 
 #[tokio::test]
 async fn store_queries_and_kernel_schemas_follow_the_database_rules() {
@@ -30,12 +30,6 @@ async fn store_queries_and_kernel_schemas_follow_the_database_rules() {
             "gateway.control_revision",
             "a control-plane revision configures the whole installation; its tenant names \
              the one tenant a revision may belong to",
-        )
-        .pending(
-            Rule::Schema,
-            "gateway.task_route",
-            "the owner and tenant foreign keys have no index, so deleting a principal or a \
-             tenant scans the routes; no code path deletes either yet",
         )
         .check()
         .await;

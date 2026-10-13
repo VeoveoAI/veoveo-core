@@ -11,7 +11,7 @@ mod store;
 #[path = "../../../testing/fixtures/database.rs"]
 mod database;
 
-use database::{Conformance, Rule};
+use database::Conformance;
 
 #[tokio::test]
 async fn task_queries_and_schema_follow_the_database_rules() {
@@ -19,12 +19,6 @@ async fn task_queries_and_schema_follow_the_database_rules() {
         .schema("tasks")
         .queries_from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../.sqlx"))
         .sources(concat!(env!("CARGO_MANIFEST_DIR"), "/queries"))
-        .pending(
-            Rule::Schema,
-            "tasks.task",
-            "the tenant_id and principal_id foreign keys have no index, so deleting a tenant \
-             or a principal scans every Task; no code path deletes either yet",
-        )
         .check()
         .await;
 }

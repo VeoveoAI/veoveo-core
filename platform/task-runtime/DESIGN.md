@@ -27,7 +27,8 @@ internal vocabulary. They add no MCP status or method.
 server, the owner's tenant, explicit tenant claim, principal, kind, issuer, subject and
 profile, the owner's data labels, the Work Context, the operation, the status, the
 recovery class and the owner instance. `tenant_id` and `principal_id` reference the
-owner's rows in `identity`, which creation records through `ensure_identity`. JSON
+owner's rows in `identity`, which creation records through `ensure_identity`, and
+`task_tenant_id` and `task_principal_id` index them for the foreign-key checks. JSON
 columns hold the request input, the result, failure details and the invocation
 authority. SQL `NULL` in a JSON column is an absent value and JSON `null` a present one,
 so a Task can succeed with a `null` result.

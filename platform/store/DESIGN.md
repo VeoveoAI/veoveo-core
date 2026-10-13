@@ -97,8 +97,9 @@ therefore writes nothing while it is idle, and neither mark wakes a listener.
 
 A `task_route` references its tenant, owner and Work Context in `identity` and goes with
 the Work Context when a publication removes it, which `task_route_work_context` makes a
-lookup rather than a scan. `prune_task_routes` deletes the routes whose `expires_at` has
-passed, through `task_route_expiry`.
+lookup rather than a scan. `task_route_owner` and `task_route_tenant` do the same for
+the foreign-key checks when a principal or a tenant is deleted. `prune_task_routes`
+deletes the routes whose `expires_at` has passed, through `task_route_expiry`.
 
 ## Tests
 
