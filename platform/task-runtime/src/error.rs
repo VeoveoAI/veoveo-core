@@ -29,6 +29,8 @@ pub enum TaskError {
     InvalidInputKey,
     #[error("task input key `{0}` has already been used")]
     DuplicateInputKey(String),
+    #[error("task `{0}` already holds 64 input requests, the most a Task holds")]
+    InputLimit(TaskId),
     #[error("the tasks notification listener stopped")]
     ListenerStopped,
     #[error(transparent)]

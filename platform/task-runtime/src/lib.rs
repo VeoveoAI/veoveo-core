@@ -36,7 +36,7 @@ pub use config::TaskRuntimeConfig;
 pub use create::{CreateTask, CreateTaskResult};
 pub use error::TaskError;
 pub use hosting::{DurableListener, DurableTasks, TasksOnly, WithResources};
-pub use inputs::{TaskInputExchange, TaskInputRequest, TaskInputSubmission};
+pub use inputs::{MAX_TASK_INPUTS, TaskInputExchange, TaskInputRequest, TaskInputSubmission};
 pub use mcp::{mcp_task_completion, project_snapshot, task_seed};
 pub use owner::TaskOwner;
 pub use owner_query::OwnerTaskQuery;

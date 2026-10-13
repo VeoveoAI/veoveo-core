@@ -11,7 +11,7 @@ methods.
 | Standard or interface | Profile |
 |---|---|
 | MCP `2026-07-28` Tasks | The official RMCP Task model: task-augmented `tools/call`, `tasks/get`, `tasks/update`, `tasks/cancel` and Task status notifications on `subscriptions/listen`. Stored statuses map onto `working`, `input_required`, `completed`, `failed` and `cancelled` |
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0406` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
+| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0407` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads, keyed by Task ID and tenant, on the channel of the Task's server, `tasks.<server>` |
 | Row-level security | A member of `veoveo_server` reads and writes only the Tasks of its own servers |
@@ -145,7 +145,10 @@ reader and closes after the last one leaves.
 ## Input Exchanges
 
 `request_input` stores an input request and moves the owned Task to waiting in one
-statement; a repeated key fails with `DuplicateInputKey`. Callers answer through
+statement; a repeated key fails with `DuplicateInputKey`. A Task holds at most
+`MAX_TASK_INPUTS`, 64, requests, answered or not. The `task_input_limit` trigger counts
+them under the Task's row lock, which the same statement takes first, and a request past
+the limit fails with `InputLimit`. Callers answer through
 `OwnerTaskQuery::submit_input_responses`. Each answer locks its Task, which must be
 queued, running or waiting and selected for the caller, and in the same statement it
 writes an unanswered input and advances the Task's revision. An answer to an answered or
@@ -183,7 +186,7 @@ it.
 work stream, notifications that reach only the channel of the Task's server, recovery of
 each class and fencing after an instance's session is terminated and reaped,
 cancellation of owned and unowned Tasks, resumable settlement, input exchanges with
-concurrent answers, idempotent creation,
+concurrent answers and concurrent requests past the input limit, idempotent creation,
 result and failure shapes, owner reads and pages, subscriptions across a listener
 reconnect, row-level security between two server logins and batched retention pruning.
 Unit tests on the same fixture check that another server's Tasks never wake a runtime's

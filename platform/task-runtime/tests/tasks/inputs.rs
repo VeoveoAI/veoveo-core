@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use crate::store::TestDb;
 use serde_json::{Value, json};
 use veoveo_task_runtime::{
-    RecoveryClass, TaskError, TaskInputRequest, TaskInputSubmission, TaskStatus,
+    MAX_TASK_INPUTS, RecoveryClass, TaskError, TaskInputRequest, TaskInputSubmission, TaskStatus,
 };
 
 use crate::support::{OwnerSpec, claimed, create, owner, owner_with, runtime, within};
@@ -187,6 +187,55 @@ async fn concurrent_answers_accept_one() {
                 .sum::<usize>(),
             1
         );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_task_holds_at_most_sixty_four_input_requests() {
+    within(async {
+        let db = TestDb::new().await;
+        let worker = runtime(&db).await;
+        let task = claimed(&worker, RecoveryClass::Resume).await;
+        // Concurrent requests for one Task still stop at the limit.
+        let requests = futures::future::join_all((0..MAX_TASK_INPUTS + 8).map(|index| {
+            let worker = worker.clone();
+            async move {
+                worker
+                    .request_input(task.task_id, &format!("input-{index}"), request("Next?"))
+                    .await
+            }
+        }))
+        .await;
+        let accepted = requests.iter().filter(|request| request.is_ok()).count();
+        assert_eq!(accepted, MAX_TASK_INPUTS);
+        assert!(requests.iter().all(|request| match request {
+            Ok(_) => true,
+            Err(TaskError::InputLimit(id)) => *id == task.task_id,
+            Err(_) => false,
+        }));
+        assert_eq!(
+            worker.outstanding_inputs(task.task_id).await.unwrap().len(),
+            MAX_TASK_INPUTS
+        );
+        // Answered requests still count.
+        let all = (0..MAX_TASK_INPUTS + 8)
+            .map(|index| (format!("input-{index}"), json!("accept")))
+            .collect::<Vec<_>>();
+        let all = all
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.clone()))
+            .collect::<Vec<_>>();
+        worker
+            .submit_input_responses(task.task_id, answers(&all))
+            .await
+            .unwrap();
+        assert!(matches!(
+            worker
+                .request_input(task.task_id, "after-answers", request("More?"))
+                .await,
+            Err(TaskError::InputLimit(_))
+        ));
     })
     .await;
 }

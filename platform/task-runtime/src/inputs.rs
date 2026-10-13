@@ -35,6 +35,11 @@ pub struct TaskInputSubmission {
 
 pub(crate) type InputResponses = BTreeMap<String, BTreeMap<String, Value>>;
 
+/// The most input requests one Task holds, which `tasks.task_input_limit` enforces.
+pub const MAX_TASK_INPUTS: usize = 64;
+/// The constraint name the limit's trigger reports.
+const INPUT_LIMIT_CONSTRAINT: &str = "task_input_limit";
+
 pub(crate) fn validate_input_key(key: &str) -> Result<(), TaskError> {
     if !is_valid_key(key) {
         return Err(TaskError::InvalidInputKey);
@@ -59,7 +64,7 @@ pub(crate) fn object(map: BTreeMap<String, Value>) -> Value {
 
 impl TaskRuntime {
     /// Ask the caller for input. The Task waits until a caller answers; this instance
-    /// must own it.
+    /// must own it. A Task holds at most [`MAX_TASK_INPUTS`] requests, answered or not.
     pub async fn request_input(
         &self,
         task_id: TaskId,
@@ -87,6 +92,11 @@ impl TaskRuntime {
         .map_err(|error| match &error {
             sqlx::Error::Database(database) if database.is_unique_violation() => {
                 TaskError::DuplicateInputKey(key.to_owned())
+            }
+            sqlx::Error::Database(database)
+                if database.constraint() == Some(INPUT_LIMIT_CONSTRAINT) =>
+            {
+                TaskError::InputLimit(task_id)
             }
             _ => TaskError::Database(error),
         })?;
