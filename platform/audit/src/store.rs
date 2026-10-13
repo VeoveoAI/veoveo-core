@@ -1,5 +1,5 @@
-//! PostgreSQL persistence for the audit log: appends, partition-scoped reads, change
-//! signals and the indexing windows. The sealer's writes live in [`crate::sealer`]
+//! PostgreSQL persistence for the audit log: appends, partition-scoped reads and change
+//! signals. The sealer's writes live in [`crate::sealer`]
 //! because they run on the connection that holds the sealer role.
 use std::sync::Arc;
 use veoveo_audit_contract::{
@@ -12,7 +12,6 @@ use veoveo_platform_store::{
 
 mod blocks;
 pub(crate) mod delivery;
-pub(crate) mod indexing;
 mod live;
 mod records;
 mod row;
@@ -21,10 +20,8 @@ pub(crate) mod seal;
 pub use blocks::AuditExportRange;
 pub use live::{AuditLiveChange, AuditLiveStream};
 
-/// SQLSTATE that `audit.append` and `audit.append_indexing` raise for a reused identity.
+/// SQLSTATE that `audit.append` raises for a reused identity.
 const IDENTITY_CONFLICT: &str = "VV501";
-/// SQLSTATE that `audit.append_indexing` raises for a read outside its admission window.
-const INDEXING_READ_EXPIRED: &str = "VV502";
 /// SQLSTATE that the export functions raise when a block or intent disagrees.
 const BLOCK_CONFLICT: &str = "VV503";
 /// SQLSTATE that `audit.record_export` raises for a destination's recorded refusal.
@@ -44,8 +41,6 @@ pub enum AuditStoreError {
     BatchLimit,
     #[error("an audit record identity already holds different content")]
     IdentityConflict,
-    #[error("audit indexing read is outside its admission window")]
-    IndexingReadExpired,
     #[error(
         "audit destination permanently rejected this delivery; configure a corrected destination before resuming export"
     )]
@@ -66,7 +61,6 @@ impl From<sqlx::Error> for AuditStoreError {
             .map(|code| code.into_owned());
         match code.as_deref() {
             Some(IDENTITY_CONFLICT) => Self::IdentityConflict,
-            Some(INDEXING_READ_EXPIRED) => Self::IndexingReadExpired,
             Some(BLOCK_CONFLICT) => Self::Integrity,
             Some(EXPORT_REJECTED) => Self::ExportRejected,
             _ => Self::Database(error),

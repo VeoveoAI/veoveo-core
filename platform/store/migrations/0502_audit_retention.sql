@@ -22,10 +22,3 @@ COMMENT ON TABLE audit.export_delivery IS
 
 COMMENT ON TABLE audit.export_cursor IS
     'Retention: one row per destination and partition for the life of the installation.';
-
-COMMENT ON TABLE audit.indexing_receipt IS
-    'Retention: one day; the indexing writer prunes older receipts in batches.';
-
-COMMENT ON TABLE audit.indexing_window IS
-    'Retention: until the window ends and the finalizer replaces it with one audit '
-    'record.';

@@ -443,24 +443,6 @@ mod baseline {
         Disconnected,
         Failed,
     }
-    #[derive(
-        Debug,
-        Clone,
-        Copy,
-        PartialEq,
-        Eq,
-        serde::Serialize,
-        serde::Deserialize,
-        schemars::JsonSchema,
-    )]
-    #[serde(rename_all = "snake_case")]
-    pub enum KnowledgeReadStatus {
-        Read,
-        NotModified,
-        Missing,
-        Denied,
-        Failed,
-    }
 }
 fn compare<
     A: serde::Serialize + for<'de> serde::Deserialize<'de> + PartialEq + std::fmt::Debug,
@@ -1365,30 +1347,6 @@ fn frozen_activity_vocabulary_wire_and_schemas() {
     assert_eq!(
         schemars::schema_for!(super::DictationEnd),
         schemars::schema_for!(baseline::DictationEnd)
-    );
-    compare(
-        super::KnowledgeReadStatus::Read,
-        baseline::KnowledgeReadStatus::Read,
-    );
-    compare(
-        super::KnowledgeReadStatus::NotModified,
-        baseline::KnowledgeReadStatus::NotModified,
-    );
-    compare(
-        super::KnowledgeReadStatus::Missing,
-        baseline::KnowledgeReadStatus::Missing,
-    );
-    compare(
-        super::KnowledgeReadStatus::Denied,
-        baseline::KnowledgeReadStatus::Denied,
-    );
-    compare(
-        super::KnowledgeReadStatus::Failed,
-        baseline::KnowledgeReadStatus::Failed,
-    );
-    assert_eq!(
-        schemars::schema_for!(super::KnowledgeReadStatus),
-        schemars::schema_for!(baseline::KnowledgeReadStatus)
     );
 }
 

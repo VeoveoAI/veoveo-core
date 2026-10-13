@@ -14,7 +14,7 @@ mod database;
 use database::Conformance;
 
 /// The tables whose rows each belong to one audit partition.
-const PARTITIONED: [&str; 8] = [
+const PARTITIONED: [&str; 7] = [
     "audit.record",
     "audit.daily",
     "audit.block",
@@ -22,7 +22,6 @@ const PARTITIONED: [&str; 8] = [
     "audit.retention_anchor",
     "audit.export_delivery",
     "audit.export_cursor",
-    "audit.indexing_receipt",
 ];
 
 #[tokio::test]

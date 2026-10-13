@@ -1,39 +1,27 @@
 //! Appends and partition-scoped record reads. Policy admission and target registry
 //! checks run before SQL, and every returned row is admitted before it is returned.
-use super::{AuditStore, AuditStoreError, admit, indexing::IndexingRows, row::RecordRow};
+use super::{AuditStore, AuditStoreError, admit, row::RecordRow};
 use std::time::Duration;
 use veoveo_audit_contract::{
     AUDIT_APPEND_LIMIT, AuditClass, AuditCursor, AuditDailyCount, AuditDailyCursor, AuditDailyPage,
     AuditDailyQuery, AuditDetail, AuditDraft, AuditOrder, AuditOutcome, AuditPage, AuditPartition,
     AuditQuery, AuditReadMethod, AuditReadScope, AuditRecord, AuditRecordId, AuditTarget,
-    AuditTraceId, AuditTransactionWrite, IndexingRead,
+    AuditTraceId, AuditTransactionWrite,
 };
 use veoveo_types::{GatewayProfileId, PrincipalId};
 
 impl AuditStore {
-    /// Append drafts in one transaction of their own and return once it commits.
+    /// Append drafts in one transaction of their own and return once it commits. A
+    /// serialization failure or deadlock repeats the whole transaction up to three more
+    /// times.
     pub async fn append(&self, drafts: &[AuditDraft]) -> Result<(), AuditStoreError> {
-        self.append_group(drafts, &[]).await
-    }
-
-    /// Commit records and indexing reads together. A serialization failure or deadlock
-    /// repeats the whole transaction up to three more times.
-    pub async fn append_group(
-        &self,
-        drafts: &[AuditDraft],
-        indexing: &[IndexingRead],
-    ) -> Result<(), AuditStoreError> {
-        if drafts.is_empty() && indexing.is_empty() {
+        if drafts.is_empty() {
             return Ok(());
         }
-        if indexing.len() > AUDIT_APPEND_LIMIT {
-            return Err(AuditStoreError::BatchLimit);
-        }
         let records = AuditTransactionWrite::batch(self.targets(), drafts.iter().cloned())?;
-        let reads = IndexingRows::encode(self.targets(), indexing)?;
         let mut attempt = 0;
         loop {
-            match self.append_once(&records, &reads).await {
+            match self.append_once(&records).await {
                 Err(error) if error.retryable() && attempt < 3 => {
                     tokio::time::sleep(Duration::from_millis(2u64.pow(attempt))).await;
                     attempt += 1;
@@ -43,14 +31,9 @@ impl AuditStore {
         }
     }
 
-    async fn append_once(
-        &self,
-        records: &AuditTransactionWrite,
-        reads: &IndexingRows,
-    ) -> Result<(), AuditStoreError> {
+    async fn append_once(&self, records: &AuditTransactionWrite) -> Result<(), AuditStoreError> {
         let mut transaction = self.pool().begin().await?;
         records.append(&mut transaction).await?;
-        reads.append(&mut transaction).await?;
         transaction.commit().await?;
         Ok(())
     }

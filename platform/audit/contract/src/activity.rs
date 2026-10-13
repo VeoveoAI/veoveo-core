@@ -1,4 +1,3 @@
-use crate::KnowledgeReadObservation;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use veoveo_types::{ResourceUri, Sha256Digest};
@@ -300,15 +299,6 @@ pub enum DictationEnd {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, veoveo_types::Vocabulary)]
-pub enum KnowledgeReadStatus {
-    Read,
-    NotModified,
-    Missing,
-    Denied,
-    Failed,
-}
-
 /// Closed payloads contain identifiers, measurements and reviewed enums only.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -381,20 +371,6 @@ pub enum AuditDetail {
         end: DictationEnd,
         chunks: u64,
         duration_ms: u64,
-    },
-    KnowledgeRead {
-        member: ResourceUri,
-        observation: Option<Box<KnowledgeReadObservation>>,
-        status: KnowledgeReadStatus,
-    },
-    IndexingWindow {
-        collection: veoveo_mcp_ext_knowledge::CollectionId,
-        start: chrono::DateTime<chrono::Utc>,
-        end: chrono::DateTime<chrono::Utc>,
-        reads: u64,
-        not_modified: u64,
-        failed: u64,
-        members_digest: Sha256Digest,
     },
 }
 impl AuditDetail {
@@ -510,8 +486,6 @@ impl AuditDetail {
             Self::DictationOpen => "dictation_open",
             Self::DictationDenial => "dictation_denial",
             Self::DictationSummary { .. } => "dictation_summary",
-            Self::KnowledgeRead { .. } => "knowledge_read",
-            Self::IndexingWindow { .. } => "indexing_window",
         }
     }
 }

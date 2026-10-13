@@ -213,10 +213,7 @@ fn classify(record: &AuditRecord) -> (u16, u8, &'static str, Fields<'_>) {
             );
         }
         let (id, name) = match draft.detail() {
-            AuditDetail::Read { .. }
-            | AuditDetail::Discovery { .. }
-            | AuditDetail::KnowledgeRead { .. }
-            | AuditDetail::IndexingWindow { .. } => (2, "Read"),
+            AuditDetail::Read { .. } | AuditDetail::Discovery { .. } => (2, "Read"),
             AuditDetail::AccountChange {
                 activity: AccountActivity::Create,
             } => (1, "Create"),

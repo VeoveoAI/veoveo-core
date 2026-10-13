@@ -14,14 +14,12 @@ singletons and query style.
 | `xid8` and `pg_snapshot_xmin` | Records are sealed in transaction order below the snapshot horizon |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` on the `audit` channel; records carry their identity as the key, blocks their partition; the tenant member is always null |
 | Advisory locks | The sealer holds the `audit.sealer` singleton through `veoveo-platform-store` |
-| SQLSTATE | `VV501` reused identity, `VV502` indexing read outside its admission window, `VV503` block or intent disagreement, `VV504` recorded export refusal |
+| SQLSTATE | `VV501` reused identity, `VV503` block or intent disagreement, `VV504` recorded export refusal |
 | RFC 9162, RFC 8785 and RFC 8032 | Merkle roots over canonical record bytes, JCS block heads and Ed25519 signatures |
 | RFC 9562, W3C Trace Context, RFC 3339 | Record and request identities, trace and span identities, timestamps |
 | `https://veoveo.ai/formats/audit-record` | The record a producer signs off on, stored as the draft document |
 | `https://veoveo.ai/formats/audit-block` | Signed block heads and the signature domain separator |
-| `https://veoveo.ai/formats/audit-indexing-members` | The hash chain over the members an indexing window observed |
 | `https://veoveo.ai/formats/audit-key-transition-qualification` | The counts the key-transition test prints; it carries no signing material |
-| `ai.veoveo/knowledge-source` | Observation fields of knowledge reads, from the protocol-independent contract |
 
 Export protocols are in the [export design](src/export/DESIGN.md).
 
@@ -35,7 +33,6 @@ Export protocols are in the [export design](src/export/DESIGN.md).
 | `audit.partition_head` | Each partition's newest block sequence, last position and head hash |
 | `audit.retention_anchor` | The last block retention removed from each partition |
 | `audit.export_delivery`, `audit.export_cursor` | Delivery intents, receipts and refusals per block and destination, and each destination's newest acknowledged block |
-| `audit.indexing_receipt`, `audit.indexing_window` | Retry receipts of indexing reads and the open five-minute windows |
 | `audit.daily` | A view of record counts per partition, UTC day, class and outcome |
 
 A producer supplies a record's draft, class and occurrence time. The identity,
@@ -58,9 +55,9 @@ append in a transaction of its own. Repeating an append of the same drafts chang
 nothing. A draft that reuses a stored identity with other content raises `VV501`, which
 aborts the transaction.
 
-`AuditWriter` serves request handlers. It groups up to 64 records and indexing reads in
-one transaction and acknowledges each caller after the commit. A caller waits at most
-one second for queue space. Completion records follow an effect that already happened,
+`AuditWriter` serves request handlers. It groups up to 64 records in one transaction
+and acknowledges each caller after the commit. A caller waits at most one second for
+queue space. Completion records follow an effect that already happened,
 so the writer retries them with backoff instead of failing the caller. Shutdown closes
 admission and drains the queues within the caller's deadline.
 
@@ -121,22 +118,6 @@ minutes. Block reads return the members in position order and fail when a member
 is missing. A filtered block read returns every matching member, as an export reads it;
 the query's order and page size do not apply, and a query with a cursor is refused.
 `export_range` reads the newest head and the last retired block in one statement.
-
-## Indexing Read Windows
-
-The writer commits each admitted indexing read to its window and a retry receipt before
-it acknowledges the read. A window belongs to one actor, authority and collection and
-covers the five minutes of database time that contain the commit. A read must have
-occurred within the preceding hour and at most one minute ahead of database time. A
-retry with the same fingerprint changes nothing, and one with another fingerprint fails
-the group. Receipts last one day, so removing one cannot admit an expired retry.
-
-Each observed resource URI and revision extends the window's member digest chain.
-Counters record total, not-modified and failed reads. The writer checks every five
-seconds for ended windows; any replica finalizes up to 32 at a time by deleting a window
-whose read count it summarized and appending the summary record in the same
-transaction. A concurrent read leaves the window for the next pass. The writer stops
-admitting records when finalization or receipt cleanup fails.
 
 ## Retention
 

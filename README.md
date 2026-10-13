@@ -20,7 +20,6 @@ revision of this repository.
 | `platform/audit/contract` | `veoveo-audit-contract` | Audit record, target, block and reader types, and the append inside a caller's PostgreSQL transaction |
 | `platform/artifacts/contract` | `veoveo-artifact-contract` | Artifact identities, metadata and release states |
 | `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision |
-| `mcp/ext-knowledge` | `veoveo-mcp-ext-knowledge` | The `ai.veoveo/knowledge-source` extension |
 | `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database, the database conformance checks and tool-input cases |
 
 Core names no specific server, and neither does an installation's configuration.

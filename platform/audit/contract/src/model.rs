@@ -249,12 +249,6 @@ pub enum AuditValidationError {
     Partition,
     #[error("an accepted outcome cannot carry a denial reason")]
     Outcome,
-    #[error("knowledge read outcome and observation disagree")]
-    KnowledgeRead,
-    #[error(
-        "indexing audit requires a service client, matching collection and valid five-minute counts"
-    )]
-    IndexingWindow,
     #[error("audit cursor belongs to a different partition")]
     Cursor,
     #[error("audit time range must increase")]
@@ -302,24 +296,6 @@ impl TryFrom<AuditDraftWire> for AuditDraft {
                 AuditTarget::Task { .. } | AuditTarget::TaskRoute { .. },
             ) => true,
             (AuditDetail::Task { .. }, _) => false,
-            (
-                AuditDetail::KnowledgeRead {
-                    member,
-                    observation,
-                    ..
-                },
-                AuditTarget::Resource { server, uri },
-            ) => {
-                member == uri
-                    && observation
-                        .as_ref()
-                        .is_none_or(|o| o.collection.server() == server)
-            }
-            (AuditDetail::KnowledgeRead { .. }, _) => false,
-            (AuditDetail::IndexingWindow { collection, .. }, AuditTarget::Server { server }) => {
-                collection.server() == server
-            }
-            (AuditDetail::IndexingWindow { .. }, _) => false,
             (AuditDetail::Registration { .. }, AuditTarget::Server { .. }) => true,
             (AuditDetail::Registration { .. }, _) => false,
             _ => true,
@@ -327,61 +303,7 @@ impl TryFrom<AuditDraftWire> for AuditDraft {
         if !target_matches {
             return Err(AuditValidationError::Target);
         }
-        if let AuditDetail::KnowledgeRead {
-            status,
-            observation,
-            ..
-        } = &wire.detail
-        {
-            let valid = match status {
-                KnowledgeReadStatus::Read | KnowledgeReadStatus::NotModified => {
-                    wire.outcome == AuditOutcome::Succeeded
-                        && observation.as_ref().is_some_and(|o| {
-                            o.not_modified == (*status == KnowledgeReadStatus::NotModified)
-                        })
-                }
-                KnowledgeReadStatus::Denied => {
-                    wire.outcome == AuditOutcome::Denied && observation.is_none()
-                }
-                KnowledgeReadStatus::Missing => {
-                    wire.outcome == AuditOutcome::Failed
-                        && wire.reason == AuditReason::NotFound
-                        && observation.is_none()
-                }
-                KnowledgeReadStatus::Failed => {
-                    wire.outcome == AuditOutcome::Failed && observation.is_none()
-                }
-            };
-            if !valid {
-                return Err(AuditValidationError::KnowledgeRead);
-            }
-        }
         const MAX_COUNTER: u64 = (1u64 << 53) - 1;
-        if let AuditDetail::IndexingWindow {
-            start,
-            end,
-            reads,
-            not_modified,
-            failed,
-            ..
-        } = &wire.detail
-            && (start.timestamp().rem_euclid(300) != 0
-                || start.timestamp_subsec_nanos() != 0
-                || end.signed_duration_since(*start) != chrono::Duration::minutes(5)
-                || *reads == 0
-                || *reads > MAX_COUNTER
-                || *failed > *reads
-                || *not_modified > reads - failed
-                || wire.occurred_at != *end
-                || wire.outcome != AuditOutcome::Succeeded
-                || !wire.actor.as_ref().is_some_and(|actor| {
-                    actor.kind == AuditPrincipalKind::Service
-                        && actor.tenant.is_some()
-                        && actor.oauth_client.is_some()
-                }))
-        {
-            return Err(AuditValidationError::IndexingWindow);
-        }
         let counters_ok = wire.latency_ms.is_none_or(|value| value <= MAX_COUNTER)
             && wire
                 .actor

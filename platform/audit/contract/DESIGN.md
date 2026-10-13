@@ -12,7 +12,6 @@
 | RFC 3339 and JSON | Typed timestamps, tagged closed enums and checked deserialization |
 | `https://veoveo.ai/formats/audit-record` | One reviewed record shape across platform producers and readers |
 | `https://veoveo.ai/formats/audit-block` | Signed block heads, members and checkpoints |
-| `ai.veoveo/knowledge-source` | Reviewed observation fields from the protocol-independent extension contract |
 | PostgreSQL 18 through sqlx 0.9.0 | The `postgres` feature only: `text` bindings for `AuditClass`, `AuditOutcome`, `AuditExportRejection` and `AuditTraceId`, a `uuid` binding for `AuditRecordId`, and `audit.append` for transactional appends |
 
 This library owns the protocol-independent audit vocabulary. It depends on foundational
@@ -35,22 +34,6 @@ claim, migration, registration, declaration update, removal and lease expiry; le
 renewals produce no record. A platform
 Task uses its Task identity; an external Task uses its opaque gateway route and
 server identity. These identities have separate variants.
-Knowledge read details bind the member and collection owner to their resource target.
-Successful reads require an observation whose conditional status matches the outcome.
-Denied or failed reads cannot claim a returned revision. `KnowledgeReadObservation`
-copies source identity, revision, digest, times, attribution and access fields. Its
-external identity excludes navigation URLs because they can carry signed query
-credentials. The closed audit schema rejects those URLs on input as well.
-An absent or null observation access field decodes to None. The Audit producer
-omits None and preserves the frozen access policy spellings for Some; receiving
-null does not change the serialized record profile.
-The access descriptor includes the source's closed read policy and its optional
-`GatewayProfileId` restriction. That identifier is an installation profile route token
-validated by the foundational type; it carries no credential or free-form description.
-`IndexingRead` admits only collection-matching resource reads by a tenant service
-client. Denials cannot enter an aggregate. `IndexingWindow` requires a matching server
-target, five-minute UTC bounds, positive reads and consistent outcome counters. Its
-occurrence time equals the window end. Constructor and decode checks share these rules.
 A partition's storage key, `installation` or `tenant:` followed by the tenant,
 distinguishes the installation partition from a tenant literally named `installation`.
 
@@ -151,11 +134,3 @@ PostgreSQL keeps; `stored_time` names that truncation for readers. Repeating an 
 of the same drafts changes nothing. A draft that reuses a stored identity with other
 content fails with `AuditAppendError::IdentityConflict`, and the caller's transaction
 must roll back.
-
-## Frozen Knowledge Access Encoding
-
-`knowledge/frozen_access.rs` maps the public Knowledge extension's admitted access
-descriptor into Audit's original read-policy spellings. Audit serialization and
-decoding keep the kebab-case policy values in existing records and hash inputs.
-The projection changes no grant, expiry, owner or Work Context relationship and
-performs no authorization. Public Knowledge observations use their owner spelling.

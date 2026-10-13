@@ -13,7 +13,6 @@ postgres = ["dep:sqlx"]
 
 [dependencies]
 veoveo-types.workspace = true
-veoveo-mcp-ext-knowledge = { workspace = true, features = ["contract"] }
 veoveo-artifact-contract.workspace = true
 chrono.workspace = true
 schemars = { workspace = true, features = ["chrono04", "uuid1"] }

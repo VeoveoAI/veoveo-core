@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-    "mcp/ext-knowledge",
     "platform/artifacts/contract",
     "platform/audit",
     "platform/audit/contract",
@@ -27,7 +26,6 @@ publish = false
 [workspace.dependencies]
 veoveo-task-contract = { path = "platform/task-runtime/contract" }
 veoveo-installation-contract = { path = "platform/installation/contract" }
-veoveo-mcp-ext-knowledge = { path = "mcp/ext-knowledge", default-features = false }
 veoveo-macros = { path = "platform/macros" }
 veoveo-audit-contract = { path = "platform/audit/contract" }
 anyhow = "=1.0.104"
