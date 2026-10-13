@@ -11,7 +11,7 @@ use crate::support::{OwnerSpec, claimed, create, owner, owner_with, runtime, wit
 
 fn request(message: &str) -> TaskInputRequest {
     TaskInputRequest {
-        method: "elicitation/create".into(),
+        kind: "elicitation/create".into(),
         params: BTreeMap::from([("message".to_owned(), json!(message))]),
     }
 }

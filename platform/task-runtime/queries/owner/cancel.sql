@@ -8,7 +8,7 @@ SET status = CASE WHEN owner_instance IS NULL THEN 'cancelled' ELSE 'cancel_requ
 WHERE server = $1
     AND tenant = $2
     AND owner_principal = $3
-    AND profile = $4
+    AND surface = $4
     AND owner_tenant IS NOT DISTINCT FROM $5
     AND data_labels <@ $6
     AND ($7::text[] IS NULL OR task_type = ANY ($7))
@@ -24,7 +24,7 @@ RETURNING
     owner_kind AS "owner_kind: PrincipalKind",
     owner_issuer,
     owner_subject,
-    profile,
+    surface,
     data_labels,
     work_context,
     authority AS "authority: Json<InvocationAuthority>",

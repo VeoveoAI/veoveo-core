@@ -100,7 +100,7 @@ impl OwnerTaskQuery {
             scope.server,
             scope.tenant,
             scope.principal,
-            scope.profile,
+            scope.surface,
             scope.owner_tenant,
             &scope.labels,
             scope.task_types.as_deref(),

@@ -40,7 +40,7 @@ async fn owner_queries_select_the_callers_tasks() {
                 ..OwnerSpec::default()
             }),
             owner_with(OwnerSpec {
-                profile: "auditor",
+                surface: "auditor",
                 labels: &["secret"],
                 ..OwnerSpec::default()
             }),

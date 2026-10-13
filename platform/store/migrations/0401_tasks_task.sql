@@ -1,4 +1,4 @@
--- One durable MCP Task. Columns that queries filter on are typed; the request input,
+-- One durable Task. Columns that queries filter on are typed; the request input,
 -- the result, failure details and the invocation authority snapshot are JSON.
 CREATE TABLE tasks.task (
     id uuid PRIMARY KEY,
@@ -13,7 +13,9 @@ CREATE TABLE tasks.task (
     owner_kind text NOT NULL,
     owner_issuer text NOT NULL,
     owner_subject text NOT NULL,
-    profile text NOT NULL,
+    -- The surface the owner submitted through, such as a Gateway profile. The owner
+    -- reads the Task only through the same surface.
+    surface text NOT NULL,
     -- Data labels the owner held at submission; a reader must hold all of them.
     data_labels text[] NOT NULL DEFAULT '{}',
     work_context text NOT NULL,
@@ -49,6 +51,7 @@ CREATE TABLE tasks.task (
     ),
     CONSTRAINT task_server CHECK (server ~ '^[a-z][a-z0-9-]{0,47}$'),
     CONSTRAINT task_owner_kind CHECK (owner_kind IN ('user', 'service')),
+    CONSTRAINT task_surface CHECK (tasks.valid_key(surface)),
     CONSTRAINT task_owner_tenant CHECK (owner_tenant IS NULL OR owner_tenant = tenant),
     CONSTRAINT task_authority CHECK (
         jsonb_typeof(authority) = 'object'
@@ -93,12 +96,12 @@ CREATE TABLE tasks.task (
 
 -- A repeated creation with one key returns the existing Task; pruning releases the key.
 CREATE UNIQUE INDEX task_idempotency ON tasks.task (
-    server, tenant, owner_principal, profile, idempotency_key
+    server, tenant, owner_principal, surface, idempotency_key
 ) WHERE idempotency_key IS NOT NULL;
 
 -- Owner reads, pages and subscriptions.
 CREATE INDEX task_owner_page ON tasks.task (
-    server, tenant, owner_principal, profile, created_at, id
+    server, tenant, owner_principal, surface, created_at, id
 );
 
 -- Claims take the oldest queued Task of a server.

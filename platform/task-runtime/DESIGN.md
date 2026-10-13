@@ -1,31 +1,30 @@
 # Durable Task Runtime
 
-`veoveo-task-runtime` stores the MCP Tasks of hosted servers in the installation's
+`veoveo-task-runtime` stores the Tasks of registered servers in the installation's
 PostgreSQL database and runs them on the servers' process instances. A server creates a
-Task when a caller starts a task-augmented tool call. One of its processes claims and
-runs the Task, and callers read, answer, cancel and watch it through the hosted Tasks
-methods.
+Task for a caller's long-running request. One of its processes claims and runs the
+Task, and the caller reads, answers, cancels and watches it through `OwnerTaskQuery`.
+`veoveo-sdk-rust` adapts it to MCP Tasks, and the runtime itself names no protocol.
 
 ## Standards And Protocols
 
 | Standard or interface | Profile |
 |---|---|
-| MCP `2026-07-28` Tasks | The official RMCP Task model: task-augmented `tools/call`, `tasks/get`, `tasks/update`, `tasks/cancel` and Task status notifications on `subscriptions/listen`. Stored statuses map onto `working`, `input_required`, `completed`, `failed` and `cancelled` |
 | [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0407` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads, keyed by Task ID and tenant, on the channel of the Task's server, `tasks.<server>` |
 | Row-level security | A member of `veoveo_server` reads and writes only the Tasks of its own servers |
 | RFC 9562 UUIDv7 | Native Task identity; lookups reject other versions |
-| `ai.veoveo/task-retention-pin` | Request `_meta` key that adds an internal retention pin to a new Task |
 
-The Task contract's recovery classes, `resume` and `interrupted_indeterminate`, are an
-internal vocabulary. They add no MCP status or method.
+The Task contract's statuses and recovery classes, `resume` and
+`interrupted_indeterminate`, are the runtime's own vocabulary. A protocol adapter maps
+them onto its protocol's statuses.
 
 ## Schema
 
 `tasks.task` holds one row per Task. The columns that queries filter on are typed: the
 server, the owner's tenant, explicit tenant claim, principal, kind, issuer, subject and
-profile, the owner's data labels, the Work Context, the operation, the status, the
+surface, the owner's data labels, the Work Context, the operation, the status, the
 recovery class and the owner instance. `tenant_id` and `principal_id` reference the
 owner's rows in `identity`, which creation records through `ensure_identity`, and
 `task_tenant_id` and `task_principal_id` index them for the foreign-key checks. JSON
@@ -43,9 +42,15 @@ so a Task can succeed with a `null` result.
 | `task_completion` | Exactly the finished Tasks have a completion time |
 | `task_owner_instance` | Only running, waiting and cancel-requested Tasks have an owner |
 | `task_progress`, `task_ttl`, `task_poll_interval` | Progress lies in 0..=1, and durations are non-negative |
-| `task_idempotency_key`, `task_retention_pins` | Keys and pins are 1 to 256 bytes without control characters; pins are distinct |
+| `task_surface`, `task_idempotency_key`, `task_retention_pins` | Surfaces, keys and pins are 1 to 256 bytes without control characters; pins are distinct |
 
-A unique index on server, tenant, principal, profile and idempotency key returns the
+A Task's surface is the opaque `TaskSurface` the creating adapter supplies, such as the
+Gateway profile a call arrived on, and its owner reads the Task only through the same
+surface. An input's kind names what the Task asks for, as the adapter that relays the
+request spells it, such as `elicitation/create`. The runtime stores both without
+interpreting them, so the schema holds no protocol vocabulary.
+
+A unique index on server, tenant, principal, surface and idempotency key returns the
 existing Task to a repeated creation, and pruning the Task releases its key.
 `tasks.task_input` holds the inputs a Task requests and the caller's answers, keyed by
 Task and request key; its rows go with their Task.
@@ -111,7 +116,7 @@ Task becomes `cancel_requested`, and its worker settles it. A local worker regis
 ## Caller Access
 
 `TaskRuntime::for_owner` builds an `OwnerTaskQuery` for one `TaskOwner`. Every query
-selects in SQL by server, tenant, principal, profile and explicit tenant claim, and
+selects in SQL by server, tenant, principal, surface and explicit tenant claim, and
 requires the caller to hold every data label the owner held. `of_type` and `of_types`
 select 1–32 operations. `in_work_context` adds the caller's Work Context after checking
 that it belongs to the owner's tenant. A missing Task and another caller's Task both read
@@ -155,12 +160,12 @@ the limit fails with `InputLimit`. Callers answer through
 queued, running or waiting and selected for the caller, and in the same statement it
 writes an unanswered input and advances the Task's revision. An answer to an answered or
 unknown key is ignored and leaves the Task unchanged. `outstanding_inputs` lists the
-unanswered requests for the `input_required` projection.
+unanswered requests for an adapter's input-required projection.
 
 ## Retention
 
 Creation sets `retention_expires_at` from the TTL, seven days by default, and rejects a
-deadline after year 9999. A request's `ai.veoveo/task-retention-pin` adds a pin, and
+deadline after year 9999. A creation may add retention pins, and
 `acknowledge_retention_pin` removes one. `prune_expired` deletes the server's finished
 Tasks whose retention expired and that hold no pin, with their inputs, in the store's
 [batches](../store/DESIGN.md#batched-maintenance), earliest expiry first.
@@ -170,16 +175,6 @@ The runtime owns retention. Every runtime prunes its server's expired Tasks ever
 clone is dropped or its instance is lost. Replicas run their passes independently, and
 `FOR UPDATE SKIP LOCKED` gives each batch's rows to one of them. A failed pass is logged
 and the next one runs on schedule.
-
-## Hosted Server Adapter
-
-A hosted server implements `DurableTaskService`. `hosting::DurableTasks` adapts it to the
-MCP host's `TaskSupport`, and `get_durable_task`, `update_durable_task`,
-`cancel_durable_task` and `subscribe_durable_tasks` serve the protocol methods through an
-`OwnerTaskQuery`. `project_snapshot` returns an object result as it is and wraps any
-other JSON value as `{"value": …}`, because the protocol requires an object.
-`mcp_task_completion` checks a tool result's product address before a worker publishes
-it.
 
 ## Verification
 

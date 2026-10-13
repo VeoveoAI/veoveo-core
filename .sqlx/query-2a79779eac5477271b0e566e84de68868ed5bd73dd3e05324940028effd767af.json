@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- $1–$8 select the caller's Tasks as in `get.sql`. $9 and $10 are the creation time and\n-- ID of the previous page's last Task, and $11 limits the page. The first page's bound\n-- precedes every Task, so the keyset stays an index range in a generic plan.\nSELECT\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    profile,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\nFROM tasks.task\nWHERE server = $1\n    AND tenant = $2\n    AND owner_principal = $3\n    AND profile = $4\n    AND owner_tenant IS NOT DISTINCT FROM $5\n    AND data_labels <@ $6\n    AND ($7::text[] IS NULL OR task_type = ANY ($7))\n    AND ($8::text IS NULL OR work_context = $8)\n    AND (created_at, id) > (\n        coalesce($9::timestamptz, '-infinity'),\n        coalesce($10::uuid, '00000000-0000-0000-0000-000000000000')\n    )\nORDER BY created_at, id\nLIMIT $11\n",
+  "query": "-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)\n-- A worker transition: the caller's instance must own the Task at the expected revision.\n-- A terminal status releases ownership.\nUPDATE tasks.task\nSET status = $5,\n    status_message = $6,\n    progress = $7,\n    result = $8,\n    result_uri = $9,\n    error_code = $10,\n    error_message = $11,\n    error_details = $12,\n    completed_at = CASE WHEN $5 IN ('succeeded', 'failed', 'cancelled') THEN now() END,\n    owner_instance = CASE\n        WHEN $5 IN ('succeeded', 'failed', 'cancelled') THEN NULL\n        ELSE owner_instance\n    END\nWHERE id = $1 AND server = $2 AND owner_instance = $3 AND revision = $4\nRETURNING\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    surface,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\n",
   "describe": {
     "columns": [
       {
@@ -93,12 +93,12 @@
       },
       {
         "ordinal": 8,
-        "name": "profile",
+        "name": "surface",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tasks.task",
-            "name": "profile"
+            "name": "surface"
           }
         }
       },
@@ -391,17 +391,18 @@
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "TextArray",
-        "TextArray",
-        "Text",
-        "Timestamptz",
         "Uuid",
-        "Int8"
+        "Text",
+        "Int4",
+        "Int8",
+        "Text",
+        "Text",
+        "Float8",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Text",
+        "Jsonb"
       ]
     },
     "nullable": [
@@ -442,5 +443,5 @@
       true
     ]
   },
-  "hash": "54471adc9b5072c56d2a5995926d068d4cee8f658c90e36ba3e4a7d087be1699"
+  "hash": "2a79779eac5477271b0e566e84de68868ed5bd73dd3e05324940028effd767af"
 }

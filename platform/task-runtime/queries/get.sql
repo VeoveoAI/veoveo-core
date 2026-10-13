@@ -8,7 +8,7 @@ SELECT
     owner_kind AS "owner_kind: PrincipalKind",
     owner_issuer,
     owner_subject,
-    profile,
+    surface,
     data_labels,
     work_context,
     authority AS "authority: Json<InvocationAuthority>",

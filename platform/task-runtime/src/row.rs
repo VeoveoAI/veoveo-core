@@ -29,7 +29,7 @@ pub(crate) struct TaskRow {
     pub owner_kind: PrincipalKind,
     pub owner_issuer: String,
     pub owner_subject: String,
-    pub profile: String,
+    pub surface: String,
     pub data_labels: Vec<String>,
     pub work_context: String,
     pub authority: Json<InvocationAuthority>,
@@ -85,7 +85,7 @@ impl TryFrom<TaskRow> for TaskSnapshot {
             principal_kind: row.owner_kind,
             issuer: admit("owner issuer", &row.owner_issuer)?,
             subject: admit("owner subject", &row.owner_subject)?,
-            profile: admit("profile", &row.profile)?,
+            surface: admit("surface", &row.surface)?,
             tenant_key: row
                 .owner_tenant
                 .as_deref()
@@ -160,7 +160,7 @@ impl TryFrom<TaskRow> for TaskSnapshot {
 
 pub(crate) struct InputRow {
     pub request_key: String,
-    pub method: String,
+    pub kind: String,
     pub params: Value,
     pub response: Option<Value>,
     pub created_at: DateTime<Utc>,
@@ -183,7 +183,7 @@ impl TryFrom<InputRow> for TaskInputExchange {
         Ok(Self {
             key: row.request_key,
             request: TaskInputRequest {
-                method: row.method,
+                kind: row.kind,
                 params: object("parameters", row.params)?,
             },
             response: row

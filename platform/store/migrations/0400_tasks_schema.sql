@@ -1,4 +1,4 @@
--- Tasks schema: durable MCP Tasks and the inputs they request.
+-- Tasks schema: durable Tasks and the inputs they request.
 
 CREATE SCHEMA tasks;
 
@@ -6,7 +6,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA tasks REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC
 
 GRANT USAGE ON SCHEMA tasks TO veoveo_server;
 
--- A Task key, retention pin, input method or idempotency key: 1 to 256 UTF-8 bytes
+-- A Task key, surface, retention pin, input kind or idempotency key: 1 to 256 UTF-8 bytes
 -- without a control character of Unicode category Cc.
 CREATE FUNCTION tasks.valid_key(value text) RETURNS boolean
 LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE

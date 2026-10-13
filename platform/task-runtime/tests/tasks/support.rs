@@ -85,7 +85,7 @@ async fn terminate(db: &TestDb, pid: i32) {
 
 pub struct OwnerSpec<'a> {
     pub principal: &'a str,
-    pub profile: &'a str,
+    pub surface: &'a str,
     pub tenant: Option<&'a str>,
     pub labels: &'a [&'a str],
     pub work_context: &'a str,
@@ -95,7 +95,7 @@ impl Default for OwnerSpec<'_> {
     fn default() -> Self {
         Self {
             principal: "pilot",
-            profile: "operator",
+            surface: "operator",
             tenant: Some("mission-tenant"),
             labels: &[],
             work_context: "mission",
@@ -111,7 +111,7 @@ pub fn owner_with(spec: OwnerSpec<'_>) -> TaskOwner {
         principal_kind: PrincipalKind::User,
         issuer: "https://issuer.test".parse().unwrap(),
         subject: spec.principal.parse().unwrap(),
-        profile: spec.profile.parse().unwrap(),
+        surface: spec.surface.parse().unwrap(),
         tenant_key: tenant.clone(),
         data_labels: spec
             .labels

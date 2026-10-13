@@ -13,7 +13,8 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TaskInputRequest {
-    pub method: String,
+    /// What the Task asks for, named by the protocol adapter that relays the request.
+    pub kind: String,
     #[serde(default)]
     pub params: BTreeMap<String, Value>,
 }
@@ -72,9 +73,9 @@ impl TaskRuntime {
         request: TaskInputRequest,
     ) -> Result<TaskInputExchange, TaskError> {
         validate_input_key(key)?;
-        if !is_valid_key(&request.method) {
+        if !is_valid_key(&request.kind) {
             return Err(TaskError::invalid_record(
-                "task input method is empty, too long, or contains a control character",
+                "task input kind is empty, too long, or contains a control character",
             ));
         }
         let row = sqlx::query_file_as!(
@@ -84,7 +85,7 @@ impl TaskRuntime {
             self.server().as_str(),
             self.instance_id() as InstanceId,
             key,
-            request.method,
+            request.kind,
             object(request.params),
         )
         .fetch_optional(self.pool())

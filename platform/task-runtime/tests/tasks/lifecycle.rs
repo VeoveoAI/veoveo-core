@@ -95,14 +95,14 @@ async fn an_idempotency_key_returns_the_existing_task_for_the_same_owner() {
         assert!(!replayed.created);
         assert_eq!(replayed.snapshot.task_id, created.snapshot.task_id);
 
-        // The key is scoped to the owner's principal and profile.
+        // The key is scoped to the owner's principal and surface.
         for spec in [
             OwnerSpec {
                 principal: "copilot",
                 ..OwnerSpec::default()
             },
             OwnerSpec {
-                profile: "auditor",
+                surface: "auditor",
                 ..OwnerSpec::default()
             },
         ] {

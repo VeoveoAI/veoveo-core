@@ -29,7 +29,7 @@ pub struct CreateTask {
     pub task_type: TaskTypeName,
     pub request: Value,
     pub recovery_class: RecoveryClass,
-    /// Scoped to the owner's tenant, principal and profile and to the server.
+    /// Scoped to the owner's tenant, principal and surface and to the server.
     pub idempotency_key: Option<String>,
     pub ttl_ms: Option<u64>,
     pub poll_interval_ms: Option<u64>,
@@ -107,7 +107,7 @@ impl TaskRuntime {
             owner.principal_kind as PrincipalKind,
             owner.issuer.as_str(),
             owner.subject.as_str(),
-            owner.profile.as_str(),
+            owner.surface.as_str(),
             &owner
                 .data_labels
                 .iter()
@@ -146,7 +146,7 @@ impl TaskRuntime {
             self.server().as_str(),
             tenant.as_str(),
             owner.principal_key.as_str(),
-            owner.profile.as_str(),
+            owner.surface.as_str(),
             key,
         )
         .fetch_optional(self.pool())

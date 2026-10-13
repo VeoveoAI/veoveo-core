@@ -33,7 +33,7 @@ pub use config::TaskRuntimeConfig;
 pub use create::{CreateTask, CreateTaskResult};
 pub use error::TaskError;
 pub use inputs::{MAX_TASK_INPUTS, TaskInputExchange, TaskInputRequest, TaskInputSubmission};
-pub use owner::TaskOwner;
+pub use owner::{TaskOwner, TaskSurface};
 pub use owner_query::OwnerTaskQuery;
 pub use resumable::ResumeCancellationPolicy;
 pub use retention::RETENTION_INTERVAL;

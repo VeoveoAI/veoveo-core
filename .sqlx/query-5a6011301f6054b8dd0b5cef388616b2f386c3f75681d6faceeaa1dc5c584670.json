@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- $1–$8 select the caller's Tasks: server, tenant, principal, profile, explicit tenant\n-- claim, held data labels, and the optional operation and Work Context selections.\nSELECT\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    profile,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\nFROM tasks.task\nWHERE server = $1\n    AND tenant = $2\n    AND owner_principal = $3\n    AND profile = $4\n    AND owner_tenant IS NOT DISTINCT FROM $5\n    AND data_labels <@ $6\n    AND ($7::text[] IS NULL OR task_type = ANY ($7))\n    AND ($8::text IS NULL OR work_context = $8)\n    AND id = $9\n",
+  "query": "-- $1–$8 select the caller's Tasks: server, tenant, principal, surface, explicit tenant\n-- claim, held data labels, and the optional operation and Work Context selections.\nSELECT\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    surface,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\nFROM tasks.task\nWHERE server = $1\n    AND tenant = $2\n    AND owner_principal = $3\n    AND surface = $4\n    AND owner_tenant IS NOT DISTINCT FROM $5\n    AND data_labels <@ $6\n    AND ($7::text[] IS NULL OR task_type = ANY ($7))\n    AND ($8::text IS NULL OR work_context = $8)\n    AND id = $9\n",
   "describe": {
     "columns": [
       {
@@ -93,12 +93,12 @@
       },
       {
         "ordinal": 8,
-        "name": "profile",
+        "name": "surface",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tasks.task",
-            "name": "profile"
+            "name": "surface"
           }
         }
       },
@@ -440,5 +440,5 @@
       true
     ]
   },
-  "hash": "7ea4dd54c8ab44823abce6e4033f7e9510dfe5e959baae746603a1da82886572"
+  "hash": "5a6011301f6054b8dd0b5cef388616b2f386c3f75681d6faceeaa1dc5c584670"
 }

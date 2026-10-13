@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- $1–$8 select the caller's Tasks as in `get.sql`; $9 lists the watched Task IDs.\nSELECT\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    profile,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\nFROM tasks.task\nWHERE server = $1\n    AND tenant = $2\n    AND owner_principal = $3\n    AND profile = $4\n    AND owner_tenant IS NOT DISTINCT FROM $5\n    AND data_labels <@ $6\n    AND ($7::text[] IS NULL OR task_type = ANY ($7))\n    AND ($8::text IS NULL OR work_context = $8)\n    AND id = ANY ($9::uuid[])\nORDER BY created_at, id\n",
+  "query": "-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)\nUPDATE tasks.task\nSET retention_pins = array_remove(retention_pins, $3)\nWHERE id = $1 AND server = $2 AND $3 = ANY (retention_pins)\nRETURNING\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    surface,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\n",
   "describe": {
     "columns": [
       {
@@ -93,12 +93,12 @@
       },
       {
         "ordinal": 8,
-        "name": "profile",
+        "name": "surface",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tasks.task",
-            "name": "profile"
+            "name": "surface"
           }
         }
       },
@@ -391,15 +391,9 @@
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "TextArray",
-        "TextArray",
-        "Text",
-        "UuidArray"
+        "Text"
       ]
     },
     "nullable": [
@@ -440,5 +434,5 @@
       true
     ]
   },
-  "hash": "e6da13774141b03745cddb08f5e04e2d81d4008e6e395d9bad7ff15d5de6fd98"
+  "hash": "2c51ed176293c675fb9070489e64eabc5b2c5fff42ec81db4cc1710f6ea3e35d"
 }

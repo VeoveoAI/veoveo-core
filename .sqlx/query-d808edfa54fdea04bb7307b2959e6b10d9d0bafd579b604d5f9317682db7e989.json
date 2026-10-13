@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)\n-- The owning worker asks for input; the Task waits until a caller answers.\nWITH parent AS (\n    UPDATE tasks.task\n    SET status = 'waiting', status_message = 'Waiting for input'\n    WHERE id = $1 AND server = $2 AND owner_instance = $3 AND status IN ('running', 'waiting')\n    RETURNING id\n)\nINSERT INTO tasks.task_input (task_id, request_key, method, params)\nSELECT id, $4, $5, $6 FROM parent\nRETURNING request_key, method, params, response, created_at, responded_at\n",
+  "query": "-- veoveo: unbounded (a Task holds at most 64 input requests, which tasks.task_input_limit enforces)\n-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)\nSELECT input.request_key, input.kind, input.params, input.response, input.created_at,\n    input.responded_at\nFROM tasks.task_input AS input\nJOIN tasks.task AS task ON task.id = input.task_id\nWHERE task.id = $1 AND task.server = $2 AND input.response IS NULL\nORDER BY input.created_at, input.request_key\n",
   "describe": {
     "columns": [
       {
@@ -16,12 +16,12 @@
       },
       {
         "ordinal": 1,
-        "name": "method",
+        "name": "kind",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tasks.task_input",
-            "name": "method"
+            "name": "kind"
           }
         }
       },
@@ -73,11 +73,7 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Text",
-        "Int4",
-        "Text",
-        "Text",
-        "Jsonb"
+        "Text"
       ]
     },
     "nullable": [
@@ -89,5 +85,5 @@
       true
     ]
   },
-  "hash": "d2dcd1aa0d936d727f4a07aa77a890133c600d76c6b47eb1ca091b7bfa979665"
+  "hash": "d808edfa54fdea04bb7307b2959e6b10d9d0bafd579b604d5f9317682db7e989"
 }

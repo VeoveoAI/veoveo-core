@@ -3,11 +3,36 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 use veoveo_types::{
-    DataLabelId, GatewayProfileId, InvocationAuthority, PrincipalId, TenantId, TokenIssuer,
-    TokenSubject,
+    DataLabelId, IdMetadata, IdProfile, IdProfileSpec, IdentifierError, InvocationAuthority,
+    PrincipalId, TenantId, TokenIssuer, TokenSubject,
 };
 
-use crate::{PrincipalKind, TaskError};
+use crate::{PrincipalKind, TaskError, snapshot::is_valid_key};
+
+/// The surface an owner submitted a Task through, such as the Gateway profile a call
+/// arrived on. An owner reads a Task only through the surface it was created on. The
+/// runtime treats the value as an opaque key of 1 to 256 bytes without control
+/// characters; the protocol adapter that creates the Task chooses it.
+#[veoveo_types::id(text(TaskSurfaces))]
+pub struct TaskSurface(String);
+
+fn validate_surface(value: &str, _: IdMetadata) -> Result<(), IdentifierError> {
+    if is_valid_key(value) {
+        Ok(())
+    } else {
+        Err(IdentifierError::new(
+            value,
+            "must be 1 to 256 bytes without control characters",
+        ))
+    }
+}
+
+#[doc(hidden)]
+pub struct TaskSurfaces;
+impl IdProfile for TaskSurfaces {
+    type Error = IdentifierError;
+    const PROFILE: IdProfileSpec<Self::Error> = IdProfileSpec::text(validate_surface);
+}
 
 /// The tenant of an owner without an explicit tenant claim.
 pub(crate) const INSTALLATION_TENANT: &str = "installation";
@@ -19,7 +44,7 @@ pub struct TaskOwner {
     pub principal_kind: PrincipalKind,
     pub issuer: TokenIssuer,
     pub subject: TokenSubject,
-    pub profile: GatewayProfileId,
+    pub surface: TaskSurface,
     /// The explicit tenant claim; `None` for an installation-wide principal.
     pub tenant_key: Option<TenantId>,
     /// Data labels the principal holds. A reader of the Task must hold all of them.
@@ -52,7 +77,7 @@ pub(crate) struct OwnerScope {
     pub server: String,
     pub tenant: String,
     pub principal: String,
-    pub profile: String,
+    pub surface: String,
     pub owner_tenant: Option<String>,
     pub labels: Vec<String>,
     pub task_types: Option<Vec<String>>,

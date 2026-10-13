@@ -19,7 +19,7 @@ RETURNING
     task.owner_kind AS "owner_kind: PrincipalKind",
     task.owner_issuer,
     task.owner_subject,
-    task.profile,
+    task.surface,
     task.data_labels,
     task.work_context,
     task.authority AS "authority: Json<InvocationAuthority>",

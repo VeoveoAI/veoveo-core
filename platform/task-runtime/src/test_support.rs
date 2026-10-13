@@ -18,7 +18,7 @@ pub(crate) fn owner() -> TaskOwner {
         principal_kind: PrincipalKind::User,
         issuer: "https://issuer.test".parse().unwrap(),
         subject: "pilot".parse().unwrap(),
-        profile: "operator".parse().unwrap(),
+        surface: "operator".parse().unwrap(),
         tenant_key: Some(tenant.clone()),
         data_labels: BTreeSet::new(),
         authority: InvocationAuthority {

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    profile,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\nFROM tasks.task\nWHERE server = $1\n    AND tenant = $2\n    AND owner_principal = $3\n    AND profile = $4\n    AND idempotency_key = $5\n",
+  "query": "-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)\nSELECT\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    surface,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\nFROM tasks.task\nWHERE id = $1 AND server = $2\n",
   "describe": {
     "columns": [
       {
@@ -93,12 +93,12 @@
       },
       {
         "ordinal": 8,
-        "name": "profile",
+        "name": "surface",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tasks.task",
-            "name": "profile"
+            "name": "surface"
           }
         }
       },
@@ -391,10 +391,7 @@
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Text",
+        "Uuid",
         "Text"
       ]
     },
@@ -436,5 +433,5 @@
       true
     ]
   },
-  "hash": "6200bc1caffbff40a1c96c8ec929aa56e8e785b0bab9b2637141ce863d3d1f53"
+  "hash": "1c837d52df5cea6e90860490ebe4616abf6f8b62972c4fdb3bb9f9375f8d4bd7"
 }

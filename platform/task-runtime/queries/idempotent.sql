@@ -7,7 +7,7 @@ SELECT
     owner_kind AS "owner_kind: PrincipalKind",
     owner_issuer,
     owner_subject,
-    profile,
+    surface,
     data_labels,
     work_context,
     authority AS "authority: Json<InvocationAuthority>",
@@ -38,5 +38,5 @@ FROM tasks.task
 WHERE server = $1
     AND tenant = $2
     AND owner_principal = $3
-    AND profile = $4
+    AND surface = $4
     AND idempotency_key = $5
