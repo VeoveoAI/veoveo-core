@@ -95,7 +95,8 @@ login that started it and its start time; a kernel component names itself, such 
 `gateway`. The lock lives as long as the connection. `kernel.instance_alive(id)` reports
 whether that lock is held, using `pg_locks`. A process that exits or loses its connection
 releases the lock at once; a host that disappears releases it when TCP keepalive closes
-the connection. A clean shutdown deletes the row.
+the connection. A clean shutdown deletes the row and releases the lock before it closes
+the connection, so the instance reads as dead once shutdown returns.
 
 The `Instance` type checks its connection every 5 seconds and reports itself lost when
 a check fails or takes longer than 5 seconds; the process then stops acting on the work

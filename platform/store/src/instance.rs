@@ -159,11 +159,12 @@ async fn hold(
     loop {
         tokio::select! {
             _ = &mut stopped => {
-                let deleted = sqlx::query_file!("src/instance/stop_instance.sql", id as InstanceId)
-                    .execute(&mut connection)
-                    .await;
+                let stopped =
+                    sqlx::query_file_scalar!("src/instance/stop_instance.sql", id as InstanceId)
+                        .fetch_one(&mut connection)
+                        .await;
                 let closed = connection.close().await;
-                deleted?;
+                stopped?;
                 closed?;
                 return Ok(());
             }
