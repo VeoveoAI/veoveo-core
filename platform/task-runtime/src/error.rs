@@ -31,6 +31,8 @@ pub enum TaskError {
     DuplicateInputKey(String),
     #[error("task `{0}` already holds 64 input requests, the most a Task holds")]
     InputLimit(TaskId),
+    #[error("task `{0}` is parked on an operation and waits without a worker")]
+    Parked(TaskId),
     #[error("the tasks notification listener stopped")]
     ListenerStopped,
     #[error(transparent)]
@@ -42,6 +44,11 @@ pub enum TaskError {
 }
 
 impl TaskError {
+    /// The worker parked its Task on an operation and stops without settling it.
+    pub fn is_parked(&self) -> bool {
+        matches!(self, Self::Parked(_))
+    }
+
     pub(crate) fn invalid_record(message: impl Into<String>) -> Self {
         Self::InvalidRecord(message.into())
     }

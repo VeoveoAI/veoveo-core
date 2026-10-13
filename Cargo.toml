@@ -31,6 +31,7 @@ aws-lc-rs = "1.18.0"
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
 futures = "0.3.34"
+getrandom = "0.4.3"
 http = "1.5.0"
 iri-string = { version = "=0.7.14", default-features = false, features = ["std"] }
 hex = "=0.4.3"

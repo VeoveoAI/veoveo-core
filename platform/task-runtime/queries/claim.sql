@@ -1,10 +1,15 @@
 -- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 UPDATE tasks.task AS task
-SET status = 'running', status_message = 'Running', owner_instance = $3, started_at = now()
+SET status = CASE WHEN task.status = 'queued' THEN 'running' ELSE task.status END,
+    status_message = CASE WHEN task.status = 'queued' THEN 'Running' ELSE task.status_message END,
+    owner_instance = $3,
+    parked_on = NULL,
+    started_at = CASE WHEN task.status = 'queued' THEN now() ELSE task.started_at END
 FROM (
     SELECT id
     FROM tasks.task
-    WHERE id = $1 AND server = $2 AND status = 'queued'
+    WHERE id = $1 AND server = $2
+        AND (status = 'queued' OR (status = 'cancel_requested' AND owner_instance IS NULL))
     FOR UPDATE SKIP LOCKED
 ) AS claimable
 WHERE task.id = claimable.id

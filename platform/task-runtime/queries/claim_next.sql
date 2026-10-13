@@ -1,10 +1,17 @@
 -- veoveo: all tenants (a worker claims the oldest queued Task of its server, whichever tenant owns it)
+-- A claim takes a queued Task, which starts running, or a parked Task whose cancellation
+-- the server must carry to its provider, which stays cancel-requested.
 UPDATE tasks.task AS task
-SET status = 'running', status_message = 'Running', owner_instance = $2, started_at = now()
+SET status = CASE WHEN task.status = 'queued' THEN 'running' ELSE task.status END,
+    status_message = CASE WHEN task.status = 'queued' THEN 'Running' ELSE task.status_message END,
+    owner_instance = $2,
+    parked_on = NULL,
+    started_at = CASE WHEN task.status = 'queued' THEN now() ELSE task.started_at END
 FROM (
     SELECT id
     FROM tasks.task
-    WHERE server = $1 AND status = 'queued'
+    WHERE server = $1
+        AND (status = 'queued' OR (status = 'cancel_requested' AND owner_instance IS NULL))
     ORDER BY created_at, id
     LIMIT 1
     FOR UPDATE SKIP LOCKED

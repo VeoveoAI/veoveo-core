@@ -10,6 +10,7 @@ use veoveo_types::{ServerSlug, TaskId};
 use crate::{
     TaskError, TaskOwner, TaskPayloadState, TaskRetentionPin, TaskRuntimeConfig, TaskSnapshot,
     TaskStatus,
+    operations::due::Due,
     retention::Retention,
     row::{TaskRow, columns::*},
     signals::{SignalHub, TaskSignals},
@@ -36,6 +37,7 @@ pub struct TaskRuntime {
     workers: Arc<Mutex<HashMap<TaskId, Worker>>>,
     signals: Arc<SignalHub>,
     _retention: Arc<Retention>,
+    _due: Arc<Due>,
 }
 
 impl TaskRuntime {
@@ -47,9 +49,10 @@ impl TaskRuntime {
     }
 
     /// A runtime of `server` whose claims belong to `instance`. It prunes the server's
-    /// expired Tasks every [`RETENTION_INTERVAL`](crate::RETENTION_INTERVAL) until its
-    /// last clone is dropped or the instance is lost, so it must be created inside a
-    /// Tokio runtime.
+    /// expired Tasks every [`RETENTION_INTERVAL`](crate::RETENTION_INTERVAL) and queues
+    /// Tasks whose operations fall due, at least every
+    /// [`DUE_INTERVAL`](crate::DUE_INTERVAL), until its last clone is dropped or the
+    /// instance is lost, so it must be created inside a Tokio runtime.
     pub fn new(store: PlatformStore, server: ServerSlug, instance: Arc<Instance>) -> Self {
         Self::with_retention_interval(store, server, instance, crate::RETENTION_INTERVAL)
     }
@@ -61,6 +64,12 @@ impl TaskRuntime {
         interval: Duration,
     ) -> Self {
         let retention = Retention::spawn(store.clone(), server.clone(), &instance, interval);
+        let due = Due::spawn(
+            store.clone(),
+            server.clone(),
+            &instance,
+            crate::operations::DUE_INTERVAL,
+        );
         Self {
             store,
             server,
@@ -68,6 +77,7 @@ impl TaskRuntime {
             workers: Arc::default(),
             signals: Arc::default(),
             _retention: Arc::new(retention),
+            _due: Arc::new(due),
         }
     }
 

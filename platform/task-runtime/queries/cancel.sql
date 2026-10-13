@@ -1,11 +1,18 @@
 -- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 -- Request cancellation. An unowned Task has no worker to observe the request, so it
--- is cancelled at once.
+-- is cancelled at once, unless it is parked on an operation: a claim then carries the
+-- cancellation to the provider.
 UPDATE tasks.task
-SET status = CASE WHEN owner_instance IS NULL THEN 'cancelled' ELSE 'cancel_requested' END,
-    status_message = CASE WHEN owner_instance IS NULL THEN 'Cancelled' ELSE 'Cancelling' END,
+SET status = CASE
+        WHEN owner_instance IS NULL AND parked_on IS NULL THEN 'cancelled'
+        ELSE 'cancel_requested'
+    END,
+    status_message = CASE
+        WHEN owner_instance IS NULL AND parked_on IS NULL THEN 'Cancelled'
+        ELSE 'Cancelling'
+    END,
     cancel_requested_at = now(),
-    completed_at = CASE WHEN owner_instance IS NULL THEN now() END
+    completed_at = CASE WHEN owner_instance IS NULL AND parked_on IS NULL THEN now() END
 WHERE id = $1 AND server = $2 AND status IN ('queued', 'running', 'waiting')
 RETURNING
     id,

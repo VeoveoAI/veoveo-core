@@ -3414,8 +3414,10 @@ name = "veoveo-task-runtime"
 version = "0.1.0"
 dependencies = [
  "async-stream",
+ "base64 0.23.1",
  "chrono",
  "futures",
+ "getrandom 0.4.3",
  "hex",
  "pg_query",
  "schemars",
