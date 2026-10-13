@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- The steps of one Task that the connected role can read.\nSELECT count(*) AS \"count!\"\nFROM tasks.task_step\nWHERE task_id = $1\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f5484a5451f985eaa2b1478ec28fd676f2a8404ec71041a63c6fab8573fde619"
+}

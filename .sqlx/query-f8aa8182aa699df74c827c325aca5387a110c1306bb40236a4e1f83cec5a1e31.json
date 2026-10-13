@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Record a step directly, as the installation owner, to probe the table's constraints.\nINSERT INTO tasks.task_step (task_id, step_key, operation_id)\nVALUES ($1, $2, $3)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f8aa8182aa699df74c827c325aca5387a110c1306bb40236a4e1f83cec5a1e31"
+}
