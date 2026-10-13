@@ -18,7 +18,7 @@ one revision of this repository.
 | `platform/task-runtime` | `veoveo-task-runtime` | Durable Tasks in PostgreSQL: claims, recovery, durable steps, operations parked on providers, owner reads, inputs, subscriptions and retention |
 | `platform/task-runtime/contract` | `veoveo-task-contract` | The Task vocabulary |
 | `platform/audit` | `veoveo-audit` | The audit log in PostgreSQL: group-committed appends, partition-scoped reads and change streams, the singleton sealer, signed blocks, export, retention and verification |
-| `platform/audit/contract` | `veoveo-audit-contract` | The audit record envelope, owner-declared classes and details, targets, blocks and reader types, and the append inside a caller's PostgreSQL transaction |
+| `platform/audit/contract` | `veoveo-audit-contract` | The audit record envelope after NIST SP 800-53 AU-3 with its OCSF 1.9 mapping, owner-declared classes and reason codes, blocks and reader types, and the append inside a caller's PostgreSQL transaction |
 | `platform/usage` | `veoveo-usage` | The usage ledger in PostgreSQL: confined kind declarations and appends inside a caller's transaction, idempotent records in FOCUS 1.4 columns, Task costs and daily totals |
 | `platform/usage/contract` | `veoveo-usage-contract` | Usage kinds, FOCUS units and categories, exact quantities and amounts, and record drafts |
 | `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision |

@@ -10,7 +10,8 @@ singletons and query style.
 
 | Standard or interface | Profile |
 |---|---|
-| PostgreSQL 18 | Schema `audit`, created by migration `0500_audit.sql` in `platform/store/migrations`, with the read indexes of `0501_audit_record_filters.sql` |
+| PostgreSQL 18 | Schema `audit`, created by migration `0500_audit.sql` in `platform/store/migrations`, with the read indexes of `0501_audit_record_filters.sql` and the minimal record's columns, indexes and declaration function of `0503_audit_minimal_record.sql` |
+| NIST SP 800-53 Rev. 5 AU-3, AU-9(3), AU-10 and OCSF 1.9.0 | The record content and its OCSF mapping, defined in the [contract design](contract/DESIGN.md#standards-and-protocols) |
 | `xid8` and `pg_snapshot_xmin` | Records are sealed in transaction order below the snapshot horizon |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` on the `audit` channel; records carry their identity as the key, blocks their partition; the tenant member is always null |
 | Advisory locks | The sealer holds the `audit.sealer` singleton through `veoveo-platform-store` |
@@ -27,7 +28,7 @@ Export protocols are in the [export design](src/export/DESIGN.md).
 
 | Relation | Holds |
 |---|---|
-| `audit.detail_type` | Each declared class with its owner, the JSON Schema of its detail, the time of its last declaration and, for a class a registered server declared, that server |
+| `audit.detail_type` | Each declared class with its owner, the OCSF class and activity it maps to, the JSON Schema documenting its detail, the time of its last declaration and, for a class a registered server declared, that server |
 | `audit.record` | One row per record: the draft as `jsonb` and its occurrence time, generated lookup columns, the insertion sequence, the writing transaction and the database time of the insert |
 | `audit.sealer` | The sealed position: the transaction and sequence of the last sealed record |
 | `audit.block` | Each signed block document with its partition, sequence, head hash and sealing time |
@@ -36,9 +37,14 @@ Export protocols are in the [export design](src/export/DESIGN.md).
 | `audit.export_delivery`, `audit.export_cursor` | Delivery intents, receipts and refusals per block and destination, and each destination's newest acknowledged block |
 | `audit.daily` | A view of record counts per partition, UTC day, class and outcome |
 
+Records are not partitioned by month: retention retires sealed blocks, whose records
+span months, and the append's identity check needs record identities unique across the
+table. Filters by source and class over time, by outcome and reason, and by target seek
+`record_source`, `record_outcome` and `record_target`.
+
 A producer supplies a record's draft and occurrence time. The identity, partition,
-class, outcome, actor and trace columns are generated from the draft, so they cannot
-disagree with it, and the class column references `audit.detail_type`, so a record of an
+class, source, outcome, reason, target, actor and trace columns are generated from the
+draft, so they cannot disagree with it, and the class column references `audit.detail_type`, so a record of an
 undeclared class cannot be stored. A trigger assigns the writing transaction and
 `clock_timestamp()` on every insert, and records and blocks reject `UPDATE`. Readers
 decode each draft through the audit registry and reject a row whose occurrence time
@@ -48,7 +54,7 @@ identity, partition, class and occurrence time.
 
 `AuditStore::declare` records the registry's declarations, the platform's included,
 through the installation owner. Every owner declares before its first append; repeating
-a declaration changes nothing, and a changed schema replaces the stored one.
+a declaration changes nothing, and a changed declaration replaces the stored one.
 `AuditStore::declarations` returns every stored declaration, from which a reader builds a
 registry that reads every owner's records.
 
@@ -56,8 +62,9 @@ A registered server audits through its own login, which holds no privilege on th
 tables. `AuditStore::declare_as_server(server)` declares the registry's classes under the
 `<server>.` prefix through `audit.declare_server_classes`. That SECURITY DEFINER function
 admits a class only under the prefix of a server whose group role the calling login
-holds, records that server in `audit.detail_type`, requires a closed object schema of at
-most 64 KiB and replaces a schema only for the server that declared the class. A class
+holds, records that server in `audit.detail_type`, admits a documenting schema only as
+a JSON object of at most 64 KiB and replaces a declaration only for the server that
+declared the class. A class
 the installation owner declared, or one outside the login's prefix, fails as
 `AuditStoreError::ForeignClass`.
 
@@ -139,7 +146,7 @@ a reader that rereads at that point misses nothing.
 
 Every read checks the caller's `AuditReadScope` and the audit registry before SQL, and
 selects one partition. Pages follow record identity order with a keyset cursor; every
-filter, including whole-target equality, runs in SQL before the limit. A page runs in a
+filter, including the target and the reason, runs in SQL before the limit. A page runs in a
 transaction that sets `plan_cache_mode` to `force_custom_plan`, so PostgreSQL plans it
 with its actual filters: an actor filter seeks `record_actor`, a trace filter
 `record_trace` and a time range may seek `record_occurred`, each ending in the record
@@ -186,11 +193,10 @@ retained records and the new suffix, rejects incomplete chains, tampering and un
 keys, and refuses an old-key block after the cutover under the replacement-only key ring.
 It does not prove that an installation removed every holder of the old seed.
 
-## Owner Targets
+## Owner Declarations
 
 The installation composes one immutable `AuditRegistry` and gives the same registry to
-`AuditStore`, `AuditTransactionWrite` and every reader. Decoding an owner's target or
-detail is a reader's concern; sealing, verification of stored records and export work
-without it. Owner codecs are
-independent of enabled workloads, so records of a disabled owner stay readable. Target
-admission rules are in the [contract design](contract/DESIGN.md).
+`AuditStore`, `AuditTransactionWrite` and every reader. Decoding an owner's detail is a
+reader's concern; sealing, verification of stored records and export work without it.
+Declarations are independent of enabled workloads, so records of a disabled owner stay
+readable.

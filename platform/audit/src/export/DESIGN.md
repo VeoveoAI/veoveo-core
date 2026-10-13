@@ -98,14 +98,22 @@ It reads no installation records. This network qualification complements the loc
 mapping tests; default test runs do not contact the public validator.
 
 The exporter reads each block's members as stored records, so it needs no owner's
-target codec or detail declaration. Every event preserves the complete stored record as
+detail declaration. Every event preserves the complete stored record as
 `unmapped.veoveo`, including attribution, reason and timestamps. This supplies the
-record bytes for verification against the signed block. Admission maps to status Other with label `Allowed`, since
-an admission cannot establish operation completion.
+record bytes for verification against the signed block.
+
+| Record | OCSF 1.9.0 |
+|---|---|
+| Outcome `success`, `failure`, `denied`, `unknown` | `status_id` 1, 2, 2, 0, and the Security Control profile's `action_id` 1 (Allowed), 1, 2 (Denied), 0 |
+| Reason | `status_code` |
+| Acting server and its Task | `actor.application` name and uid |
+| Target | `resources[].uid` |
+| Tenant, request | `metadata.tenant_uid`, `metadata.correlation_uid` |
 
 A record with an actor and a source endpoint maps to API Activity 6003 with activity
 Other; its activity name and API operation are the record's class, such as
-`task.update`. Any other record maps to Base Event and preserves the source without
+`task.update`. Each class also declares the OCSF class and activity it maps to; the
+exporter adopts those declarations in a later step. Any other record maps to Base Event and preserves the source without
 inventing an actor, username or address. The mapping reads only the envelope, so it
 names no owner, and each owner's detail reaches the archive in `unmapped.veoveo`.
 
