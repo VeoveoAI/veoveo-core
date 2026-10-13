@@ -261,6 +261,8 @@ pub enum AuditValidationError {
     TimeRange,
     #[error("daily audit bounds and cursor must use midnight UTC")]
     DayBoundary,
+    #[error("daily audit counts cover at most 366 days")]
+    DailySpan,
     #[error("audit page size must be between 1 and 1000")]
     PageSize,
 }

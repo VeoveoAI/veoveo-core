@@ -10,7 +10,7 @@ singletons and query style.
 
 | Standard or interface | Profile |
 |---|---|
-| PostgreSQL 18 | Schema `audit`, created by migration `0500_audit.sql` in `platform/store/migrations` |
+| PostgreSQL 18 | Schema `audit`, created by migration `0500_audit.sql` in `platform/store/migrations`, with the read indexes of `0501_audit_record_filters.sql` |
 | `xid8` and `pg_snapshot_xmin` | Records are sealed in transaction order below the snapshot horizon |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` on the `audit` channel; records carry their identity as the key, blocks their partition; the tenant member is always null |
 | Advisory locks | The sealer holds the `audit.sealer` singleton through `veoveo-platform-store` |
@@ -102,11 +102,18 @@ a reader that rereads at that point misses nothing.
 
 Every read checks the caller's `AuditReadScope` and the target registry before SQL, and
 selects one partition. Pages follow record identity order with a keyset cursor; every
-filter, including whole-target equality, runs in SQL before the limit. Daily counts page
-through `audit.daily` newest day first. A view receipt admits an audit view only for the
-same actor and profile within 15 minutes. Block reads return the members in position
-order and fail when a member record is missing. `export_range` reads the newest head and
-the last retired block in one statement.
+filter, including whole-target equality, runs in SQL before the limit. A page runs in a
+transaction that sets `plan_cache_mode` to `force_custom_plan`, so PostgreSQL plans it
+with its actual filters: an actor filter seeks `record_actor`, a trace filter
+`record_trace` and a time range may seek `record_occurred`, each ending in the record
+identity. The cursor and time bounds are written so that they stay index ranges in a
+generic plan as well. Daily counts page through `audit.daily` newest day first over at
+most `AUDIT_DAILY_MAX_DAYS`, 366 days, and a later page's days stop at its cursor's day.
+A view receipt admits an audit view only for the same actor and profile within 15
+minutes. Block reads return the members in position order and fail when a member record
+is missing. A filtered block read returns every matching member, as an export reads it;
+the query's order and page size do not apply, and a query with a cursor is refused.
+`export_range` reads the newest head and the last retired block in one statement.
 
 ## Indexing Read Windows
 

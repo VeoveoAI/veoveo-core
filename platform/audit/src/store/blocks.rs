@@ -7,7 +7,7 @@ use super::{
 use veoveo_audit_contract::{
     AUDIT_APPEND_LIMIT, AuditBlock, AuditBlockSequence, AuditCheckpoint, AuditClass, AuditOutcome,
     AuditPartition, AuditPosition, AuditQuery, AuditReadScope, AuditRecord, AuditRecordId,
-    AuditTraceId,
+    AuditTraceId, AuditValidationError,
 };
 use veoveo_types::{PrincipalId, Sha256Digest};
 
@@ -60,8 +60,11 @@ impl AuditStore {
             .collect()
     }
 
-    /// The members of a block that match `query`, in position order. Every filter runs
-    /// in SQL; a missing member fails the read even when the filter would exclude it.
+    /// Every member of a block that matches `query`'s filters, in position order, as an
+    /// export reads it. The query's order and page size select pages and do not apply
+    /// here, and a query with a cursor is refused, because a block holds no pages. Every
+    /// filter runs in SQL; a missing member fails the read even when the filter would
+    /// exclude it.
     pub async fn filtered_block_records(
         &self,
         scope: &AuditReadScope,
@@ -69,6 +72,9 @@ impl AuditStore {
         query: &AuditQuery,
     ) -> Result<Vec<AuditRecord>, AuditStoreError> {
         query.validate()?;
+        if query.cursor.is_some() {
+            return Err(AuditValidationError::Cursor.into());
+        }
         if let Some(target) = &query.target {
             self.targets().validate(target)?;
         }
@@ -98,7 +104,6 @@ impl AuditStore {
             "src/store/blocks/filtered_members.sql",
             &storage,
             &ids as &[AuditRecordId],
-            query.cursor.as_ref().map(|cursor| cursor.last_id) as Option<AuditRecordId>,
             query.class as Option<AuditClass>,
             query.actor.as_ref().map(PrincipalId::as_str),
             query.target.as_ref().map(target_document),

@@ -1,5 +1,7 @@
 -- One page of a partition in descending record identity order, every filter applied
--- before the limit.
+-- before the limit. The cursor and time bounds stay index ranges in a generic plan:
+-- without a cursor the bound is the largest UUID, which no record has, and an open time
+-- bound is infinite.
 SELECT
     r.id AS "id: AuditRecordId",
     r.partition,
@@ -9,13 +11,13 @@ SELECT
     r.recorded_at
 FROM audit.record AS r
 WHERE r.partition = $1
-    AND ($2::uuid IS NULL OR r.id < $2)
+    AND r.id < coalesce($2::uuid, 'ffffffff-ffff-ffff-ffff-ffffffffffff')
     AND ($3::text IS NULL OR r.class = $3)
     AND ($4::text IS NULL OR r.actor = $4)
     AND ($5::jsonb IS NULL OR r.draft -> 'target' = $5)
     AND ($6::text IS NULL OR r.outcome = $6)
     AND ($7::text IS NULL OR r.trace_id = $7)
-    AND ($8::timestamptz IS NULL OR r.occurred_at >= $8)
-    AND ($9::timestamptz IS NULL OR r.occurred_at < $9)
+    AND r.occurred_at >= coalesce($8::timestamptz, '-infinity')
+    AND r.occurred_at < coalesce($9::timestamptz, 'infinity')
 ORDER BY r.id DESC
 LIMIT $10

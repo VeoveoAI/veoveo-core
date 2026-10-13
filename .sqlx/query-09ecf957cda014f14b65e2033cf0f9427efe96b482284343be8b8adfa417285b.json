@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- One page of a partition in record identity order, every filter applied before the limit.\nSELECT\n    r.id AS \"id: AuditRecordId\",\n    r.partition,\n    r.class AS \"class: AuditClass\",\n    r.occurred_at,\n    r.draft,\n    r.recorded_at\nFROM audit.record AS r\nWHERE r.partition = $1\n    AND ($2::uuid IS NULL OR r.id > $2)\n    AND ($3::text IS NULL OR r.class = $3)\n    AND ($4::text IS NULL OR r.actor = $4)\n    AND ($5::jsonb IS NULL OR r.draft -> 'target' = $5)\n    AND ($6::text IS NULL OR r.outcome = $6)\n    AND ($7::text IS NULL OR r.trace_id = $7)\n    AND ($8::timestamptz IS NULL OR r.occurred_at >= $8)\n    AND ($9::timestamptz IS NULL OR r.occurred_at < $9)\nORDER BY r.id\nLIMIT $10\n",
+  "query": "-- One page of a partition in record identity order, every filter applied before the\n-- limit. The cursor and time bounds stay index ranges in a generic plan: without a\n-- cursor the bound is the nil UUID, which no record has, and an open time bound is\n-- infinite.\nSELECT\n    r.id AS \"id: AuditRecordId\",\n    r.partition,\n    r.class AS \"class: AuditClass\",\n    r.occurred_at,\n    r.draft,\n    r.recorded_at\nFROM audit.record AS r\nWHERE r.partition = $1\n    AND r.id > coalesce($2::uuid, '00000000-0000-0000-0000-000000000000')\n    AND ($3::text IS NULL OR r.class = $3)\n    AND ($4::text IS NULL OR r.actor = $4)\n    AND ($5::jsonb IS NULL OR r.draft -> 'target' = $5)\n    AND ($6::text IS NULL OR r.outcome = $6)\n    AND ($7::text IS NULL OR r.trace_id = $7)\n    AND r.occurred_at >= coalesce($8::timestamptz, '-infinity')\n    AND r.occurred_at < coalesce($9::timestamptz, 'infinity')\nORDER BY r.id\nLIMIT $10\n",
   "describe": {
     "columns": [
       {
@@ -93,5 +93,5 @@
       false
     ]
   },
-  "hash": "a309a75945c51eecb8b00d5778070d783a60304a88581628e609bdb9ade0a0d5"
+  "hash": "09ecf957cda014f14b65e2033cf0f9427efe96b482284343be8b8adfa417285b"
 }

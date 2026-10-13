@@ -246,6 +246,38 @@ async fn scoped_streams_daily_pages_and_sealed_recovery_preserve_partition_and_d
             .unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].draft.id(), expected[1].id());
+        // A block holds no pages, so a block read refuses a cursor.
+        let mut paged = filter.clone();
+        paged.cursor = Some(AuditCursor {
+            order: paged.order,
+            partition: partition.clone(),
+            last_id: expected[0].id(),
+        });
+        assert!(matches!(
+            audit
+                .b
+                .filtered_block_records(&scope, &blocks[0], &paged)
+                .await,
+            Err(AuditStoreError::Validation(AuditValidationError::Cursor))
+        ));
+
+        // Daily counts cover at most 366 days.
+        let year = AuditDailyQuery {
+            partition: partition.clone(),
+            from: today - TimeDelta::days(365),
+            until: today + TimeDelta::days(1),
+            cursor: None,
+            limit: 10,
+        };
+        audit.b.daily(&scope, &year).await.unwrap();
+        let longer = AuditDailyQuery {
+            from: year.from - TimeDelta::days(1),
+            ..year
+        };
+        assert!(matches!(
+            audit.b.daily(&scope, &longer).await,
+            Err(AuditStoreError::Validation(AuditValidationError::DailySpan))
+        ));
 
         let mut daily = AuditDailyQuery {
             partition: partition.clone(),

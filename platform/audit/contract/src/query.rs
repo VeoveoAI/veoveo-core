@@ -113,6 +113,9 @@ pub struct AuditDailyCount {
     pub count: u64,
 }
 
+/// The most days one daily-count query covers.
+pub const AUDIT_DAILY_MAX_DAYS: i64 = 366;
+
 /// Stable keyset over one partition's grouped counts. Date bounds are inclusive/exclusive.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -138,6 +141,9 @@ impl AuditDailyQuery {
         }
         if self.from >= self.until {
             return Err(AuditValidationError::TimeRange);
+        }
+        if self.until - self.from > chrono::TimeDelta::days(AUDIT_DAILY_MAX_DAYS) {
+            return Err(AuditValidationError::DailySpan);
         }
         if self.from.time() != chrono::NaiveTime::MIN
             || self.until.time() != chrono::NaiveTime::MIN

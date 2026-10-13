@@ -56,7 +56,8 @@ impl AuditStore {
     }
 
     /// One page of a partition. The cursor carries the partition and order it was
-    /// issued for; a page holds the records after it.
+    /// issued for; a page holds the records after it. The page plans with its actual
+    /// filters, so an actor, trace or time filter seeks its index.
     pub async fn page(
         &self,
         scope: &AuditReadScope,
@@ -73,6 +74,10 @@ impl AuditStore {
         let target = query.target.as_ref().map(target_document);
         let trace = query.trace.as_ref();
         let limit = i64::from(query.limit) + 1;
+        let mut transaction = self.pool().begin().await?;
+        sqlx::query_file!("src/store/records/custom_plans.sql")
+            .execute(&mut *transaction)
+            .await?;
         let rows = match query.order {
             AuditOrder::OldestFirst => {
                 sqlx::query_file_as!(
@@ -89,7 +94,7 @@ impl AuditStore {
                     query.until,
                     limit,
                 )
-                .fetch_all(self.pool())
+                .fetch_all(&mut *transaction)
                 .await?
             }
             AuditOrder::NewestFirst => {
@@ -107,10 +112,11 @@ impl AuditStore {
                     query.until,
                     limit,
                 )
-                .fetch_all(self.pool())
+                .fetch_all(&mut *transaction)
                 .await?
             }
         };
+        transaction.commit().await?;
         let mut records = rows
             .into_iter()
             .map(|row| row.checked(self.targets(), &query.partition))

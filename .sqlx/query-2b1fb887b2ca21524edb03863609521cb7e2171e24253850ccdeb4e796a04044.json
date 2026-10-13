@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- The members of one sealed block that match a query, every filter applied in SQL.\nSELECT\n    r.id AS \"id: AuditRecordId\",\n    r.partition,\n    r.class AS \"class: AuditClass\",\n    r.occurred_at,\n    r.draft,\n    r.recorded_at\nFROM audit.record AS r\nWHERE r.partition = $1\n    AND r.id = ANY ($2)\n    AND ($3::uuid IS NULL OR r.id > $3)\n    AND ($4::text IS NULL OR r.class = $4)\n    AND ($5::text IS NULL OR r.actor = $5)\n    AND ($6::jsonb IS NULL OR r.draft -> 'target' = $6)\n    AND ($7::text IS NULL OR r.outcome = $7)\n    AND ($8::text IS NULL OR r.trace_id = $8)\n    AND ($9::timestamptz IS NULL OR r.occurred_at >= $9)\n    AND ($10::timestamptz IS NULL OR r.occurred_at < $10)\n",
+  "query": "-- The members of one sealed block that match a query, every filter applied in SQL. The\n-- caller orders them by block position.\nSELECT\n    r.id AS \"id: AuditRecordId\",\n    r.partition,\n    r.class AS \"class: AuditClass\",\n    r.occurred_at,\n    r.draft,\n    r.recorded_at\nFROM audit.record AS r\nWHERE r.partition = $1\n    AND r.id = ANY ($2)\n    AND ($3::text IS NULL OR r.class = $3)\n    AND ($4::text IS NULL OR r.actor = $4)\n    AND ($5::jsonb IS NULL OR r.draft -> 'target' = $5)\n    AND ($6::text IS NULL OR r.outcome = $6)\n    AND ($7::text IS NULL OR r.trace_id = $7)\n    AND ($8::timestamptz IS NULL OR r.occurred_at >= $8)\n    AND ($9::timestamptz IS NULL OR r.occurred_at < $9)\n",
   "describe": {
     "columns": [
       {
@@ -74,7 +74,6 @@
       "Left": [
         "Text",
         "UuidArray",
-        "Uuid",
         "Text",
         "Text",
         "Jsonb",
@@ -93,5 +92,5 @@
       false
     ]
   },
-  "hash": "38338206ecc1f7629d81d4c998e91fd7970714717cf8052f8c1a62a922668855"
+  "hash": "2b1fb887b2ca21524edb03863609521cb7e2171e24253850ccdeb4e796a04044"
 }
