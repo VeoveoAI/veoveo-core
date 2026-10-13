@@ -2,7 +2,9 @@
 //!
 //! Domain code that changes state and records it does both in one transaction: it
 //! admits its drafts against the installation's audit registry, runs its own writes,
-//! calls [`AuditTransactionWrite::append`] on the same connection and commits.
+//! calls [`AuditTransactionWrite::append`] on the same connection and commits. A
+//! registered server connected through its own login calls
+//! [`AuditTransactionWrite::append_as_server`] instead.
 use crate::{AuditDetailError, AuditDraft, AuditRegistry, AuditTargetError};
 use chrono::{DateTime, SubsecRound, Utc};
 use sqlx::PgConnection;
@@ -15,6 +17,8 @@ pub const AUDIT_APPEND_LIMIT: usize = 4096;
 pub(crate) const IDENTITY_CONFLICT: &str = "VV501";
 /// SQLSTATE of a record whose class `audit.detail_type` does not hold.
 pub(crate) const UNDECLARED_CLASS: &str = "23503";
+/// SQLSTATE that the server functions raise for a class another owner declared.
+pub(crate) const FOREIGN_CLASS: &str = "42501";
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuditAppendError {
@@ -28,6 +32,8 @@ pub enum AuditAppendError {
     BatchLimit,
     #[error("an audit record identity already holds different content")]
     IdentityConflict,
+    #[error("an audit record's class belongs to another owner than the calling server")]
+    ForeignClass,
     #[error("audit append failed: {0}")]
     Database(sqlx::Error),
 }
@@ -41,6 +47,7 @@ impl From<sqlx::Error> for AuditAppendError {
         match code.as_deref() {
             Some(IDENTITY_CONFLICT) => Self::IdentityConflict,
             Some(UNDECLARED_CLASS) => Self::UndeclaredClass,
+            Some(FOREIGN_CLASS) => Self::ForeignClass,
             _ => Self::Database(error),
         }
     }
@@ -107,6 +114,28 @@ impl AuditTransactionWrite {
         sqlx::query_file!("src/postgres/append.sql", &self.drafts, &self.occurred)
             .execute(connection)
             .await?;
+        Ok(())
+    }
+
+    /// Append as a registered server, on a connection of its own login, normally inside
+    /// its open transaction. The database admits only records whose class the calling
+    /// server declared, through `audit.append_server_records`, and orders them like
+    /// every other record. Another owner's class fails with
+    /// [`AuditAppendError::ForeignClass`] and aborts the caller's transaction.
+    pub async fn append_as_server(
+        &self,
+        connection: &mut PgConnection,
+    ) -> Result<(), AuditAppendError> {
+        if self.drafts.is_empty() {
+            return Ok(());
+        }
+        sqlx::query_file!(
+            "src/postgres/append_server.sql",
+            &self.drafts,
+            &self.occurred
+        )
+        .execute(connection)
+        .await?;
         Ok(())
     }
 }

@@ -25,6 +25,8 @@ pub use live::{AuditLiveChange, AuditLiveStream};
 const IDENTITY_CONFLICT: &str = "VV501";
 /// SQLSTATE of a record whose class `audit.detail_type` does not hold.
 const UNDECLARED_CLASS: &str = "23503";
+/// SQLSTATE that the server functions raise for a class another owner declared.
+const FOREIGN_CLASS: &str = "42501";
 /// SQLSTATE that the export functions raise when a block or intent disagrees.
 const BLOCK_CONFLICT: &str = "VV503";
 /// SQLSTATE that `audit.record_export` raises for a destination's recorded refusal.
@@ -48,6 +50,8 @@ pub enum AuditStoreError {
     IdentityConflict,
     #[error("an audit record's class is not declared in the database; declare it first")]
     UndeclaredClass,
+    #[error("an audit class belongs to another owner than the calling server")]
+    ForeignClass,
     #[error(
         "audit destination permanently rejected this delivery; configure a corrected destination before resuming export"
     )]
@@ -69,6 +73,7 @@ impl From<sqlx::Error> for AuditStoreError {
         match code.as_deref() {
             Some(IDENTITY_CONFLICT) => Self::IdentityConflict,
             Some(UNDECLARED_CLASS) => Self::UndeclaredClass,
+            Some(FOREIGN_CLASS) => Self::ForeignClass,
             Some(BLOCK_CONFLICT) => Self::Integrity,
             Some(EXPORT_REJECTED) => Self::ExportRejected,
             _ => Self::Database(error),
@@ -84,6 +89,7 @@ impl From<AuditAppendError> for AuditStoreError {
             AuditAppendError::UndeclaredClass => Self::UndeclaredClass,
             AuditAppendError::BatchLimit => Self::BatchLimit,
             AuditAppendError::IdentityConflict => Self::IdentityConflict,
+            AuditAppendError::ForeignClass => Self::ForeignClass,
             AuditAppendError::Database(error) => Self::Database(error),
         }
     }
