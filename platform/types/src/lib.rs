@@ -104,14 +104,4 @@ pub use task::TaskId;
 pub use task_type::{TaskTypeDefinition, TaskTypeName};
 
 pub use permission_names::{PermissionName, ResourceTypeName};
-pub use platform_names::{
-    CanonicalTaskId, GatewayProfileId, GatewayRefreshFamilyId, LocalToolName, OAuthClientId,
-    PromptName, RESERVED_SERVER_SLUGS, ServerSlug,
-};
-
-mod agent_names;
-pub use agent_names::{
-    AgentDefinitionId, AgentIdentifierError, AgentManagedInstanceId, AgentModelId, AgentTemplateId,
-};
-mod authentication;
-pub use authentication::{AuthMethod, AuthOutcome, AuthReasonCode};
+pub use platform_names::{OAuthClientId, RESERVED_SERVER_SLUGS, ServerSlug};

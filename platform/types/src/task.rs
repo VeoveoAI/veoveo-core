@@ -2,7 +2,7 @@ use schemars::{Schema, SchemaGenerator};
 
 use uuid::Uuid;
 
-/// Identity of a native Veoveo Task, independent of its storage or MCP projection.
+/// Identity of a native Veoveo Task, independent of its storage or protocol projection.
 ///
 /// Generation uses UUIDv7. Parsing preserves the existing UUID admission profile;
 /// the Task runtime additionally requires v7 at its external lookup boundary.

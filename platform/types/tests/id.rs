@@ -17,6 +17,24 @@ fn admit(value: &str) -> Result<(), &'static str> {
 #[schemars(rename = "ExternalIdentity", !try_from, !into)]
 struct ExternalId(#[schemars(regex(pattern = "^owner:.+$"))] String);
 
+/// Identity whose formatting delegates to its inner string, padding included.
+#[veoveo_types::id(text(ServerNames), inner_display)]
+struct ServerName(String);
+
+#[doc(hidden)]
+struct ServerNames;
+impl veoveo_types::IdProfile for ServerNames {
+    type Error = &'static str;
+    const PROFILE: veoveo_types::IdProfileSpec<Self::Error> =
+        veoveo_types::IdProfileSpec::text(|value, _| {
+            if value.is_empty() {
+                Err("empty server name")
+            } else {
+                Ok(())
+            }
+        });
+}
+
 #[derive(Debug, PartialEq)]
 struct ManualIdentity(String);
 impl Identity for ManualIdentity {
@@ -113,8 +131,8 @@ fn foundational_unicode_and_digest_profiles_do_not_narrow() {
 fn formatting_preserves_owner_string_and_uuid_formatter_profiles() {
     let id = ExternalId::parse("owner:item").unwrap();
     assert_eq!(format!("{id:>20}"), "owner:item");
-    let agent = veoveo_types::AgentDefinitionId::parse("agent").unwrap();
-    assert_eq!(format!("{agent:>8}"), "   agent");
+    let server = ServerName::parse("server").unwrap();
+    assert_eq!(format!("{server:>8}"), "  server");
     let uuid = uuid::Uuid::nil();
     let task = TaskId::from_uuid(uuid);
     assert_eq!(format!("{task:>40}"), format!("{uuid:>40}"));

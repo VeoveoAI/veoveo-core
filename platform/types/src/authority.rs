@@ -45,14 +45,6 @@ impl WorkContextMembershipLevel {
     pub fn allows(self, required: Self) -> bool {
         self >= required
     }
-
-    pub fn artifact_access(self) -> AccessLevel {
-        match self {
-            Self::Viewer => AccessLevel::Read,
-            Self::Contributor => AccessLevel::Write,
-            Self::Custodian | Self::Owner => AccessLevel::Admin,
-        }
-    }
 }
 
 /// Initial discretionary policy stamped on every output in a Work Context.
@@ -76,7 +68,7 @@ pub struct WorkContextOutputPolicy {
     pub data_labels: BTreeSet<DataLabelId>,
 }
 
-/// Gateway-resolved authority signed into every internal service token.
+/// Invocation authority resolved at admission and signed into every forwarded identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct InvocationAuthority {
@@ -86,10 +78,4 @@ pub struct InvocationAuthority {
     pub policy_revision: PolicyVersion,
     pub output_policy: WorkContextOutputPolicy,
     pub provenance: InvocationProvenance,
-}
-
-impl InvocationAuthority {
-    pub fn artifact_access(&self) -> AccessLevel {
-        self.membership.artifact_access()
-    }
 }

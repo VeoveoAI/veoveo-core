@@ -39,7 +39,6 @@ fn authority_retains_attribution_output_defaults_and_typed_nested_identity() {
     let value: InvocationAuthority = serde_json::from_value(wire.clone()).unwrap();
     assert_eq!(value.work_context.as_str(), "operations");
     assert_eq!(value.tenant.as_str(), "tenant");
-    assert_eq!(value.artifact_access(), AccessLevel::Admin);
     assert_eq!(serde_json::to_value(&value).unwrap(), wire);
     // View composition identities hash these bytes, including struct field order.
     assert_eq!(
@@ -78,13 +77,12 @@ fn capability_and_membership_levels_keep_distinct_hierarchies() {
             assert_eq!(held.allows(required), expected);
         }
     }
-    for (membership, output, allowed) in [
-        (Viewer, Read, [true, false, false, false]),
-        (Contributor, Write, [true, true, false, false]),
-        (Custodian, Admin, [true, true, true, false]),
-        (Owner, Admin, [true, true, true, true]),
+    for (membership, allowed) in [
+        (Viewer, [true, false, false, false]),
+        (Contributor, [true, true, false, false]),
+        (Custodian, [true, true, true, false]),
+        (Owner, [true, true, true, true]),
     ] {
-        assert_eq!(membership.artifact_access(), output);
         for (required, expected) in [Viewer, Contributor, Custodian, Owner]
             .into_iter()
             .zip(allowed)

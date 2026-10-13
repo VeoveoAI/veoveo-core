@@ -21,11 +21,11 @@ pub struct WorkContextId(String);
 #[veoveo_types::id(text(crate::identifier_syntax::ClaimTextProfile))]
 pub struct DelegationId(String);
 
-#[doc = "Identity-provider group identifier used by gateway policy."]
+#[doc = "Identity-provider group identifier used by authorization policy."]
 #[veoveo_types::id(text(crate::identifier_syntax::ClaimTextProfile))]
 pub struct GroupId(String);
 
-#[doc = "Identity-provider role identifier used by gateway policy."]
+#[doc = "Identity-provider role identifier used by authorization policy."]
 #[veoveo_types::id(text(crate::identifier_syntax::ClaimTextProfile))]
 pub struct RoleId(String);
 

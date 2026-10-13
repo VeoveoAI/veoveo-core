@@ -2,7 +2,7 @@
   "AccessSubject": {
     "$defs": {
       "GroupId": {
-        "description": "Identity-provider group identifier used by gateway policy.",
+        "description": "Identity-provider group identifier used by authorization policy.",
         "type": "string"
       },
       "PrincipalId": {
@@ -64,7 +64,7 @@
   },
   "GroupId": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "description": "Identity-provider group identifier used by gateway policy.",
+    "description": "Identity-provider group identifier used by authorization policy.",
     "title": "GroupId",
     "type": "string"
   },
@@ -161,7 +161,7 @@
   },
   "RoleId": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "description": "Identity-provider role identifier used by gateway policy.",
+    "description": "Identity-provider role identifier used by authorization policy.",
     "title": "RoleId",
     "type": "string"
   },

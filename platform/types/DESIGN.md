@@ -26,7 +26,7 @@
 
 `src/chrono_timestamp.rs` exports `ChronoUtcTimestampSchema` for fields whose runtime type stays `chrono::DateTime<Utc>`. The inline carrier emits a string pattern instead of generic JSON Schema date-time, because Chrono emits signed years outside that format. It admits padded date/time components, `T` or `t`, `Z` or `z`, standard numeric offsets and fractional digits. Chrono truncates input fractions after nine digits and preserves its leap-second encoding in UTC serialization. The lexical schema does not establish a valid calendar, the supported UTC range or chronology between fields; actual Chrono decoding and owner checks do that.
 
-A required timestamp uses `#[schemars(with = "ChronoUtcTimestampSchema")]`. An optional timestamp uses `Option<ChronoUtcTimestampSchema>`, allowing Schemars to preserve the field's null and omission policy. The carrier has no storage, constructor, Serde implementation or global DateTime override. Owners select it explicitly, leaving frozen/native profiles and other timestamp contracts untouched. Artifact public timestamps and Recording playback use the same declaration. The Python Artifact scalar qualifies the emitted padded form and standard offsets with at most nine fractional digits; broader aliases require their own producer/receiver qualification.
+A required timestamp uses `#[schemars(with = "ChronoUtcTimestampSchema")]`. An optional timestamp uses `Option<ChronoUtcTimestampSchema>`, allowing Schemars to preserve the field's null and omission policy. The carrier has no storage, constructor, Serde implementation or global DateTime override. Owners select it explicitly, leaving frozen/native profiles and other timestamp contracts untouched. A consumer in another language qualifies the emitted padded form and standard offsets itself; broader aliases require their own producer/receiver qualification.
 
 ## Schema Naming Profiles
 
@@ -87,9 +87,9 @@ and removing only the naming metadata, and exercise independent owner callbacks.
 
 `AccessSubject`, `InvocationProvenance`, `WorkContextOutputPolicy` and
 `InvocationAuthority` keep their snake_case identity and internal signed-claim
-representation. Configuration uses its own camelCase output-policy adapter;
-Artifact provenance maps invocation attribution into its public camelCase fields.
-These projections do not rename retained native records or JWT claims.
+representation. Configuration uses its own camelCase output-policy adapter, and a
+domain contract that publishes camelCase provenance maps invocation attribution in its
+own adapter. These projections do not rename retained native records or JWT claims.
 Resource selector object fields use camelCase and their controlled kinds use
 snake_case; resource URI text keeps its admitted profile.
 
@@ -119,7 +119,7 @@ and `InvocationProvenance` describe direct, delegated, or automated attribution.
 `AccessSubject` decodes maps through a closed owner wire struct, which reports
 undeclared keys without treating submitted values as field names. Sequence decoding
 uses its adjacent-tag Serde profile, including identifier-based tag admission.
-`TaskId` identifies a native platform Task independently of its database record or MCP handle.
+`TaskId` identifies a native platform Task independently of its database record or protocol handle.
 It depends on Serde, Schemars, URL, percent encoding, iri-string, UUID and Chrono date/time values. It contains no protocol transport, asynchronous
 runtime, database client, provider integration, or server vocabulary.
 
@@ -127,9 +127,9 @@ Resolved invocation values also belong here: `InvocationAuthority`,
 `WorkContextMembershipLevel`, `WorkContextOutputPolicy`, `WorkContextGrant` and
 `AccessLevel`. They carry the selected Work Context, membership, output defaults and
 provenance across protocols and domain contracts. Their string enums, field names,
-defaults and order comparisons form one shared model. MCP owns Work Context
-configuration and membership matching against authenticated principals; the gateway
-resolves and signs authority, and existing policy owners enforce it. Possessing or
+defaults and order comparisons form one shared model. The Gateway owns Work Context
+configuration and membership matching against authenticated principals and signs the
+resolved authority, and each server enforces it. Possessing or
 deserializing these values establishes no grant.
 
 `OAuthClientId` admits nonempty claim text without control characters. Its JSON Schema
@@ -137,13 +137,12 @@ expresses that same lexical profile. Domain inputs impose their own size limits.
 
 Identity syntax and attribution establish no authority. Authentication, policy
 evaluation, Work Context membership, and access decisions stay with their existing
-owners. Artifact metadata and coordinate vocabularies have domain owners; their use
-by several servers does not make them foundational identity types.
+owners. Domain metadata and coordinate vocabularies have domain owners; their use by
+several servers does not make them foundational identity types.
 
 `AccessGrant` exposes a domain grant's subject, access level and expiry to the shared
-access evaluator. Artifact grants and Knowledge read grants implement it in their own
-contracts. The evaluator needs no invented domain ID and does not import either grant
-record shape. Chrono supplies date/time values with its clock feature disabled here.
+access evaluator. Each domain's grant record implements it in its own contract. The
+evaluator needs no invented domain ID and imports no grant record shape. Chrono supplies date/time values with its clock feature disabled here.
 
 A server library owns its scope enum and resource variants. Its `ScopeDefinition`
 implementation maps a domain value to a validated name. Its `ResourceAddress`
@@ -202,8 +201,8 @@ capabilities compose through public traits; their generation does not confer acc
 
 `identity_text` can expose secret material even when Display and Debug redact it.
 Owners must make that exposure deliberate and sanitize errors at secret admission.
-Gateway refresh tokens preserve their explicit text and wire access while replacing
-rejected input in `IdentifierError` with `[REDACTED]`. The attribute adds no zeroization.
+A secret-bearing identity, such as a refresh token, preserves its explicit text and
+wire access while replacing rejected input in `IdentifierError` with `[REDACTED]`. The attribute adds no zeroization.
 Nonidentity display metadata, such as `PrincipalDisplayName`, uses an ordinary checked
 newtype. Database adapters and SDK derives stay in their consumers; the foundation
 knows neither Store tables nor server-owned IDs.
@@ -232,8 +231,8 @@ describes these admitted spellings. Serde delegates to UUID, preserving that lib
 behavior for binary and other deserializers. `new` and `default` generate v7 values.
 The Task runtime checks its narrower v7 profile at external lookup admission.
 Store's `task_record_id` adapter binds the value to the `task` table with a UUID key.
-The foundational type has no database traits or table knowledge. Opaque MCP Task
-handles and gateway route identities keep their separate protocol contracts.
+The foundational type has no database traits or table knowledge. Protocol Task handles
+and routes belong to their protocol adapters.
 
 UUID is pinned to the already-qualified 1.25.0 parser used by native Tasks and Map.
 The [upstream registry](https://crates.io/crates/uuid) reports 1.26.1 as stable on
@@ -247,8 +246,8 @@ same declaration. Duplicate spellings and values outside the OAuth scope-token g
 fail compilation. Consumers need Serde and Schemars. A domain may also
 implement the public trait directly.
 Empty declarations produce uninhabited enums, reject every parsed name, and emit
-the JSON Schema `false` schema. Servers expose the generated `ALL` slice to checked
-MCP setup, including when they declare no domain permissions.
+the JSON Schema `false` schema. Servers expose the generated `ALL` slice to their
+registration, including when they declare no domain permissions.
 Schema identities include the declaring module, so independently owned enums with
 the same Rust name keep distinct definitions in a combined schema.
 
@@ -425,8 +424,8 @@ The exact iri-string pin is the stable `0.7.14` release verified against the
 [upstream registry](https://crates.io/crates/iri-string) on 2026-09-27. URL does not
 parse RFC 6570 templates, so this dependency supplies that missing parser and
 expansion engine with only its standard-library feature. Concrete component handling
-continues to use the qualified URL profile. The gateway's existing
-`ResourceUriTemplate` policy selector accepts a narrower pattern language and has
+continues to use the qualified URL profile. The `ResourceUriTemplate` policy selector
+accepts a narrower pattern language and has
 its own matching semantics. Neither that selector nor an opaque historical
 `ResourceUri` is implicitly converted to `ResourceTemplateUri`.
 
@@ -454,11 +453,11 @@ tests and conformance profiles.
 
 ## Shared Installation Names
 
-The foundational library owns opaque gateway Task routes, server and profile names, OAuth client and refresh-family
-identities, agent definition/model/template/instance names, and authentication methods
-and reason codes. MCP re-exports these types for its protocol consumers. The audit
-contract imports them directly without depending on MCP or the gateway. A managed-agent
-instance is a validated installation name; it is not assumed to be a UUID.
+The foundational library owns the names every component shares: `ServerSlug` for a
+registered server and `OAuthClientId` for an OAuth client. Names that belong to one
+protocol or component stay with their owner. MCP tool and prompt names and Task routes
+belong to `veoveo-sdk-rust`, Gateway profiles, refresh families and authentication
+codes to the Gateway, and agent names to Agents.
 
 ## Permission Names
 
