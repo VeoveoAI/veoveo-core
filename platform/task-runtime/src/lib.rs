@@ -2,7 +2,8 @@
 //!
 //! Every Task is a row of `tasks.task`. A process instance owns the Tasks it claims,
 //! worker writes compare that ownership, and the database moves a dead instance's Tasks
-//! to their recovery state. Callers reach their own Tasks through
+//! to their recovery state. A worker records each step of a Task's work, so a Task that
+//! runs again after recovery skips the steps it finished. Callers reach their own Tasks through
 //! `TaskRuntime::for_owner`, and each server's notification channel, `tasks.<server>`,
 //! wakes that server's workers and subscribers.
 
@@ -19,6 +20,7 @@ mod row;
 mod runtime;
 mod signals;
 mod snapshot;
+mod steps;
 mod subscriptions;
 #[cfg(test)]
 #[allow(dead_code, reason = "the unit tests use part of the shared fixture")]
@@ -42,6 +44,7 @@ pub use snapshot::{
     TaskFailure, TaskPage, TaskPageCursor, TaskPayloadState, TaskRetentionPin,
     TaskRetentionPinError, TaskSnapshot,
 };
+pub use steps::{MAX_STEP_KEY_BYTES, StepAttempt, StepDispatch, StepKey, StepOperationId};
 pub use subscriptions::{OwnerTaskSubscription, TaskUpdateStream};
 pub use transition::TaskTransition;
 pub use veoveo_platform_store::{Instance, InstanceId, MaintenanceBatch, PrincipalKind, Pruned};
