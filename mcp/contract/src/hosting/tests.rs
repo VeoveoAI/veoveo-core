@@ -299,17 +299,49 @@ fn test_gateway_tokens_carry_the_permissions_it_grants() {
     assert!(narrowed.permissions.is_empty());
 }
 
+/// The status and body of a GET to `path` at the root of `gateway`'s listener.
+async fn get_root(gateway: &TestGateway, path: &str) -> (StatusCode, String) {
+    gateway
+        .send(TestGateway::root_request(path).body(Body::empty()).unwrap())
+        .await
+}
+
 #[tokio::test]
 async fn health_and_readiness_need_no_authentication() {
     let gateway = gateway();
-    let (status, body) = gateway
-        .send(gateway.request("/livez").body(Body::empty()).unwrap())
-        .await;
+    let (status, body) = get_root(&gateway, "/livez").await;
     assert_eq!((status, body.as_str()), (StatusCode::OK, "ok"));
-    let (status, _) = gateway
-        .send(gateway.request("/readyz").body(Body::empty()).unwrap())
-        .await;
-    assert_eq!(status, StatusCode::OK);
+    let (status, body) = get_root(&gateway, "/readyz").await;
+    assert_eq!((status, body.as_str()), (StatusCode::OK, "ready"));
+}
+
+#[tokio::test]
+async fn health_routes_sit_only_at_the_listener_root() {
+    for server in [
+        testing::for_domain::<FixtureDomain>(),
+        testing::internal_for_domain::<FixtureDomain>(),
+    ] {
+        let gateway = TestGateway::new(
+            server
+                .handler(|| Hosted::new(FixtureDomain::new()))
+                .readiness(|| async { true })
+                .build(),
+        );
+        for path in ["/livez", "/readyz"] {
+            assert_eq!(get_root(&gateway, path).await.0, StatusCode::OK, "{path}");
+            let (status, _) = gateway
+                .send(gateway.request(path).body(Body::empty()).unwrap())
+                .await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{path} under the mount");
+        }
+    }
+    // Without a readiness check, `/readyz` does not exist.
+    let gateway = TestGateway::new(
+        testing::for_domain::<FixtureDomain>()
+            .handler(|| Hosted::new(FixtureDomain::new()))
+            .build(),
+    );
+    assert_eq!(get_root(&gateway, "/readyz").await.0, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -322,9 +354,7 @@ async fn liveness_and_readiness_report_their_checks() {
             .build(),
     );
     for (path, body) in [("/livez", "not alive"), ("/readyz", "not ready")] {
-        let (status, text) = gateway
-            .send(gateway.request(path).body(Body::empty()).unwrap())
-            .await;
+        let (status, text) = get_root(&gateway, path).await;
         assert_eq!(
             (status, text.as_str()),
             (StatusCode::SERVICE_UNAVAILABLE, body)
@@ -339,16 +369,7 @@ async fn internal_root_servers_route_from_the_listener_root() {
             .handler(|| Hosted::new(FixtureDomain::new()))
             .build(),
     );
-    let (status, _) = gateway
-        .send(
-            Request::builder()
-                .uri("/livez")
-                .header("host", testing::TEST_HOST)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(get_root(&gateway, "/livez").await.0, StatusCode::OK);
     let body = gateway.rpc("tools/list", serde_json::json!({})).await;
     assert_eq!(body["result"]["tools"][0]["name"], "echo");
 }
@@ -360,16 +381,13 @@ async fn internal_servers_mount_at_their_slug_for_internal_hosts() {
             .handler(|| Hosted::new(FixtureDomain::new()))
             .build(),
     );
-    let (status, _) = gateway
-        .send(gateway.request("/livez").body(Body::empty()).unwrap())
-        .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(get_root(&gateway, "/livez").await.0, StatusCode::OK);
     let body = gateway.rpc("tools/list", serde_json::json!({})).await;
     assert_eq!(body["result"]["tools"][0]["name"], "echo");
     let (status, _) = gateway
         .send(
             Request::builder()
-                .uri("/fixture/livez")
+                .uri("/livez")
                 .header("host", "fixture.example")
                 .body(Body::empty())
                 .unwrap(),
@@ -422,7 +440,7 @@ async fn hosts_are_validated_before_routing() {
     let (status, _) = gateway
         .send(
             Request::builder()
-                .uri("/fixture/livez")
+                .uri("/livez")
                 .header("host", "attacker.example")
                 .body(Body::empty())
                 .unwrap(),
@@ -432,7 +450,7 @@ async fn hosts_are_validated_before_routing() {
     let (status, _) = gateway
         .send(
             Request::builder()
-                .uri("/fixture/livez")
+                .uri("/livez")
                 .body(Body::empty())
                 .unwrap(),
         )

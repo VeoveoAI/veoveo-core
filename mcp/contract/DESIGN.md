@@ -524,7 +524,7 @@ The host gives every server the same behavior:
 
 | Behavior | Host rule |
 |---|---|
-| Routes | `{mount}/livez`, optional `{mount}/readyz`, `{mount}/admin/docs/*` and `{mount}/mcp` |
+| Routes | `/livez` and optional `/readyz` at the listener root, whatever the mount; `{mount}/admin/docs/*` and `{mount}/mcp` |
 | Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug; a rejection is 401 with `WWW-Authenticate: Bearer` |
 | Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` after the domain's list hooks, sorted, 100 per page, private, five-second cache |

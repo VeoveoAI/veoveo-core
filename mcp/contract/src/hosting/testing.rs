@@ -226,9 +226,13 @@ impl TestGateway {
 
     /// A request builder for `path` under the server's mount, on the test host.
     pub fn request(&self, path: &str) -> axum::http::request::Builder {
-        Request::builder()
-            .uri(format!("{}{path}", self.mount))
-            .header("host", TEST_HOST)
+        Self::root_request(&format!("{}{path}", self.mount))
+    }
+
+    /// A request builder for `path` at the root of the listener, such as `/livez`, on
+    /// the test host.
+    pub fn root_request(path: &str) -> axum::http::request::Builder {
+        Request::builder().uri(path).header("host", TEST_HOST)
     }
 
     /// Calls `method` as the test user and returns the JSON-RPC response.
