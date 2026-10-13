@@ -266,3 +266,46 @@ async fn row_level_security_confines_a_server_login_to_its_own_tasks() {
     })
     .await;
 }
+
+/// The index conditions of every node of an `EXPLAIN (FORMAT JSON)` plan.
+fn index_conditions(node: &serde_json::Value, conditions: &mut Vec<String>) {
+    if let Some(condition) = node.get("Index Cond").and_then(serde_json::Value::as_str) {
+        conditions.push(condition.to_owned());
+    }
+    for child in node
+        .get("Plans")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        index_conditions(child, conditions);
+    }
+}
+
+#[tokio::test]
+async fn a_later_page_seeks_its_cursor_in_a_generic_plan() {
+    within(async {
+        let db = TestDb::new().await;
+        let script = include_str!("../queries/plans/owner_page.sql");
+        assert!(
+            script.contains(include_str!("../../queries/owner/page.sql").trim_end()),
+            "the plan script prepares the page statement verbatim"
+        );
+        let mut connection = db.a.pool().acquire().await.unwrap();
+        let rows = sqlx::raw_sql(script)
+            .fetch_all(&mut *connection)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        let plan: serde_json::Value = sqlx::Row::try_get(&rows[0], 0).unwrap();
+        let mut conditions = Vec::new();
+        index_conditions(&plan[0]["Plan"], &mut conditions);
+        assert!(
+            conditions
+                .iter()
+                .any(|condition| condition.contains("ROW(created_at, id) > ROW(COALESCE(")),
+            "{conditions:?}"
+        );
+    })
+    .await;
+}

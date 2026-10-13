@@ -1,5 +1,6 @@
 -- $1–$8 select the caller's Tasks as in `get.sql`. $9 and $10 are the creation time and
--- ID of the previous page's last Task, and $11 limits the page.
+-- ID of the previous page's last Task, and $11 limits the page. The first page's bound
+-- precedes every Task, so the keyset stays an index range in a generic plan.
 SELECT
     id,
     server,
@@ -45,6 +46,9 @@ WHERE server = $1
     AND data_labels <@ $6
     AND ($7::text[] IS NULL OR task_type = ANY ($7))
     AND ($8::text IS NULL OR work_context = $8)
-    AND ($9::timestamptz IS NULL OR (created_at, id) > ($9, $10::uuid))
+    AND (created_at, id) > (
+        coalesce($9::timestamptz, '-infinity'),
+        coalesce($10::uuid, '00000000-0000-0000-0000-000000000000')
+    )
 ORDER BY created_at, id
 LIMIT $11

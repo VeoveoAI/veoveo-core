@@ -187,6 +187,15 @@ login role, live in PL/pgSQL functions that quote identifiers and literals with
 `format('%I', …)` and `format('%L', …)`. Rust calls those functions through checked
 queries; no Rust code concatenates SQL.
 
+sqlx prepares each statement once per connection, and PostgreSQL may switch a prepared
+statement to a generic plan that ignores its parameter values. A keyset bound that the
+first page omits is therefore coalesced to a bound before every row, such as `(created_at,
+id) > (coalesce($9, '-infinity'), coalesce($10, nil UUID))`, rather than written as
+`$9 IS NULL OR …`, so the bound stays an index range in a generic plan. A statement whose
+optional equality filters must each seek their own index, such as an audit page, runs in
+a transaction with `SET LOCAL plan_cache_mode = force_custom_plan`. Plan tests prepare a
+verbatim copy of the statement in a test script and check the plan's index conditions.
+
 ## Column Types
 
 | Value | Column type |

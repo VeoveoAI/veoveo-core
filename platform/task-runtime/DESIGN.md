@@ -117,7 +117,8 @@ that it belongs to the owner's tenant. A missing Task and another caller's Task 
 as `None`.
 
 `get` reads one Task, and `page` reads up to 1,000 in creation order after a
-`TaskPageCursor`, which records only a position. `cancel` requests cancellation and
+`TaskPageCursor`, which records only a position. The cursor's position bounds the
+`task_owner_page` index range in generic plans too. `cancel` requests cancellation and
 `submit_input_responses` answers inputs. `TaskRuntime::get` and `TaskRuntime::owner`
 read a Task of the runtime's server without a caller selection.
 
