@@ -3470,6 +3470,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "veoveo-usage"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "pg_query",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+ "veoveo-platform-store",
+ "veoveo-types",
+ "veoveo-usage-contract",
+]
+
+[[package]]
+name = "veoveo-usage-contract"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "uuid",
+ "veoveo-types",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

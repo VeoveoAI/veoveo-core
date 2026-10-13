@@ -11,6 +11,8 @@ members = [
     "platform/task-runtime",
     "platform/task-runtime/contract",
     "platform/types",
+    "platform/usage",
+    "platform/usage/contract",
     "testing/fixtures/library",
 ]
 
@@ -26,6 +28,7 @@ publish = false
 veoveo-task-contract = { path = "platform/task-runtime/contract" }
 veoveo-macros = { path = "platform/macros" }
 veoveo-audit-contract = { path = "platform/audit/contract" }
+veoveo-usage-contract = { path = "platform/usage/contract" }
 axum = "0.8.9"
 aws-lc-rs = "1.18.0"
 base64 = "0.23.1"
