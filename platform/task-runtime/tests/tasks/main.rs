@@ -8,6 +8,7 @@ mod claims;
 mod inputs;
 mod lifecycle;
 mod notifications;
+mod operations;
 mod owner;
 mod recovery;
 mod steps;
