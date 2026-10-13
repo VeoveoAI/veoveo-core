@@ -21,19 +21,13 @@ revision of this repository.
 | `platform/artifacts/contract` | `veoveo-artifact-contract` | Artifact identities, metadata and release states |
 | `platform/knowledge/contract` | `veoveo-knowledge-contract` | Knowledge source and retrieval types |
 | `platform/runtimes/embedding/contract` | `veoveo-embedding-contract` | Embedding request and profile types |
-| `platform/gateway/contract` | `veoveo-gateway-contract` | Gateway catalog registry, actions and admission types |
 | `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision |
-| `mcp/contract` | `veoveo-mcp-contract` | The hosted MCP server contract and its hosting runtime |
-| `mcp/ext-apps` | `veoveo-mcp-ext-apps` | The MCP Apps extension |
 | `mcp/ext-knowledge` | `veoveo-mcp-ext-knowledge` | The `ai.veoveo/knowledge-source` extension |
-| `mcp/ext-registration` | `veoveo-mcp-ext-registration` | The server registration protocol: the `ai.veoveo/registration` and `ai.veoveo/authorization` declarations, RFC 7591 and RFC 7592 registration types, the database grant, granted-permission details and the registration client servers run |
 | `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database, the database conformance checks and tool-input cases |
 
 Core names no specific server, and neither does an installation's configuration.
-Servers register with the Gateway through the
-[server registration protocol](mcp/ext-registration/DESIGN.md), and the
-installation grants roles that select their declared permissions by access kind and
-risk.
+The MCP layer, including the server registration protocol, lives in
+[`veoveo-sdk-rust`](https://github.com/VeoveoAI/veoveo-sdk-rust).
 
 ## Conventions
 

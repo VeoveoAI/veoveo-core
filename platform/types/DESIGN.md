@@ -168,7 +168,7 @@ Task runtime uses that relationship to share an authorized observation source ac
 Task status and resource notifications. This trait supplies identity, not permission;
 domain admission and current SQL owner checks still apply.
 
-`mcp/contract` consumes these types for protocol descriptors, identity, policy, and
+`veoveo-sdk-rust` consumes these types for protocol descriptors, identity, policy and
 discovery. Consumers import the foundational types directly from this crate. It
 provides no server-specific enums or blanket implementation that makes an arbitrary
 name or reference a domain contract.
