@@ -22,9 +22,9 @@ use veoveo_mcp_contract::{
     GatewayJwtRevocation, Principal,
 };
 use veoveo_platform_store::{
-    ChangeOperation, ChangeSignal, Channel, PrincipalKind, StoreError, TenantId as TenantRow,
-    WorkContextId as WorkContextRow, deterministic_principal_id, deterministic_tenant_id,
-    deterministic_work_context_id,
+    ChangeOperation, ChangeSignal, Channel, MaintenanceBatch, PrincipalKind, Pruned, StoreError,
+    TenantId as TenantRow, WorkContextId as WorkContextRow, deterministic_principal_id,
+    deterministic_tenant_id, deterministic_work_context_id,
     gateway::{
         ControlObject, ControlPublication, NewRefreshFamily, NewRefreshToken, RefreshBinding,
         RefreshDeliveryEnvelope, RefreshPrincipal, RefreshRevocation, RefreshRotation,
@@ -121,16 +121,19 @@ async fn replay_identifiers_are_claimed_once_across_pools_until_they_expire() {
             .unwrap(),
         "the new claim is live again"
     );
+    let batch = MaintenanceBatch::DEFAULT;
     assert_eq!(
-        db.a.prune_replay_ids(ReplayKind::IdJag, later)
+        db.a.prune_replay_ids(ReplayKind::IdJag, later, batch)
             .await
-            .unwrap(),
+            .unwrap()
+            .rows,
         1
     );
     assert_eq!(
-        db.a.prune_replay_ids(ReplayKind::ClientAssertion, later)
+        db.a.prune_replay_ids(ReplayKind::ClientAssertion, later, batch)
             .await
-            .unwrap(),
+            .unwrap()
+            .rows,
         0
     );
 }
@@ -202,9 +205,10 @@ async fn authorization_requests_and_codes_are_consumed_once() {
         }]
     );
     assert_eq!(
-        db.a.prune_authorization_records(start + TimeDelta::minutes(6))
+        db.a.prune_authorization_records(start + TimeDelta::minutes(6), MaintenanceBatch::DEFAULT)
             .await
-            .unwrap(),
+            .unwrap()
+            .rows,
         1,
         "the consumed request is gone and the redeemed code expires"
     );
@@ -236,9 +240,10 @@ async fn jwt_revocations_apply_until_the_token_expires() {
     assert_eq!(read(start).await.unwrap(), Some(revocation.clone()));
     assert_eq!(read(start + TimeDelta::hours(2)).await.unwrap(), None);
     assert_eq!(
-        db.a.prune_jwt_revocations(start + TimeDelta::hours(2))
+        db.a.prune_jwt_revocations(start + TimeDelta::hours(2), MaintenanceBatch::DEFAULT)
             .await
-            .unwrap(),
+            .unwrap()
+            .rows,
         1
     );
 }
@@ -362,18 +367,27 @@ async fn concurrent_presentations_rotate_once_redeliver_the_successor_and_revoke
     assert!(rows[0].consumed_at.is_some() && rows[0].replay_detected_at.is_some());
     assert!(!rows[0].delivered && rows[1].delivered);
 
-    let retention = db.b.prune_refresh_state(late).await.unwrap();
-    assert_eq!(retention.delivery_envelopes_deleted, 1);
+    let batch = MaintenanceBatch::DEFAULT;
+    let retention = db.b.prune_refresh_state(late, batch).await.unwrap();
+    assert_eq!(retention.delivery_envelopes_cleared.rows, 1);
     assert_eq!(
-        (retention.tokens_deleted, retention.families_deleted),
+        (
+            retention.tokens_deleted.rows,
+            retention.families_deleted.rows
+        ),
         (0, 0)
     );
+    // Deleting the consumed token's successor clears the predecessor's replacement in
+    // the same batch.
     let retention =
-        db.b.prune_refresh_state(start + TimeDelta::days(8))
+        db.b.prune_refresh_state(start + TimeDelta::days(8), batch)
             .await
             .unwrap();
     assert_eq!(
-        (retention.tokens_deleted, retention.families_deleted),
+        (
+            retention.tokens_deleted.rows,
+            retention.families_deleted.rows
+        ),
         (2, 1)
     );
     assert!(
@@ -678,23 +692,45 @@ async fn task_routes_go_with_their_work_context() {
     )
     .await
     .unwrap();
-    let authority = digest(7);
-    sqlx::query_file!(
-        "tests/queries/gateway/insert_task_route.sql",
-        format!("gtr_{}", "a".repeat(43)),
-        deterministic_tenant_id("acme").unwrap() as TenantRow,
-        deterministic_principal_id("acme", "https://issuer.example#alice").unwrap()
-            as veoveo_platform_store::PrincipalId,
-        deterministic_work_context_id("acme", "mission").unwrap() as WorkContextRow,
-        authority.as_str(),
-    )
-    .execute(db.a.pool())
-    .await
-    .unwrap();
+    let start = now();
+    let route = |id: char, expires_at: DateTime<Utc>| {
+        let authority = digest(7);
+        let pool = db.a.pool().clone();
+        async move {
+            sqlx::query_file!(
+                "tests/queries/gateway/insert_task_route.sql",
+                format!("gtr_{}", id.to_string().repeat(43)),
+                deterministic_tenant_id("acme").unwrap() as TenantRow,
+                deterministic_principal_id("acme", "https://issuer.example#alice").unwrap()
+                    as veoveo_platform_store::PrincipalId,
+                deterministic_work_context_id("acme", "mission").unwrap() as WorkContextRow,
+                authority.as_str(),
+                format!("task-{id}"),
+                expires_at,
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+    };
     let count = || {
         sqlx::query_file_scalar!("tests/queries/gateway/task_route_count.sql")
             .fetch_one(db.a.pool())
     };
+    // Cleanup removes expired routes in batches and keeps the live one.
+    for id in ['a', 'b', 'c'] {
+        route(id, start - TimeDelta::minutes(1)).await;
+    }
+    route('d', start + TimeDelta::hours(1)).await;
+    assert_eq!(
+        db.b.prune_task_routes(start, MaintenanceBatch::new(2).unwrap())
+            .await
+            .unwrap(),
+        Pruned {
+            rows: 3,
+            batches: 2
+        }
+    );
     assert_eq!(count().await.unwrap(), 1);
     let second = revision("gcp-second", 2, control_plane(serde_json::json!([])));
     db.a.publish_control_revision(
@@ -708,6 +744,100 @@ async fn task_routes_go_with_their_work_context() {
     .await
     .unwrap();
     assert_eq!(count().await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn maintenance_prunes_in_batches_that_replicas_share() {
+    let db = TestDb::new().await;
+    let start = now();
+    let revocation = |index: usize, expires_at| GatewayJwtRevocation {
+        profile: GatewayProfileId::parse("operator").unwrap(),
+        issuer: TokenIssuer::parse("https://issuer.example").unwrap(),
+        jwt_id: JwtId::parse(format!("token-{index}")).unwrap(),
+        revoked_at: start - TimeDelta::hours(1),
+        expires_at,
+        reason: None,
+    };
+    let expired = |count: usize| {
+        let db = &db;
+        async move {
+            for index in 0..count {
+                db.a.record_jwt_revocation(&revocation(index, start - TimeDelta::minutes(1)))
+                    .await
+                    .unwrap();
+            }
+        }
+    };
+    let live = revocation(100, start + TimeDelta::hours(1));
+    db.a.record_jwt_revocation(&live).await.unwrap();
+    expired(5).await;
+    let batch = MaintenanceBatch::new(2).unwrap();
+    assert_eq!(
+        db.b.prune_jwt_revocations(start, batch).await.unwrap(),
+        Pruned {
+            rows: 5,
+            batches: 3
+        }
+    );
+    assert!(
+        db.a.jwt_revocation(&live.profile, &live.issuer, &live.jwt_id, start)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    // Two replicas pruning at once delete each expired row once between them.
+    expired(40).await;
+    let (left, right) = tokio::join!(
+        db.a.prune_jwt_revocations(start, batch),
+        db.b.prune_jwt_revocations(start, batch)
+    );
+    assert_eq!(left.unwrap().rows + right.unwrap().rows, 40);
+    assert_eq!(
+        db.a.prune_jwt_revocations(start, batch).await.unwrap(),
+        Pruned {
+            rows: 0,
+            batches: 1
+        }
+    );
+}
+
+/// Whether an `EXPLAIN (FORMAT JSON)` plan reads the index named `index`.
+fn reads_index(plan: Option<serde_json::Value>, index: &str) -> bool {
+    plan.expect("EXPLAIN returns a plan")
+        .to_string()
+        .contains(&format!(r#""Index Name":"{index}""#))
+}
+
+#[tokio::test]
+async fn maintenance_lookups_read_their_indexes() {
+    let db = TestDb::new().await;
+    let mut transaction = db.a.pool().begin().await.unwrap();
+    sqlx::query_file!("tests/queries/plans/disable_seqscan.sql")
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    let replacement = sqlx::query_file_scalar!(
+        "tests/queries/plans/refresh_token_replacement.sql",
+        Uuid::now_v7()
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .unwrap();
+    assert!(reads_index(replacement, "refresh_token_replacement"));
+    let work_context = sqlx::query_file_scalar!(
+        "tests/queries/plans/task_route_work_context.sql",
+        Uuid::now_v7()
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .unwrap();
+    assert!(reads_index(work_context, "task_route_work_context"));
+    let expiry = sqlx::query_file_scalar!("tests/queries/plans/task_route_expiry.sql", now(), 100)
+        .fetch_one(&mut *transaction)
+        .await
+        .unwrap();
+    assert!(reads_index(expiry, "task_route_expiry"));
+    transaction.rollback().await.unwrap();
 }
 
 #[tokio::test]

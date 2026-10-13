@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Delete up to $2 authorization codes that expired at or before $1, earliest first. A\n-- code a redemption holds waits for a later batch.\nDELETE FROM gateway.authorization_code\nWHERE code IN (\n    SELECT code\n    FROM gateway.authorization_code\n    WHERE expires_at <= $1\n    ORDER BY expires_at\n    LIMIT $2\n    FOR UPDATE SKIP LOCKED\n)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "870cc556fbbe16af902875d97cf7e66d85af7b1354e8da39c58837402a74f8d3"
+}

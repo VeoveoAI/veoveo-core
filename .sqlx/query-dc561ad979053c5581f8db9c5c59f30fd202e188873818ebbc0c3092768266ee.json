@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- The selection of one cleanup batch of expired Task routes.\nEXPLAIN (FORMAT JSON)\nSELECT id\nFROM gateway.task_route\nWHERE expires_at <= $1\nORDER BY expires_at\nLIMIT $2\nFOR UPDATE SKIP LOCKED\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "QUERY PLAN",
+        "type_info": "Json",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "dc561ad979053c5581f8db9c5c59f30fd202e188873818ebbc0c3092768266ee"
+}

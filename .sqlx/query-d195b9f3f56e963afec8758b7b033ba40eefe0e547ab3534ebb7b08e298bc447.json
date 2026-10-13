@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gateway.task_route (\n    id, tenant, owner, work_context, profile, server, source_task_id, authority_digest,\n    owner_kind, owner_issuer, owner_subject, invocation_mode, initiator, delegation_id,\n    data_labels, created_at, expires_at\n)\nVALUES (\n    $1, $2, $3, $4, 'operator', 'upstream', $6, $5, 'user', 'https://issuer.example',\n    'alice', 'automated', NULL, NULL, '{}', $7::timestamptz - interval '1 hour', $7\n)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d195b9f3f56e963afec8758b7b033ba40eefe0e547ab3534ebb7b08e298bc447"
+}

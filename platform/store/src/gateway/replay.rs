@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use veoveo_gateway_contract::{AuthorizationServerId, JwtId};
 use veoveo_types::OAuthClientId;
 
-use crate::{PlatformStore, StoreError};
+use crate::{MaintenanceBatch, PlatformStore, Pruned, StoreError};
 
 /// What a replay identifier was carried by.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
@@ -50,17 +50,24 @@ impl PlatformStore {
         Ok(claimed.is_some())
     }
 
-    /// Delete the identifiers of one kind that expired at or before `now`.
+    /// Delete the identifiers of one kind that expired at or before `now`, in batches.
     pub async fn prune_replay_ids(
         &self,
         kind: ReplayKind,
         now: DateTime<Utc>,
-    ) -> Result<u64, StoreError> {
-        Ok(
-            sqlx::query_file!("src/gateway/replay/prune.sql", kind as ReplayKind, now)
-                .execute(self.pool())
-                .await?
-                .rows_affected(),
-        )
+        batch: MaintenanceBatch,
+    ) -> Result<Pruned, StoreError> {
+        Pruned::in_batches(batch, |limit| async move {
+            Ok(sqlx::query_file!(
+                "src/gateway/replay/prune.sql",
+                kind as ReplayKind,
+                now,
+                limit
+            )
+            .execute(self.pool())
+            .await?
+            .rows_affected())
+        })
+        .await
     }
 }

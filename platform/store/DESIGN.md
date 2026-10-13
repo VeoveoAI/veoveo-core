@@ -26,6 +26,7 @@ the crate implements.
 | `Singleton` | One replica per role, on the connection that holds the lock |
 | `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
 | `ensure_identity`, `work_context_by_key` | Identity records for the Gateway and registered servers |
+| `MaintenanceBatch`, `Pruned` | Batched deletion of expired rows, described below |
 | `gateway` module, `gateway` feature | The Gateway's state, typed with the Gateway contracts; described below |
 
 Migration versions are grouped by owner schema in hundreds: `01xx` kernel, `02xx`
@@ -36,6 +37,16 @@ Every static statement is a `.sql` file beside the module that runs it. The quer
 metadata lives in the workspace's `.sqlx` directory, and builds set `SQLX_OFFLINE=true`.
 Statements whose text depends on runtime names, such as creating a login, are PL/pgSQL
 functions in the migrations that quote with `format('%I')` and `format('%L')`.
+
+## Batched Maintenance
+
+A statement that deletes or clears expired rows changes at most one `MaintenanceBatch`
+of them, 1 to 10,000 rows and 1,000 by default. It selects the batch in expiry order
+through the expiry index and locks it with `FOR UPDATE SKIP LOCKED`, so each batch is
+one short transaction and replicas that run the same pass take different rows.
+`Pruned::in_batches` repeats the statement until a batch changes fewer rows than it
+holds and reports the rows and batches the pass took. Every prune in this crate and the
+Task runtime's retention run this way.
 
 ## Gateway State
 
@@ -64,7 +75,8 @@ needs:
 | `create_refresh_family`, `refresh_grant`, `refresh_family` | A family with its generation-0 token, and reads by token digest or family |
 | `rotate_refresh_token` | Locks the family row, then rotates, redelivers the successor inside its delivery window, or revokes the family as a replay |
 | `revoke_refresh_family` | RFC 7009 revocation bound to the family's client; repeating it succeeds |
-| `prune_refresh_state`, `clear_refresh_delivery_envelopes` | Retention of delivery envelopes, tokens and families |
+| `prune_refresh_state`, `clear_refresh_delivery_envelopes` | Retention of delivery envelopes, tokens and families. Deleting a token clears its predecessor's `replacement` through the `refresh_token_replacement` index |
+| `prune_replay_ids`, `prune_jwt_revocations`, `prune_authorization_records`, `prune_task_routes` | Deletion of expired identifiers, revocations, requests and codes, and Task routes; the Gateway schedules each pass |
 | `active_control_revision`, `publish_control_revision` | Publication locks the active pointer, fails with `ControlRevisionChanged` when another revision became active, and replaces the identity schema's Work Contexts in the same transaction |
 | `artifact_upload_authority` | The active configuration digest, the Work Context's policy revision and digest, and the profile's policy digest |
 
@@ -78,8 +90,12 @@ metadata changes. Its `orphaned_at` is null while the registration's login holds
 kernel instance. The Gateway sets it when it first finds the login without one, clears
 it when an instance appears, and removes the registration with its login once
 `orphaned_at` is older than the grace period. An installation whose servers stay alive
-therefore writes nothing while it is idle, and neither mark wakes a listener. A `task_route` references its tenant, owner and Work Context in `identity` and
-goes with the Work Context when a publication removes it.
+therefore writes nothing while it is idle, and neither mark wakes a listener.
+
+A `task_route` references its tenant, owner and Work Context in `identity` and goes with
+the Work Context when a publication removes it, which `task_route_work_context` makes a
+lookup rather than a scan. `prune_task_routes` deletes the routes whose `expires_at` has
+passed, through `task_route_expiry`.
 
 ## Tests
 
@@ -90,5 +106,6 @@ reads and the `postgres` macro bindings. `tests/gateway.rs` covers single-use re
 identifiers, authorization requests and codes across two pools, revocation expiry,
 concurrent refresh rotation with redelivery and replay revocation, rollback on a refused
 append, bound client revocation, publication conflicts, Work Context replacement and
-upload authority digests, Task route removal with their Work Context, and the
-registration notifications.
+upload authority digests, Task route removal with their Work Context and by expiry, the
+registration notifications, batched pruning that two replicas share, and plans that read
+the replacement, Work Context and expiry indexes with sequential scans disabled.

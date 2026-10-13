@@ -143,6 +143,15 @@ schema channel or a qualified one, and `Channel::qualified` builds the latter.
 Notifications are wake signals: consumers read current rows under their own authorization
 and never trust payload content as data.
 
+## Batched Maintenance
+
+A statement that deletes or clears expired rows changes at most one batch, selected in
+expiry order through an index on the expiry column and locked with `FOR UPDATE SKIP
+LOCKED`. Its caller repeats it, each batch in its own short transaction, until a batch
+changes fewer rows than it holds. Replicas that prune at the same time take different
+rows, and no pass holds locks on a large set. A foreign key whose referencing column a
+delete or cascade searches has an index on that column.
+
 ## Timed Changes
 
 A row that becomes due at a known time stores that time in an indexed column. Each

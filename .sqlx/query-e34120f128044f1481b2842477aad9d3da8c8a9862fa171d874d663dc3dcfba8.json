@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Delete up to $2 Task routes that expired at or before $1, earliest first. A route a\n-- concurrent projection holds waits for a later batch.\nDELETE FROM gateway.task_route\nWHERE id IN (\n    SELECT id\n    FROM gateway.task_route\n    WHERE expires_at <= $1\n    ORDER BY expires_at\n    LIMIT $2\n    FOR UPDATE SKIP LOCKED\n)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e34120f128044f1481b2842477aad9d3da8c8a9862fa171d874d663dc3dcfba8"
+}

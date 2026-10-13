@@ -60,6 +60,8 @@ pub enum StoreError {
     ControlRevisionExists,
     #[error("records appended with the change failed: {0}")]
     Append(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("a maintenance batch holds 1 to 10000 rows, not {0}")]
+    InvalidBatch(u16),
 }
 
 impl StoreError {

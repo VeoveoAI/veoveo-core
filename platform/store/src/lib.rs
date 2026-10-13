@@ -9,6 +9,7 @@ mod error;
 pub mod gateway;
 mod identity;
 mod instance;
+mod maintenance;
 mod names;
 mod notifications;
 mod servers;
@@ -24,6 +25,7 @@ pub use identity::{
     deterministic_work_context_id,
 };
 pub use instance::{Instance, InstanceId, PING_INTERVAL, PING_TIMEOUT, REAP_INTERVAL, ReapRound};
+pub use maintenance::{MaintenanceBatch, Pruned};
 pub use names::{Channel, KERNEL_SCHEMAS, LoginName, MAX_SERVER_NAME, ServerSchema, SingletonName};
 pub use notifications::{Change, ChangeOperation, ChangeSignal, ChangeStream};
 pub use singleton::Singleton;

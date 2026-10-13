@@ -15,7 +15,7 @@ use veoveo_types::{
 };
 
 use super::{TransactionAppend, admitted, authorization::scopes};
-use crate::{PlatformStore, StoreError};
+use crate::{MaintenanceBatch, PlatformStore, Pruned, StoreError};
 
 /// Why a family stopped issuing access.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
@@ -140,12 +140,12 @@ pub enum RefreshRotation {
     Invalid,
 }
 
-/// How many rows one retention pass removed.
+/// What one retention pass changed.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RefreshRetention {
-    pub delivery_envelopes_deleted: u64,
-    pub tokens_deleted: u64,
-    pub families_deleted: u64,
+    pub delivery_envelopes_cleared: Pruned,
+    pub tokens_deleted: Pruned,
+    pub families_deleted: Pruned,
 }
 
 struct FamilyRow {
@@ -481,44 +481,53 @@ impl PlatformStore {
     }
 
     /// Clear delivery envelopes whose window ended at or before `now`, then delete the
-    /// tokens and families that expired.
+    /// tokens and families that expired, each in batches of their own.
     pub async fn prune_refresh_state(
         &self,
         now: DateTime<Utc>,
+        batch: MaintenanceBatch,
     ) -> Result<RefreshRetention, StoreError> {
-        let mut transaction = self.pool().begin().await?;
-        let delivery_envelopes_deleted =
-            sqlx::query_file!("src/gateway/refresh/clear_envelopes.sql", now)
-                .execute(&mut *transaction)
-                .await?
-                .rows_affected();
-        let tokens_deleted = sqlx::query_file!("src/gateway/refresh/prune_tokens.sql", now)
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
-        let families_deleted = sqlx::query_file!("src/gateway/refresh/prune_families.sql", now)
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
-        transaction.commit().await?;
+        let delivery_envelopes_cleared = self.clear_refresh_delivery_envelopes(now, batch).await?;
+        let tokens_deleted = Pruned::in_batches(batch, |limit| async move {
+            Ok::<_, StoreError>(
+                sqlx::query_file!("src/gateway/refresh/prune_tokens.sql", now, limit)
+                    .execute(self.pool())
+                    .await?
+                    .rows_affected(),
+            )
+        })
+        .await?;
+        let families_deleted = Pruned::in_batches(batch, |limit| async move {
+            Ok::<_, StoreError>(
+                sqlx::query_file!("src/gateway/refresh/prune_families.sql", now, limit)
+                    .execute(self.pool())
+                    .await?
+                    .rows_affected(),
+            )
+        })
+        .await?;
         Ok(RefreshRetention {
-            delivery_envelopes_deleted,
+            delivery_envelopes_cleared,
             tokens_deleted,
             families_deleted,
         })
     }
 
-    /// Clear delivery envelopes whose window ended at or before `now`.
+    /// Clear delivery envelopes whose window ended at or before `now`, in batches.
     pub async fn clear_refresh_delivery_envelopes(
         &self,
         now: DateTime<Utc>,
-    ) -> Result<u64, StoreError> {
-        Ok(
-            sqlx::query_file!("src/gateway/refresh/clear_envelopes.sql", now)
-                .execute(self.pool())
-                .await?
-                .rows_affected(),
-        )
+        batch: MaintenanceBatch,
+    ) -> Result<Pruned, StoreError> {
+        Pruned::in_batches(batch, |limit| async move {
+            Ok(
+                sqlx::query_file!("src/gateway/refresh/clear_envelopes.sql", now, limit)
+                    .execute(self.pool())
+                    .await?
+                    .rows_affected(),
+            )
+        })
+        .await
     }
 }
 

@@ -10,7 +10,7 @@ use veoveo_mcp_contract::{GatewayAuthorizationCodeRecord, GatewayAuthorizationRe
 use veoveo_types::{GatewayProfileId, OAuthClientId, ScopeName, Vocabulary, WorkContextId};
 
 use super::admitted;
-use crate::{PlatformStore, StoreError};
+use crate::{MaintenanceBatch, PlatformStore, Pruned, StoreError};
 
 impl PlatformStore {
     pub async fn record_authorization_request(
@@ -222,12 +222,32 @@ impl PlatformStore {
         .transpose()
     }
 
-    /// Delete the requests and codes that expired at or before `now`.
-    pub async fn prune_authorization_records(&self, now: DateTime<Utc>) -> Result<u64, StoreError> {
-        let deleted = sqlx::query_file_scalar!("src/gateway/authorization/prune.sql", now)
-            .fetch_one(self.pool())
-            .await?;
-        admitted("authorization record count", u64::try_from(deleted))
+    /// Delete the requests and then the codes that expired at or before `now`, each in
+    /// batches.
+    pub async fn prune_authorization_records(
+        &self,
+        now: DateTime<Utc>,
+        batch: MaintenanceBatch,
+    ) -> Result<Pruned, StoreError> {
+        let requests = Pruned::in_batches(batch, |limit| async move {
+            Ok::<_, StoreError>(
+                sqlx::query_file!("src/gateway/authorization/prune_requests.sql", now, limit)
+                    .execute(self.pool())
+                    .await?
+                    .rows_affected(),
+            )
+        })
+        .await?;
+        let codes = Pruned::in_batches(batch, |limit| async move {
+            Ok::<_, StoreError>(
+                sqlx::query_file!("src/gateway/authorization/prune_codes.sql", now, limit)
+                    .execute(self.pool())
+                    .await?
+                    .rows_affected(),
+            )
+        })
+        .await?;
+        Ok(requests + codes)
     }
 }
 

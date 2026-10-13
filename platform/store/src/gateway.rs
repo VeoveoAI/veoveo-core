@@ -1,13 +1,15 @@
 //! The Gateway's state in the `gateway` schema: hosted OAuth requests and codes,
 //! refresh-token families, JWT revocations, replay identifiers, published control-plane
-//! revisions and the authority an Artifact upload binds to. The Gateway runs its own
-//! statements for registrations and Task routes against the same schema.
+//! revisions, the authority an Artifact upload binds to and the cleanup of expired Task
+//! routes. The Gateway runs its own statements for registrations and for creating and
+//! reading Task routes against the same schema.
 
 mod authorization;
 mod control;
 mod refresh;
 mod replay;
 mod revocations;
+mod task_routes;
 
 pub use control::{ArtifactUploadAuthority, ControlObject, ControlPublication};
 pub use refresh::{

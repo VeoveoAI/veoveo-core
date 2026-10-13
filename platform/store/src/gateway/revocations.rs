@@ -5,7 +5,7 @@ use veoveo_mcp_contract::GatewayJwtRevocation;
 use veoveo_types::{GatewayProfileId, TokenIssuer};
 
 use super::admitted;
-use crate::{PlatformStore, StoreError};
+use crate::{MaintenanceBatch, PlatformStore, Pruned, StoreError};
 
 impl PlatformStore {
     /// Record a revocation, replacing an earlier one of the same token.
@@ -60,11 +60,20 @@ impl PlatformStore {
         .transpose()
     }
 
-    /// Delete the revocations of tokens that expired at or before `now`.
-    pub async fn prune_jwt_revocations(&self, now: DateTime<Utc>) -> Result<u64, StoreError> {
-        Ok(sqlx::query_file!("src/gateway/revocations/prune.sql", now)
-            .execute(self.pool())
-            .await?
-            .rows_affected())
+    /// Delete the revocations of tokens that expired at or before `now`, in batches.
+    pub async fn prune_jwt_revocations(
+        &self,
+        now: DateTime<Utc>,
+        batch: MaintenanceBatch,
+    ) -> Result<Pruned, StoreError> {
+        Pruned::in_batches(batch, |limit| async move {
+            Ok(
+                sqlx::query_file!("src/gateway/revocations/prune.sql", now, limit)
+                    .execute(self.pool())
+                    .await?
+                    .rows_affected(),
+            )
+        })
+        .await
     }
 }

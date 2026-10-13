@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Delete up to $2 tokens that expired at or before $1, earliest first. Tokens another\n-- transaction holds wait for a later batch.\nDELETE FROM gateway.refresh_token\nWHERE id IN (\n    SELECT id\n    FROM gateway.refresh_token\n    WHERE expires_at <= $1\n    ORDER BY expires_at\n    LIMIT $2\n    FOR UPDATE SKIP LOCKED\n)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "73f44fb2904a8f9f66dc50686dff42c9db01dd0bd6d4aee421cfeb9966e8a3a7"
+}
