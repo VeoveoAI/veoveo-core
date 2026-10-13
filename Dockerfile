@@ -48,6 +48,9 @@ RUN initdb --pgdata /tmp/sqlx/data --username postgres --auth=trust --no-instruc
         -- --all-targets --all-features \
     && pg_ctl stop --pgdata /tmp/sqlx/data --mode fast --wait --silent \
     && rm -rf /tmp/sqlx
+# The nextest run includes the core boundary test, which fails when the lockfile holds rmcp,
+# a veoveo-mcp-*, veoveo-sdk-* or veoveo-service-* crate, and the audit contract's test
+# that the platform's audit classes belong to platform owners.
 RUN cargo fmt --check \
     && cargo clippy --locked --all-targets --all-features -- -D warnings \
     && cargo deny --locked check \
