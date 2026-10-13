@@ -9,7 +9,6 @@ it extends. A name or format that fits neither is a defect.
 
 | Standard | Governs |
 |---|---|
-| [MCP](https://modelcontextprotocol.io/specification/) `2026-07-28` and its extension rules | MCP messages, tool names, `_meta` keys and `capabilities.extensions` identifiers |
 | [RFC 6749](https://www.rfc-editor.org/rfc/rfc6749) §8.2 | Vendor-specific OAuth parameter names |
 | [RFC 7591](https://www.rfc-editor.org/rfc/rfc7591), [RFC 7592](https://www.rfc-editor.org/rfc/rfc7592) | Client registration documents and their errors |
 | [RFC 7519](https://www.rfc-editor.org/rfc/rfc7519), [RFC 9068](https://www.rfc-editor.org/rfc/rfc9068), [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693), [RFC 9396](https://www.rfc-editor.org/rfc/rfc9396) | JWT claims, access tokens, the `act` claim and `authorization_details` |
@@ -26,7 +25,7 @@ it extends. A name or format that fits neither is a defect.
 
 | Document family | Member casing |
 |---|---|
-| MCP messages, Veoveo HTTP API bodies, configuration files and Veoveo formats | `camelCase` |
+| Veoveo HTTP API bodies, configuration files and Veoveo formats | `camelCase` |
 | OAuth, OpenID Connect and JWT documents, including objects nested in a Veoveo claim | `snake_case`, as their specifications use |
 | PostgreSQL rows and columns, and formats whose canonical bytes are a stored record, such as Audit records and blocks | `snake_case`, the database's naming |
 
@@ -38,7 +37,6 @@ stored record is not returned as an API body; the API defines its own camelCase 
 
 | Host standard | Form | Example |
 |---|---|---|
-| MCP extension identifiers and `_meta` keys | `ai.veoveo/<kebab-name>` | `ai.veoveo/knowledge-source` |
 | OAuth parameters and client metadata | `veoveo_<snake_name>` | `veoveo_authorization` |
 | JWT claims | `https://veoveo.ai/claims/<kebab-name>` | `https://veoveo.ai/claims/invocation` |
 | RFC 9396 authorization detail types | `https://veoveo.ai/oauth/<kebab-name>` | `https://veoveo.ai/oauth/permissions` |
@@ -57,8 +55,7 @@ A document's format is identified by one `format` member whose value is an unver
 URI, `https://veoveo.ai/formats/<kebab-name>`. The format's JSON Schema has the same URI
 as its `$id`. Hash domain separators use the format URI followed by a NUL byte, and a
 stored marker that binds a hash to its format holds the same URI. A contract that
-servers declare compliance with is identified by `https://veoveo.ai/contracts/<kebab-name>`,
-such as `https://veoveo.ai/contracts/hosted-mcp`.
+servers declare compliance with is identified by `https://veoveo.ai/contracts/<kebab-name>`.
 
 Identifiers carry no version. Format and contract URIs, schema `$id`s, extension
 identifiers, claim and parameter names, and HTTP paths have no `v1` or `/v2` segment. A
@@ -71,11 +68,9 @@ A concept has one noun across every surface, and each surface spells it in its o
 
 | Surface | Form | Time's event |
 |---|---|---|
-| MCP tool | `<verb>_<noun>` in `snake_case` | `create_event`, `cancel_event` |
 | Resource URI | `<slug>://<plural>/{id}` | `time://events/{event_id}` |
 | Resource type | `<slug>.<singular>` | `time.event` |
 | Permission | `<slug>.<plural>.<verb>` | `time.events.write` |
-| Knowledge collection | `<slug>.<plural>` | `time.events` |
 | Table | `<schema>.<singular>` | `time.event` |
 | Database function | `<schema>.<name>()` | `time.due_events()` |
 
@@ -83,9 +78,8 @@ A server's URI scheme equals its slug. RFC 7595 §3.8 recommends reverse-domain 
 for private schemes; Veoveo uses the shorter slug because the Gateway pins each scheme
 to one registered server within an installation, which rules out collisions there. The
 scheme `veoveo` is reserved for platform resources, such as `veoveo://tasks/{task_id}`,
-and no server may register it or a scheme registered with IANA. The Gateway projects a
-tool as `<slug>__<tool>` when it lists tools from several servers. Resource templates use
-RFC 6570 simple expansion, and lists page through MCP cursors.
+and no server may register it or a scheme registered with IANA. Resource templates use
+RFC 6570 simple expansion.
 
 ## Authorization Names
 
@@ -100,7 +94,6 @@ of the risks `sensitive`, `destructive`, `billed`, `physical` and `administer`.
 |---|---|
 | HTTP APIs | RFC 9457 `application/problem+json` with `type` `https://veoveo.ai/problems/<kebab-code>` |
 | OAuth endpoints | The error format of the defining RFC; a 401 carries `WWW-Authenticate: Bearer` |
-| JSON-RPC | MCP's codes, plus Veoveo codes from `-31999` to `-31000`, outside the range JSON-RPC 2.0 reserves, listed in the `veoveo-mcp-contract` code registry |
 
 ## Tokens And Keys
 
@@ -125,9 +118,8 @@ prefix.
 Issuers, endpoints and resource URLs use `https`. A local installation, whose traffic
 never leaves one host, may use plain `http` for loopback names (`localhost` and
 `*.localhost`, per RFC 6761), loopback addresses and OpenShell's host alias
-`host.openshell.internal`, which reaches the host's loopback interface. MCP's
-authorization specification makes the same exception for localhost. Every other host
-requires `https`.
+`host.openshell.internal`, which reaches the host's loopback interface. Every other
+host requires `https`.
 
 ## Environment Variables And Flags
 
@@ -137,8 +129,8 @@ such as `_B64`, and durations in their unit, such as `_SECONDS`.
 
 ## Database Names
 
-The kernel owns the schemas `kernel`, `identity`, `gateway`, `tasks` and `audit`, and no
-server may register one of them, `public`, `information-schema` or a slug starting with
+The kernel owns the schemas `kernel`, `identity`, `tasks` and `audit`, and no server may
+register one of them, `public`, `information-schema` or a slug starting with
 `pg-` as its slug. A registered server owns the schema named after its slug with each
 `-` written as `_`, such as `time_zones` for `time-zones`. Its tables are
 `<schema>.<singular>` and its functions `<schema>.<name>()`. Its group role is
@@ -162,11 +154,11 @@ A repository's kind says what it holds, and its code shortens runtime names.
 
 | Kind | Code | Holds |
 |---|---|---|
-| `service` | `srv` | A platform service that implements a core contract |
-| `mcp` | `mcp` | A domain MCP server |
+| `service` | `srv` | A platform process that is not an MCP server, such as the Gateway |
+| `mcp` | `mcp` | An MCP server, which publishes its contract through its crate's `contract` feature |
 | `runtime` | `rt` | A native or GPU runtime that a service uses |
 | `app` | `app` | A user-facing application |
-| `sdk` | `sdk` | A client library |
+| `sdk` | `sdk` | A library for building Veoveo servers, clients and apps in one language |
 | `template` | `tpl` | A GitHub template repository |
 | `showcase` | `demo` | A demonstration workload |
 | `qualify` | `qual` | A qualification suite for a third-party runtime |
