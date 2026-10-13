@@ -59,6 +59,7 @@ pub struct Conformance {
     inline: Vec<(String, String)>,
     tenant_columns: BTreeMap<String, Vec<String>>,
     all_tenants: BTreeMap<String, String>,
+    pending: Vec<(Rule, String, String)>,
 }
 
 impl Conformance {
@@ -128,6 +129,16 @@ impl Conformance {
         self
     }
 
+    /// Accept the violations of `rule` under `subject`, a query file or a table, as known
+    /// work that `reason` names, such as a schema defect the owning change has not fixed
+    /// yet. The report lists them as pending, and an entry that matches no violation is
+    /// itself one, so it leaves with the defect.
+    pub fn pending(mut self, rule: Rule, subject: &str, reason: &str) -> Self {
+        self.pending
+            .push((rule, subject.to_owned(), reason.to_owned()));
+        self
+    }
+
     /// Run the check and panic with the report when any rule is broken. The report of
     /// a passing check, with its exemptions, goes to standard error.
     pub async fn check(self) {
@@ -155,10 +166,17 @@ impl Conformance {
             inline,
             tenant_columns,
             all_tenants,
+            pending,
         } = self;
         let queries = queries::load(&directories, &sources, &inline)
             .unwrap_or_else(|error| panic!("Database conformance queries: {error}"));
         let db = TestDb::new().await;
+        let server_schema = server.as_ref().map(|(server, _)| {
+            ServerSchema::new(server)
+                .expect("a server slug names a server schema")
+                .schema()
+                .to_owned()
+        });
         let planner = match server {
             Some((server, migrator)) => {
                 db.migrate_server(&server, migrator).await;
@@ -228,6 +246,15 @@ impl Conformance {
         }
         catalog.assign_tenants(&configured, &unscoped);
 
+        // The fixture's tables are empty and never analyzed, so the planner costs each
+        // as ten pages of rows rather than as an empty table; a singleton gets its one row.
+        let server_schema = server_schema
+            .as_deref()
+            .map(|schema| (schema, planner.pool()));
+        catalog
+            .size_singletons(db.a.pool(), server_schema)
+            .await
+            .unwrap_or_else(|error| panic!("Database conformance statistics: {error}"));
         let mut connection = planner
             .pool()
             .acquire()
@@ -278,6 +305,7 @@ impl Conformance {
                         rule,
                         subject: query.subject.clone(),
                         reason: marker.reason,
+                        pending: false,
                     });
                 } else {
                     violate(
@@ -305,6 +333,7 @@ impl Conformance {
                     rule: Rule::TenantPredicate,
                     subject: table,
                     reason: reason.clone(),
+                    pending: false,
                 });
             } else {
                 violate(
@@ -316,6 +345,24 @@ impl Conformance {
         }
         for (table, message) in schema::check(&catalog, &schemas) {
             violate(Rule::Schema, &table, message);
+        }
+        for (rule, subject, reason) in pending {
+            let before = violations.len();
+            violations.retain(|violation| violation.rule != rule || violation.subject != subject);
+            if violations.len() == before {
+                violations.push(Violation {
+                    rule: Rule::Configuration,
+                    subject,
+                    message: format!("`pending` names no {rule:?} violation; remove it"),
+                });
+            } else {
+                exemptions.push(Exemption {
+                    rule,
+                    subject,
+                    reason,
+                    pending: true,
+                });
+            }
         }
 
         violations.sort();

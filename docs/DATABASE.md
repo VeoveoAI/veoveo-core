@@ -228,7 +228,7 @@ schema, and `sources` keeps the queries whose `.sql` files lie in a directory.
 |---|---|
 | Tenant predicates | Every reference to a table with a tenant column, in FROM, JOIN, subqueries, WITH queries, UPDATE and DELETE, has an equality on that column to a bind parameter, or to the tenant column of another relation in the statement that is itself constrained. An outer join's condition constrains only its nullable side. Every INSERT supplies the tenant column unless the column is generated |
 | Row bounds | A SELECT has a LIMIT, pins a primary or unique key by equality, or aggregates without GROUP BY. An UPDATE or DELETE has a WHERE clause and either pins a primary or unique key of its target or selects its rows through a subquery with a LIMIT |
-| Index use | The generic plan, with `enable_seqscan = off`, reaches every row of a checked table through an index. A Seq Scan fails, and so does an index scan without an index condition, except a top-N read under a LIMIT that filters nothing. A scan under a LIMIT fails when its filter tests a key column of its index that no index condition seeks, as an optional keyset bound does under a generic plan |
+| Index use | The generic plan, with `enable_seqscan = off`, reaches every row of a checked table through an index. A Seq Scan fails, and so does an index scan without an index condition, except a top-N read under a LIMIT that filters nothing and the input of a hash or merge join whose key leads an index of that table. A scan under a LIMIT fails when its filter tests a key column of its index that no index condition seeks, as an optional keyset bound does under a generic plan |
 | Schema rules | Every table of a checked schema has a primary key, every foreign key has an index whose leading columns are the key's columns, and every table's comment states its retention |
 
 Tenant columns are `tenant` and `tenant_id` unless the check names others with
@@ -255,9 +255,11 @@ A query exempts itself from one rule with a comment that gives the reason:
 
 `all_tenants(table, reason)` exempts every query on a table that callers address by an
 identifier alone, such as the Gateway's refresh-token families, which a token digest
-selects. A marker without a reason, an unknown marker and an exemption that no finding
-needs are violations, so an exemption leaves with the defect it covered. The report lists
-every exemption with its reason, so review sees each one.
+selects. `pending(rule, subject, reason)` accepts the violations of one rule under one
+query file or table as known work, such as a defect that a later change fixes. A marker
+without a reason, an unknown marker and an exemption or pending entry that no finding
+needs are violations, so each leaves with the defect it covered. The report lists every
+exemption and pending entry with its reason, so review sees each one.
 
 A table states its retention in its comment, `COMMENT ON TABLE time.event IS 'Retention:
 …'`: how long a row stays and what removes it.

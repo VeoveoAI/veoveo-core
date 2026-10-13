@@ -55,12 +55,14 @@ pub struct Violation {
     pub message: String,
 }
 
-/// One exemption a marker or the configuration granted, with its reason.
+/// One exemption a marker or the configuration granted, with its reason. A pending
+/// exemption accepts violations as known work.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Exemption {
     pub rule: Rule,
     pub subject: String,
     pub reason: String,
+    pub pending: bool,
 }
 
 /// The outcome of a conformance check.
@@ -118,12 +120,15 @@ impl fmt::Display for Report {
         if !self.exemptions.is_empty() {
             writeln!(formatter, "\nExemptions ({})", self.exemptions.len())?;
             for exemption in &self.exemptions {
+                let kind = if exemption.pending {
+                    "pending"
+                } else {
+                    exemption.rule.exemption()
+                };
                 writeln!(
                     formatter,
-                    "  {}: {}: {}",
-                    exemption.rule.exemption(),
-                    exemption.subject,
-                    exemption.reason
+                    "  {kind}: {}: {}",
+                    exemption.subject, exemption.reason
                 )?;
             }
         }

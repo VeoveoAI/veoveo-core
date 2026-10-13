@@ -340,6 +340,41 @@ async fn schema_rules_name_each_table_that_breaks_them() {
 }
 
 #[tokio::test]
+async fn pending_work_is_listed_until_it_is_done() {
+    let report = Conformance::new()
+        .server(&slug("defects"), migrator("defects").await)
+        .pending(
+            Rule::Schema,
+            "defects.loose",
+            "the fixture keeps loose notes",
+        )
+        .pending(
+            Rule::Schema,
+            "defects.parent",
+            "nothing is wrong with parent",
+        )
+        .run()
+        .await;
+    assert_eq!(of(&report, "defects.loose"), vec![], "{report}");
+    assert!(
+        report.exemptions.iter().any(|exemption| exemption.pending
+            && exemption.subject == "defects.loose"
+            && exemption.reason == "the fixture keeps loose notes"),
+        "{report}"
+    );
+    assert_reports(
+        &report,
+        "defects.parent",
+        Rule::Configuration,
+        "names no Schema violation",
+    );
+    assert!(
+        report.to_string().contains("pending: defects.loose"),
+        "{report}"
+    );
+}
+
+#[tokio::test]
 async fn configuration_names_tables_and_columns_the_database_has() {
     let report = ledger(migrator("ledger").await)
         .schema("absent")

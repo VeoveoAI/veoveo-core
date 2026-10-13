@@ -1,5 +1,5 @@
 //! Index use: the generic plan of each statement with sequential scans disabled.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use pg_query::protobuf as pb;
 use serde_json::Value;
@@ -24,19 +24,29 @@ pub(super) async fn explain(
 }
 
 /// The scans of tables in `schemas` that read rows without an index seek: sequential
-/// scans, index scans without an index condition outside an ordered top-N read, and
-/// index scans under a LIMIT that filter an index column instead of seeking it.
+/// scans, index scans without an index condition, and index scans under a LIMIT that
+/// filter an index column instead of seeking it.
+///
+/// An index scan without a condition still counts as a seek path in two places. Under
+/// a LIMIT with no filter it is a top-N read in index order. As the input of a hash or
+/// merge join it reads the whole table only because the planner preferred a join over
+/// per-row lookups for the fixture's table sizes; when the join key leads an index of
+/// that table, a nested loop can seek it instead.
 pub(super) fn scans(plan: &Value, catalog: &Catalog, schemas: &BTreeSet<String>) -> Vec<String> {
     let mut found = Vec::new();
     if let Some(root) = plan.get(0).and_then(|explained| explained.get("Plan")) {
-        visit(root, false, catalog, schemas, &mut found);
+        visit(root, false, None, catalog, schemas, &mut found);
     }
     found
 }
 
+/// The join-key columns of each relation a hash or merge join compares, by alias.
+type JoinKeys = BTreeMap<String, BTreeSet<String>>;
+
 fn visit(
     node: &Value,
     limited: bool,
+    joined: Option<&JoinKeys>,
     catalog: &Catalog,
     schemas: &BTreeSet<String>,
     found: &mut Vec<String>,
@@ -45,20 +55,33 @@ fn visit(
     let kind = text("Node Type").unwrap_or_default();
     let limited = limited || kind == "Limit";
     if let (Some(schema), Some(table)) = (text("Schema"), text("Relation Name"))
+        && let Some(id) = catalog.resolve(Some(schema), table)
         && schemas.contains(schema)
-        && !catalog
-            .resolve(Some(schema), table)
-            .is_some_and(|id| catalog.relation(id).singleton)
+        && !catalog.relation(id).singleton
     {
-        let label = match text("Alias") {
-            Some(alias) if alias != table => format!("`{schema}.{table} AS {alias}`"),
-            _ => format!("`{schema}.{table}`"),
+        let alias = text("Alias").unwrap_or(table);
+        let label = if alias == table {
+            format!("`{schema}.{table}`")
+        } else {
+            format!("`{schema}.{table} AS {alias}`")
         };
         let index = text("Index Name").unwrap_or_default();
         let filter = text("Filter");
+        let seekable_join = joined.and_then(|keys| keys.get(alias)).is_some_and(|keys| {
+            catalog.relation(id).indexes.iter().any(|index| {
+                index.not_null.is_some()
+                    && index
+                        .columns
+                        .first()
+                        .and_then(Option::as_ref)
+                        .is_some_and(|leading| keys.contains(leading))
+            })
+        });
         match (kind, text("Index Cond")) {
             ("Seq Scan", _) => found.push(format!("Seq Scan on {label}")),
-            ("Index Scan" | "Index Only Scan", None) if !limited || filter.is_some() => {
+            ("Index Scan" | "Index Only Scan", None)
+                if !seekable_join && (!limited || filter.is_some()) =>
+            {
                 found.push(format!(
                     "{kind} using `{index}` on {label} has no index condition"
                 ));
@@ -81,14 +104,34 @@ fn visit(
             _ => {}
         }
     }
+    let keys = match kind {
+        "Hash Join" => text("Hash Cond").map(join_keys),
+        "Merge Join" => text("Merge Cond").map(join_keys),
+        _ => None,
+    };
     for child in node
         .get("Plans")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
     {
-        visit(child, limited, catalog, schemas, found);
+        // A hash join's inner input is the Hash node above the scan.
+        let inherited = match kind {
+            "Hash Join" | "Merge Join" => keys.as_ref(),
+            "Hash" => joined,
+            _ => None,
+        };
+        visit(child, limited, inherited, catalog, schemas, found);
     }
+}
+
+/// The columns a join condition compares, grouped by the alias that qualifies them.
+fn join_keys(condition: &str) -> JoinKeys {
+    let mut keys = JoinKeys::new();
+    for (alias, column) in qualified_references(condition) {
+        keys.entry(alias).or_default().insert(column);
+    }
+    keys
 }
 
 /// Report a scan under a LIMIT whose filter tests a key column of an index it reads by,
@@ -148,24 +191,34 @@ fn bitmap_indexes<'p>(node: &'p Value, indexes: &mut Vec<(&'p str, &'p str)>) {
     }
 }
 
-/// The column names in an EXPLAIN VERBOSE expression, where every column is qualified
-/// by its relation: each name that follows a `.`.
+/// The column names in an EXPLAIN VERBOSE expression.
 fn qualified_columns(expression: &str) -> BTreeSet<String> {
-    let mut columns = BTreeSet::new();
+    qualified_references(expression)
+        .into_iter()
+        .map(|(_, column)| column)
+        .collect()
+}
+
+/// The `(relation, column)` references of an EXPLAIN VERBOSE expression, where every
+/// column is qualified by its relation's alias: each pair of names joined by a `.`.
+fn qualified_references(expression: &str) -> Vec<(String, String)> {
+    let mut references = Vec::new();
     let Ok(scanned) = pg_query::scan(expression) else {
-        return columns;
+        return references;
     };
-    let mut after_dot = false;
-    for token in &scanned.tokens {
+    let name = |token: &pb::ScanToken| {
         let word = token.token == pb::Token::Ident as i32
             || token.keyword_kind != pb::KeywordKind::NoKeyword as i32;
-        if after_dot
-            && word
-            && let Some(name) = expression.get(token.start as usize..token.end as usize)
+        word.then(|| expression.get(token.start as usize..token.end as usize))
+            .flatten()
+            .map(|text| text.trim_matches('"').to_owned())
+    };
+    for window in scanned.tokens.windows(3) {
+        if window[1].token == pb::Token::Ascii46 as i32
+            && let (Some(relation), Some(column)) = (name(&window[0]), name(&window[2]))
         {
-            columns.insert(name.trim_matches('"').to_owned());
+            references.push((relation, column));
         }
-        after_dot = token.token == pb::Token::Ascii46 as i32;
     }
-    columns
+    references
 }

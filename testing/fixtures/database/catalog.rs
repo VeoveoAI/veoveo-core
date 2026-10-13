@@ -277,6 +277,28 @@ impl Catalog {
         })
     }
 
+    /// Give every singleton table the statistics of its one row. The other tables stay
+    /// unanalyzed, which the planner costs as ten pages of rows. The server's login
+    /// writes the statistics in its own schema, which the installation owner cannot use.
+    pub async fn size_singletons(
+        &self,
+        owner: &PgPool,
+        server: Option<(&str, &PgPool)>,
+    ) -> Result<(), sqlx::Error> {
+        for relation in self.relations.iter().filter(|relation| relation.singleton) {
+            let pool = match server {
+                Some((schema, pool)) if relation.schema == schema => pool,
+                _ => owner,
+            };
+            sqlx::query(include_str!("catalog/singleton_statistics.sql"))
+                .bind(&relation.schema)
+                .bind(&relation.name)
+                .execute(pool)
+                .await?;
+        }
+        Ok(())
+    }
+
     pub fn relation(&self, id: RelationId) -> &Relation {
         &self.relations[id]
     }
