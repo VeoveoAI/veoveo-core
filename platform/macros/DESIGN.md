@@ -248,7 +248,6 @@ selects source paths, including newly staged files, and excludes build outputs.
 | `Vocabulary` | Derive in `platform/macros/src/lib.rs` | One owner spelling declaration supplies vocabulary traits |
 | `embedded_document` | Function-like proc macro in `platform/macros/src/lib.rs` | Compile-time UTF-8 embedding and hashing |
 | `server_docs` | Declarative macro in `veoveo-sdk-rust` | Document selection must expand in the calling server crate |
-| `impl_scoped_redap_service` | Declarative macro in `servers/recording-mcp/src/playback.rs` | One owner authorization policy implements the generated third-party gRPC service trait |
 
 The checker matches path, public macro name, Rust entrypoint name and kind, and
 requires one definition for every catalog entry. Adding an entry requires owner

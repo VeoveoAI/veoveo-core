@@ -55,7 +55,7 @@ name and that names are unique, because JSON Schema cannot compare two values.
 
 ## Crate Boundary
 
-The installation configuration's types live in the `configuration` feature of
-`veoveo-mcp-contract`, which brings the Gateway's policy, Work Context and audit
-contracts. A bootstrap that reads the lock needs none of them, so the lock has a crate
-of its own that depends only on `veoveo-types`, serde, schemars and thiserror.
+The installation configuration's types belong to the Gateway, which brings its policy,
+Work Context and audit contracts. A bootstrap that reads the lock needs none of them,
+so the lock has a crate of its own that depends only on `veoveo-types`, serde, schemars
+and thiserror.

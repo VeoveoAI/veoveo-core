@@ -12,7 +12,8 @@
 
 ## Configuration And Ownership
 
-The gateway loads at most 64 KiB from `VEOVEO_AUDIT_EXPORT_CONFIG`. The closed JSON
+The component that runs the audit service, the Gateway in an installation, loads at
+most 64 KiB from `VEOVEO_AUDIT_EXPORT_CONFIG`. The closed JSON
 configuration has optional `s3` and `otlp` destinations. Audit owns their types and
 their delivery state in the `audit` schema. S3 bucket names use lowercase letters, digits
 and hyphens. Prefixes contain checked path segments. URL builders encode individual
@@ -26,7 +27,7 @@ redirects are disabled. A changed destination, prefix, Object Lock policy or map
 version produces a new identity and requires delivery of every retained block to it.
 A credential rotation preserves receipts for the same destination.
 
-Export configuration changes require a coordinated gateway drain and restart. They
+Export configuration changes require a coordinated drain and restart of that component. They
 apply to retained blocks; already retired blocks must be copied from their archive
 by the installation when moving to another destination.
 
@@ -119,8 +120,7 @@ records and signed blocks, checks receipts from a second pool, and restarts the 
 service. It
 allows 180 seconds for acceptance and 30 seconds for prefix cleanup, including after
 a failed assertion. The configured S3 provider is externally managed. This test can
-use the bundled RustFS endpoint; it does not qualify the gateway deployment or Object
-Lock. Default test runs leave this provider test ignored.
+use the bundled RustFS endpoint; it does not qualify a deployment or Object Lock. Default test runs leave this provider test ignored.
 
 The fixture also accepts an OTLP destination in that configuration. It waits for both
 destinations' receipts before restarting the worker and checks both delivery cursors

@@ -6,4 +6,5 @@ queries, batching, signing, sealing, export and verification. Preserve each call
 commit acknowledgement. Never move required audit writes behind response delivery.
 Domain writes append inside their existing transaction. Sealer writes run on the
 connection that holds the `audit.sealer` role. Keep signing keys redacted and separate
-from gateway assertion keys.
+from token-signing keys. Never add an owner's classes, details or targets to core;
+owners declare them through the registry.

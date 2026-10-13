@@ -14,7 +14,7 @@
 
 `store.rs` (feature `store` of `veoveo-test-fixtures`) gives each test its own database.
 `TestDb::new()` clones it from a migrated template and connects two owner pools, `a`
-and `b`, as two Gateway replicas would. The owner is `veoveo_owner`, a non-superuser
+and `b`, as two replicas would. The owner is `veoveo_owner`, a non-superuser
 role with `CREATEROLE` that owns the database, so grants and row-level security apply
 as in an installation.
 
@@ -84,3 +84,16 @@ The report groups violations by rule and names each query by its file, a table b
 entry or a `pending` entry that exempts nothing is a violation, so exemptions disappear
 with the defects they covered. PL/pgSQL and SQL function bodies are not analyzed; the query that calls a
 function is.
+
+## Audit Owner
+
+`audit_owner.rs` is a fixture owner for the audit tests. It registers the `item` target
+and declares the `fixture.note` detail class, so the tests exercise owner registration,
+declaration and record bytes without depending on a real owner.
+
+## Core Boundary
+
+`library/tests/core_boundary.rs` reads core's `Cargo.lock`, the closure of every core
+crate over all features and targets, and fails when it holds `rmcp` or a
+`veoveo-mcp-*`, `veoveo-sdk-*` or `veoveo-service-*` package. The check stage runs it
+with the rest of the suite.

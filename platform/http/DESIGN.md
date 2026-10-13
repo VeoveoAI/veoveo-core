@@ -10,13 +10,13 @@
 
 ## Ownership
 
-`veoveo-http` provides `RequestJson<T>` for controlled HTTP request bodies in the
-gateway composition, Artifact service, Console BFF, Agents and Workspace adapters.
+`veoveo-http` provides `RequestJson<T>` for controlled HTTP request bodies in any
+component's HTTP adapter.
 Each owner defines its request types and closes controlled objects with Serde's
 `deny_unknown_fields`. Explicit provider payloads and domain dictionaries keep
 their declared shape. The extractor does not infer which fields are open.
 
-This library has no MCP or domain dependency. Consumers gate it behind their HTTP
+This library has no protocol-layer or domain dependency. Consumers gate it behind their HTTP
 runtime features, keeping contract-only builds independent of Axum.
 
 ## Rejections

@@ -10,7 +10,7 @@
 ## Ownership And Dependencies
 
 This crate owns `TaskStatus` and `RecoveryClass`. Task Runtime applies recovery and
-transitions, and Console describes them to the browser. Status declaration order and
+transitions, and clients describe them to their users. Status declaration order and
 the seven wire spellings are stable. Recovery declares `resume` and
 `interrupted_indeterminate` in that order. A `resume` Task is claimed and run again
 after its owning process ends; an `interrupted_indeterminate` Task fails as interrupted,
