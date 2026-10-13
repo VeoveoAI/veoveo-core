@@ -578,6 +578,43 @@ fn authorization_server_metadata_urls_follow_rfc8414() {
 }
 
 #[test]
+fn authorization_server_metadata_names_its_key_set() {
+    let metadata = |jwks_uri: Option<&str>| {
+        let mut wire = json!({
+            "issuer": "https://gateway.example",
+            "registration_endpoint": "https://gateway.example/oauth/register",
+            "token_endpoint": "https://gateway.example/oauth/token"
+        });
+        if let Some(uri) = jwks_uri {
+            wire["jwks_uri"] = json!(uri);
+        }
+        serde_json::from_value::<AuthorizationServerMetadata>(wire).unwrap()
+    };
+    let published = metadata(Some("https://gateway.example/oauth/jwks.json"));
+    assert_eq!(
+        published.key_set_url().unwrap().as_str(),
+        "https://gateway.example/oauth/jwks.json"
+    );
+    assert_eq!(
+        serde_json::to_value(&published).unwrap()["jwks_uri"],
+        "https://gateway.example/oauth/jwks.json"
+    );
+    assert!(
+        metadata(Some("http://127.0.0.1:8080/oauth/jwks.json"))
+            .key_set_url()
+            .is_ok()
+    );
+    for rejected in [
+        None,
+        Some("http://gateway.example/oauth/jwks.json"),
+        Some("https://gateway.example/oauth/jwks.json?kid=1"),
+        Some("ftp://gateway.example/jwks.json"),
+    ] {
+        assert!(metadata(rejected).key_set_url().is_err(), "{rejected:?}");
+    }
+}
+
+#[test]
 fn granted_permissions_are_an_rfc9396_detail() {
     let detail = PermissionsDetail::new(
         [

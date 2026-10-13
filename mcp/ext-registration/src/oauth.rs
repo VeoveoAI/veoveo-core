@@ -470,7 +470,9 @@ pub struct RegistrationErrorResponse {
     pub error_description: Option<String>,
 }
 
-/// The RFC 8414 authorization server metadata members a registering server reads.
+/// The RFC 8414 authorization server metadata members a server reads: the registration
+/// endpoint when it registers, and the JWK Set when it refreshes the keys that verify
+/// forwarded access tokens (RFC 9068 §4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AuthorizationServerMetadata {
     #[schemars(with = "url::Url")]
@@ -478,9 +480,23 @@ pub struct AuthorizationServerMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<url::Url>")]
     pub registration_endpoint: Option<url::Url>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<url::Url>")]
+    pub jwks_uri: Option<url::Url>,
 }
 
 impl AuthorizationServerMetadata {
+    /// The `jwks_uri` member: an HTTPS URL, or an HTTP URL on a local host, without
+    /// credentials, query or fragment.
+    pub fn key_set_url(&self) -> Result<&url::Url, DeclarationError> {
+        let url = self.jwks_uri.as_ref().ok_or(DeclarationError::invalid(
+            "jwks_uri",
+            "the metadata names no JWK Set",
+        ))?;
+        http_url(url, "jwks_uri")?;
+        Ok(url)
+    }
+
     /// RFC 8414 §3.1: the well-known URL for `issuer`, inserted before any issuer path.
     pub fn url_for(issuer: &url::Url) -> url::Url {
         let mut url = issuer.clone();
