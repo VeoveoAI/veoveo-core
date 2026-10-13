@@ -10,11 +10,11 @@ Task, and the caller reads, answers, cancels and watches it through `OwnerTaskQu
 
 | Standard or interface | Profile |
 |---|---|
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0407` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
+| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0410` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads, keyed by Task ID and tenant, on the channel of the Task's server, `tasks.<server>` |
 | Row-level security | A member of `veoveo_server` reads and writes only the Tasks of its own servers |
-| RFC 9562 UUIDv7 | Native Task identity; lookups reject other versions |
+| RFC 9562 UUIDv7 | Native Task identity, where lookups reject other versions, and the operation identity of a Task step |
 
 The Task contract's statuses and recovery classes, `resume` and
 `interrupted_indeterminate`, are the runtime's own vocabulary. A protocol adapter maps
@@ -53,7 +53,8 @@ interpreting them, so the schema holds no protocol vocabulary.
 A unique index on server, tenant, principal, surface and idempotency key returns the
 existing Task to a repeated creation, and pruning the Task releases its key.
 `tasks.task_input` holds the inputs a Task requests and the caller's answers, keyed by
-Task and request key; its rows go with their Task.
+Task and request key. `tasks.task_step` holds the [steps](#steps) of a Task's work,
+keyed by Task and step key. The rows of both tables go with their Task.
 
 Three triggers maintain the table. `task_revision` advances `revision` and `updated_at`
 on every update and rejects a change to the Task's identity, owner or request.
@@ -129,9 +130,9 @@ as `None`.
 read a Task of the runtime's server without a caller selection.
 
 Row-level security adds a second boundary. A registered server's login is a member of
-`veoveo_server`, and the policies on both tables admit only rows whose server is in
-`kernel.current_servers()`. The installation owner owns the tables, so the policies do
-not apply to the Gateway.
+`veoveo_server`, and the policies on the three tables admit only rows whose server is in
+`kernel.current_servers()`. An input or a step belongs to the server of its Task. The
+installation owner owns the tables, so the policies do not apply to the Gateway.
 
 ## Subscriptions
 
@@ -162,12 +163,52 @@ writes an unanswered input and advances the Task's revision. An answer to an ans
 unknown key is ignored and leaves the Task unchanged. `outstanding_inputs` lists the
 unanswered requests for an adapter's input-required projection.
 
+## Steps
+
+A worker splits a Task's work into named steps with `TaskRuntime::step`, so a Task that
+runs again after recovery returns the results its earlier run recorded instead of
+repeating the work. A `StepKey` names each step: 1 to 128 bytes without control
+characters, the same on every run, with a loop's position in the key when a step
+repeats, such as `upload-part-3`.
+
+```rust
+let charge: Receipt = runtime
+    .step(task.task_id, &StepKey::parse("charge")?, |attempt| async move {
+        // The operation ID is the same on every attempt, so the provider deduplicates.
+        provider.charge(amount, attempt.operation_id).await
+    })
+    .await?;
+```
+
+Before the closure runs, one statement locks the Task's row, checks that this instance
+owns the Task and that it is running, waiting or cancel-requested, and records the step
+in `tasks.task_step` with a fresh UUIDv7 `StepOperationId`. A step finished by an earlier
+attempt returns its stored result without calling the closure. A step that an earlier
+attempt dispatched without recording a result passes the closure a `StepAttempt` whose
+dispatch is `StepDispatch::Unsettled`, with the same operation ID and the time of the
+first dispatch. Its effect may have happened, so the closure reconciles with the system
+it called, or passes the operation ID as that system's idempotency key, before it acts
+again.
+
+A successful result is serialized to JSON, decoded back into the closure's type and
+stored under the same ownership check, and the decoded value is returned. A value whose
+JSON does not decode as it was written fails with `TaskError::Json` and records nothing,
+so every later run returns the same value as the first. JSON `null` is a stored result.
+An error from the closure records nothing and returns to the caller, which leaves the
+step unsettled. A write from an instance that lost the Task fails with `NotOwner`, and
+the step stays unsettled for the next owner.
+
+The table keeps each step's operation ID and dispatch time, and a finished step keeps its
+result: the `task_step_settle` trigger rejects any other update, and check constraints
+admit only UUIDv7 operation IDs and valid keys. A `resume` Task that recovery returns to
+the queue keeps its steps, and pruning removes them with their Task.
+
 ## Retention
 
 Creation sets `retention_expires_at` from the TTL, seven days by default, and rejects a
 deadline after year 9999. A creation may add retention pins, and
 `acknowledge_retention_pin` removes one. `prune_expired` deletes the server's finished
-Tasks whose retention expired and that hold no pin, with their inputs, in the store's
+Tasks whose retention expired and that hold no pin, with their inputs and steps, in the store's
 [batches](../store/DESIGN.md#batched-maintenance), earliest expiry first.
 
 The runtime owns retention. Every runtime prunes its server's expired Tasks every
@@ -183,9 +224,12 @@ and the next one runs on schedule.
 work stream, notifications that reach only the channel of the Task's server, recovery of
 each class and fencing after an instance's session is terminated and reaped,
 cancellation of owned and unowned Tasks, resumable settlement, input exchanges with
-concurrent answers and concurrent requests past the input limit, idempotent creation,
+concurrent answers and concurrent requests past the input limit, steps recorded,
+returned without rerunning and left unsettled across a failed attempt and an instance's
+death, step fencing and the step table's constraints, idempotent creation,
 result and failure shapes, owner reads and pages, subscriptions across a listener
-reconnect, row-level security between two server logins and batched retention pruning.
+reconnect, row-level security between two server logins over Tasks and steps, and
+batched retention pruning with the steps it removes.
 Unit tests on the same fixture check that another server's Tasks never wake a runtime's
 listener and that a runtime prunes expired Tasks on its own schedule.
 `tests/database_conformance.rs` holds every query under `queries` and the `tasks`
