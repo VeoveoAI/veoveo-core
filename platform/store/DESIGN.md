@@ -8,7 +8,7 @@ the crate implements.
 
 | Standard or interface | Profile |
 |---|---|
-| PostgreSQL 18 | Server 18.6; one database per installation, kernel schemas `kernel`, `identity`, `gateway`, `tasks` and `audit` |
+| PostgreSQL 18 | Server 18.6; one database per installation, kernel schemas `kernel`, `identity`, `tasks` and `audit` |
 | sqlx 0.9.0 | `PgPool`, `PgListener`, compile-time checked `query_file!` macros, `Migrator` with this crate's `sqlx.toml` |
 | `postgres://` connection URIs | The URL names host and database and may name the user; the password travels separately |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads: `{"table", "operation", "key", "tenant"}` on the schema's channel, or only on `<schema>.<qualifier>` when the trigger names a qualifier column |
@@ -30,11 +30,11 @@ the crate implements.
 | `MaintenanceBatch`, `Pruned` | Batched deletion of expired rows, described below |
 | `PageSize<MAX>`, `Page` | A page size from 1 to the contract's `MAX`, read with `LIMIT size + 1` so the extra row decides whether a next cursor exists |
 | `CursorScope`, `KeysetCursor`, `KeysetCodec` | An opaque keyset cursor over `OpaqueCursor`, bound to the listing, tenant and filter digest that issued it |
-| `gateway` module, `gateway` feature | The Gateway's state, typed with the Gateway contracts; described below |
 
 Migration versions are grouped by owner schema in hundreds: `01xx` kernel, `02xx`
-identity, `03xx` gateway, `04xx` tasks and `05xx` audit. Each owner adds versions within
-its range.
+identity, `04xx` tasks and `05xx` audit. Each owner adds versions within its range. A
+component that owns another schema, such as the Gateway, keeps that schema's migrations
+and their history in its own repository.
 
 Every static statement is a `.sql` file beside the module that runs it. The query
 metadata lives in the workspace's `.sqlx` directory, and builds set `SQLX_OFFLINE=true`.
@@ -51,68 +51,12 @@ one short transaction and replicas that run the same pass take different rows.
 holds and reports the rows and batches the pass took. Every prune in this crate and the
 Task runtime's retention run this way.
 
-## Gateway State
-
-The `gateway` schema holds what every Gateway replica shares. Only the Gateway, as the
-installation owner, reads or writes it; registered servers receive no grant on it.
-
-| Tables | Holds |
-|---|---|
-| `control_revision`, `control_object` | Published installation configurations and their objects, immutable once written |
-| `control_active` | One row naming the active revision, or none before the first publication |
-| `jwt_revocation`, `replay_id` | Revoked JWTs and single-use `jti` values, each kept until the JWT expires |
-| `authorization_request`, `authorization_code` | Hosted authorization requests waiting for the identity provider, and issued codes |
-| `refresh_family`, `refresh_token` | Rotating refresh-token families and the SHA-256 digest of each generation |
-| `namespace_claim`, `registration` | The key each server's namespace is pinned to, and each registration with its login |
-| `task_route` | The public route of each upstream Task the Gateway projected |
-
-With the `gateway` feature the crate exposes the statements the Gateway's own state
-needs:
-
-| API | Behavior |
-|---|---|
-| `claim_replay_id`, `prune_replay_ids` | `INSERT … ON CONFLICT DO UPDATE … WHERE` the earlier claim expired, so one caller claims each identifier |
-| `record_jwt_revocation`, `jwt_revocation`, `prune_jwt_revocations` | Upsert by profile, issuer and `jti`; reads ignore expired revocations |
-| `record_authorization_request`, `consume_authorization_request` | Consumption deletes the row, so one caller receives it |
-| `record_authorization_code`, `consume_authorization_code` | Redemption sets `consumed_at` once |
-| `create_refresh_family`, `refresh_grant`, `refresh_family` | A family with its generation-0 token, and reads by token digest or family |
-| `rotate_refresh_token` | Locks the family row, then rotates, redelivers the successor inside its delivery window, or revokes the family as a replay |
-| `revoke_refresh_family` | RFC 7009 revocation bound to the family's client; repeating it succeeds |
-| `prune_refresh_state`, `clear_refresh_delivery_envelopes` | Retention of delivery envelopes, tokens and families. Deleting a token clears its predecessor's `replacement` through the `refresh_token_replacement` index |
-| `prune_replay_ids`, `prune_jwt_revocations`, `prune_authorization_records`, `prune_task_routes` | Deletion of expired identifiers, revocations, requests and codes, and Task routes; the Gateway schedules each pass |
-| `active_control_revision`, `publish_control_revision` | Publication locks the active pointer, fails with `ControlRevisionChanged` when another revision became active, and replaces the identity schema's Work Contexts in the same transaction |
-| `artifact_upload_authority` | The active configuration digest, the Work Context's policy revision and digest, and the profile's policy digest |
-
-Every change to a family's tokens holds the family's row lock, so concurrent
-presentations of one refresh token serialize across replicas. Rotation and publication
-take a `TransactionAppend`, rows another owner records in the same transaction; the
-Gateway passes its audit records, and a refused append rolls the change back.
-
-`registration` notifies the `gateway` channel when a row is inserted or deleted or its
-metadata changes. Its `orphaned_at` is null while the registration's login holds a live
-kernel instance. The Gateway sets it when it first finds the login without one, clears
-it when an instance appears, and removes the registration with its login once
-`orphaned_at` is older than the grace period. An installation whose servers stay alive
-therefore writes nothing while it is idle, and neither mark wakes a listener.
-
-A `task_route` references its tenant, owner and Work Context in `identity` and goes with
-the Work Context when a publication removes it, which `task_route_work_context` makes a
-lookup rather than a scan. `task_route_owner` and `task_route_tenant` do the same for
-the foreign-key checks when a principal or a tenant is deleted. `prune_task_routes`
-deletes the routes whose `expires_at` has passed, through `task_route_expiry`.
-
 ## Tests
 
 The integration tests use the [PostgreSQL fixture](../../testing/fixtures/DESIGN.md).
 They cover kernel migrations, server roles and row-level security, instance liveness and
 reaping, singletons, notifications across a reconnect, identity conflicts, Work Context
-reads and the `postgres` macro bindings. `tests/gateway.rs` covers single-use replay
-identifiers, authorization requests and codes across two pools, revocation expiry,
-concurrent refresh rotation with redelivery and replay revocation, rollback on a refused
-append, bound client revocation, publication conflicts, Work Context replacement and
-upload authority digests, Task route removal with their Work Context and by expiry, the
-registration notifications, batched pruning that two replicas share, and plans that read
-the replacement, Work Context and expiry indexes with sequential scans disabled.
-`tests/database_conformance.rs` holds every query under `src` and the `kernel`,
-`identity` and `gateway` schemas to the
+reads and the `postgres` macro bindings.
+`tests/database_conformance.rs` holds every query under `src` and the `kernel` and
+`identity` schemas to the
 [server schema rules](../../docs/DATABASE.md#server-schema-rules).

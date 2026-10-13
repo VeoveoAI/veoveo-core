@@ -174,7 +174,7 @@ async fn server_logins_see_and_start_only_their_own_instances() {
 #[tokio::test]
 async fn server_names_and_logins_are_checked_in_rust_and_sql() {
     let db = TestDb::new().await;
-    for name in ["gateway", "pg-temp", "time_zones", "1time"] {
+    for name in ["tasks", "pg-temp", "time_zones", "1time"] {
         assert!(matches!(
             db.a.ensure_server(&slug(name)).await,
             Err(StoreError::InvalidName { .. })

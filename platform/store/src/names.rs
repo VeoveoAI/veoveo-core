@@ -7,7 +7,7 @@ use veoveo_types::ServerSlug;
 use crate::StoreError;
 
 /// Schemas the kernel owns. No server may use one as its schema.
-pub const KERNEL_SCHEMAS: [&str; 5] = ["kernel", "identity", "gateway", "tasks", "audit"];
+pub const KERNEL_SCHEMAS: [&str; 4] = ["kernel", "identity", "tasks", "audit"];
 
 /// Schemas PostgreSQL creates in every database.
 const POSTGRES_SCHEMAS: [&str; 2] = ["public", "information_schema"];
@@ -158,7 +158,6 @@ pub struct Channel(Cow<'static, str>);
 
 impl Channel {
     pub const IDENTITY: Self = Self(Cow::Borrowed("identity"));
-    pub const GATEWAY: Self = Self(Cow::Borrowed("gateway"));
     pub const TASKS: Self = Self(Cow::Borrowed("tasks"));
     pub const AUDIT: Self = Self(Cow::Borrowed("audit"));
 
@@ -285,7 +284,6 @@ mod tests {
         for name in [
             "kernel",
             "identity",
-            "gateway",
             "tasks",
             "audit",
             "public",

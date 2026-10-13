@@ -10,14 +10,8 @@ publish.workspace = true
 name = "veoveo_platform_store"
 path = "src/lib.rs"
 
-[features]
-# The Gateway's state in the `gateway` schema, typed with the Gateway contracts.
-gateway = ["dep:veoveo-gateway-contract", "dep:veoveo-mcp-contract"]
-
 [dependencies]
 veoveo-types.workspace = true
-veoveo-gateway-contract = { workspace = true, optional = true }
-veoveo-mcp-contract = { workspace = true, features = ["configuration"], optional = true }
 base64.workspace = true
 chrono.workspace = true
 futures.workspace = true
@@ -41,11 +35,3 @@ hex.workspace = true
 pg_query.workspace = true
 tokio = { workspace = true, features = ["full"] }
 uuid = { workspace = true, features = ["v4", "v7"] }
-
-[[test]]
-name = "gateway"
-required-features = ["gateway"]
-
-[[test]]
-name = "database_conformance"
-required-features = ["gateway"]

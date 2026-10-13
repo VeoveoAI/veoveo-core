@@ -32,7 +32,7 @@ BEGIN
         OR server_schema.server !~ '^[a-z][a-z0-9-]{0,47}$'
         OR schema_name LIKE 'pg\_%'
         OR schema_name = ANY (ARRAY[
-            'kernel', 'identity', 'gateway', 'tasks', 'audit', 'public', 'information_schema'
+            'kernel', 'identity', 'tasks', 'audit', 'public', 'information_schema'
         ])
     THEN
         RAISE EXCEPTION 'invalid server name %', quote_nullable(server_schema.server)
