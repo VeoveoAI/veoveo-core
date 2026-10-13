@@ -7,7 +7,7 @@ use super::{
 use veoveo_audit_contract::{
     AUDIT_APPEND_LIMIT, AuditBlock, AuditBlockSequence, AuditCheckpoint, AuditClass, AuditOutcome,
     AuditPartition, AuditPosition, AuditQuery, AuditReadScope, AuditRecord, AuditRecordId,
-    AuditTraceId, AuditValidationError,
+    AuditStoredRecord, AuditTraceId, AuditValidationError,
 };
 use veoveo_types::{PrincipalId, Sha256Digest};
 
@@ -55,6 +55,23 @@ impl AuditStore {
         admit(scope, partition)?;
         let ids = member_ids(block)?;
         let mut records = self.records_by_id(partition, &ids).await?;
+        ids.iter()
+            .map(|id| records.remove(id).ok_or(AuditStoreError::Integrity))
+            .collect()
+    }
+
+    /// The member records of a block in position order, as stored. Export reads them
+    /// this way, so it needs no owner's target codec or detail declaration. A missing
+    /// member fails the read.
+    pub async fn stored_block_records(
+        &self,
+        scope: &AuditReadScope,
+        block: &AuditBlock,
+    ) -> Result<Vec<AuditStoredRecord>, AuditStoreError> {
+        let partition = &block.head.partition;
+        admit(scope, partition)?;
+        let ids = member_ids(block)?;
+        let mut records = self.stored_records_by_id(partition, &ids).await?;
         ids.iter()
             .map(|id| records.remove(id).ok_or(AuditStoreError::Integrity))
             .collect()

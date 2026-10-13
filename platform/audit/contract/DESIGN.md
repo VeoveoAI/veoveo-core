@@ -144,6 +144,17 @@ row, including pagination's extra row, validates its record identity, partition,
 and occurrence time. Queries validate target registry identity before executing SQL and
 match the entire target object. Transactional appends receive the same registry.
 
+## Stored Records
+
+`AuditStoredRecord` is a record as the audit log stores it: the draft document exactly
+as its producer appended it and the database's recorded time. `AuditStoredRecord::admit`
+checks the envelope with the same rules as a draft and requires the target to be an
+object that names its kind and the detail to be an object, without decoding either. Its
+serialization is the stored document, so its canonical bytes equal those of the decoded
+`AuditRecord`, and `AuditRecord::stored` converts one into the other.
+`AuditSealedRecord` names what sealing and verification read from a record, and both
+types implement it.
+
 ## Transactional Append
 
 With the `postgres` feature, `AuditTransactionWrite` admits up to 4,096 drafts against

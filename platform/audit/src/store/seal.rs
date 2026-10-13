@@ -8,7 +8,7 @@ use super::{
 use chrono::{DateTime, Utc};
 use sqlx::{Connection, PgConnection};
 use veoveo_audit_contract::{
-    AuditBlock, AuditCheckpoint, AuditClass, AuditPartition, AuditRecord, AuditRecordId,
+    AuditBlock, AuditCheckpoint, AuditClass, AuditPartition, AuditRecordId, AuditStoredRecord,
     stored_time,
 };
 
@@ -19,11 +19,13 @@ pub(crate) struct CommitPosition {
     pub sequence: i64,
 }
 
-/// A record the sealer may seal, with its commit position.
+/// A record the sealer may seal, with its commit position. The sealer reads the stored
+/// document and decodes no owner's target or detail, so a record of any declared class
+/// seals whatever registry the sealing process holds.
 #[derive(Debug)]
 pub(crate) struct SealCandidate {
     pub position: CommitPosition,
-    pub record: AuditRecord,
+    pub record: AuditStoredRecord,
 }
 
 struct CandidateRow {
@@ -52,7 +54,6 @@ impl AuditStore {
 
     /// Up to `limit` sealable records in commit order.
     pub(crate) async fn seal_candidates(
-        &self,
         connection: &mut PgConnection,
         limit: usize,
     ) -> Result<Vec<SealCandidate>, AuditStoreError> {
@@ -70,7 +71,7 @@ impl AuditStore {
                     draft: row.draft,
                     recorded_at: row.recorded_at,
                 }
-                .admitted(self.registry())?;
+                .stored()?;
                 Ok(SealCandidate {
                     position: CommitPosition {
                         txid: row.txid,

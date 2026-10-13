@@ -83,7 +83,9 @@ fn merkle(leaves: &[[u8; 32]]) -> [u8; 32] {
         }
     }
 }
-pub fn record_root(records: &[AuditRecord]) -> Result<Sha256Digest, IntegrityError> {
+/// The Merkle root over records' canonical bytes. A decoded record and the stored
+/// record it came from have the same bytes, so either yields the sealed root.
+pub fn record_root<R: AuditSealedRecord>(records: &[R]) -> Result<Sha256Digest, IntegrityError> {
     let leaves = records
         .iter()
         .map(|record| canonical_bytes(record).map(|bytes| hash(&[&[0], &bytes])))
@@ -129,11 +131,11 @@ impl AuditSigningKey {
     }
     /// Sign `records`, in commit order, as the block after `previous`. Each record takes
     /// the partition position after the one before it.
-    pub fn seal(
+    pub fn seal<R: AuditSealedRecord>(
         &self,
         partition: AuditPartition,
         previous: Option<&AuditCheckpoint>,
-        records: &[AuditRecord],
+        records: &[R],
         sealed_at: DateTime<Utc>,
     ) -> Result<AuditBlock, IntegrityError> {
         if previous.is_some_and(|previous| previous.partition != partition) {
@@ -151,7 +153,7 @@ impl AuditSigningKey {
                 position = position.next().map_err(|_| IntegrityError::Sequence)?;
             }
             members.push(AuditBlockMember {
-                id: record.draft.id(),
+                id: record.record_id(),
                 position,
             });
         }
@@ -184,7 +186,10 @@ fn first_position(previous: Option<&AuditCheckpoint>) -> Result<AuditPosition, I
     }
     .map_err(|_| IntegrityError::Sequence)
 }
-fn check_members(head: &AuditBlockHead, records: &[AuditRecord]) -> Result<(), IntegrityError> {
+fn check_members<R: AuditSealedRecord>(
+    head: &AuditBlockHead,
+    records: &[R],
+) -> Result<(), IntegrityError> {
     if records.is_empty()
         || records.len() > MAX_BLOCK_RECORDS
         || records.len() != head.members.len()
@@ -199,8 +204,8 @@ fn check_members(head: &AuditBlockHead, records: &[AuditRecord]) -> Result<(), I
     }
     let mut seen = BTreeSet::new();
     for (member, record) in head.members.iter().zip(records) {
-        if member.id != record.draft.id()
-            || record.draft.partition() != &head.partition
+        if member.id != record.record_id()
+            || record.record_partition() != &head.partition
             || !seen.insert(member.id)
         {
             return Err(IntegrityError::Membership);
@@ -261,10 +266,10 @@ impl<'a> AuditVerifier<'a> {
             clock_skew,
         })
     }
-    pub fn verify(
+    pub fn verify<R: AuditSealedRecord>(
         &mut self,
         block: &AuditBlock,
-        records: &[AuditRecord],
+        records: &[R],
     ) -> Result<Vec<AuditFinding>, IntegrityError> {
         let head = &block.head;
         let expected_sequence = self
@@ -298,27 +303,26 @@ impl<'a> AuditVerifier<'a> {
         for record in records {
             // The database assigned `recorded_at` when the record was inserted, so a
             // sealer that runs hours later does not make a record look backdated.
-            let recorded_at = record.recorded_at;
+            let recorded_at = record.record_recorded_at();
             let uuid_time = record
-                .draft
-                .id()
+                .record_id()
                 .as_uuid()
                 .get_timestamp()
                 .ok_or(IntegrityError::Membership)?
                 .to_unix();
             let id_time = DateTime::from_timestamp(uuid_time.0 as i64, uuid_time.1)
                 .ok_or(IntegrityError::Membership)?;
-            let earliest = id_time.min(record.draft.occurred_at());
-            let latest = id_time.max(record.draft.occurred_at());
+            let earliest = id_time.min(record.record_occurred_at());
+            let latest = id_time.max(record.record_occurred_at());
             if recorded_at - earliest > self.clock_skew {
                 findings.push(AuditFinding::BackdatedRecord {
-                    id: record.draft.id(),
+                    id: record.record_id(),
                     recorded_at,
                 });
             }
             if latest - recorded_at > self.clock_skew {
                 findings.push(AuditFinding::FutureRecord {
-                    id: record.draft.id(),
+                    id: record.record_id(),
                     recorded_at,
                 });
             }

@@ -106,7 +106,7 @@ struct Bundle {
     seal: Vec<u8>,
 }
 impl Bundle {
-    fn ocsf(block: &AuditBlock, records: &[AuditRecord]) -> Result<Self, ExportError> {
+    fn ocsf(block: &AuditBlock, records: &[AuditStoredRecord]) -> Result<Self, ExportError> {
         let mut writer = Limited {
             bytes: Vec::new(),
             limit: MAX_CONTENT_BYTES,
@@ -234,7 +234,7 @@ impl AuditExporter {
             AuditPartition::Installation => AuditReadScope::new(None, true),
             AuditPartition::Tenant(tenant) => AuditReadScope::new(Some(tenant.clone()), false),
         };
-        let records = sealer.audit().block_records(&scope, block).await?;
+        let records = sealer.audit().stored_block_records(&scope, block).await?;
         if record_root(&records)? != block.head.root {
             return Err(ExportError::Conflict);
         }

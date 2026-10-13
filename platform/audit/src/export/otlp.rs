@@ -131,18 +131,18 @@ impl OtlpDestination {
             http,
         })
     }
-    pub fn payload(records: &[AuditRecord]) -> Result<Vec<u8>, ExportError> {
+    pub fn payload(records: &[AuditStoredRecord]) -> Result<Vec<u8>, ExportError> {
         let logs = records
             .iter()
             .map(|record| {
-                let draft = &record.draft;
+                let draft = record;
                 let time = draft
                     .occurred_at()
                     .timestamp_nanos_opt()
                     .filter(|n| *n >= 0)
                     .ok_or(ExportError::Protocol)?;
                 let observed = record
-                    .recorded_at
+                    .recorded_at()
                     .timestamp_nanos_opt()
                     .filter(|n| *n >= 0)
                     .ok_or(ExportError::Protocol)?;

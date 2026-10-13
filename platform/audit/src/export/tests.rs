@@ -1,7 +1,12 @@
 use super::*;
 use chrono::Utc;
 
-pub(super) fn record(detail: AuditDetail, target: AuditTarget, identified: bool) -> AuditRecord {
+/// A record as stored, the form export reads.
+pub(super) fn record(
+    detail: AuditDetail,
+    target: AuditTarget,
+    identified: bool,
+) -> AuditStoredRecord {
     let mut request = AuditRequest::background();
     if identified {
         request.source_ip = Some("192.0.2.1".parse().unwrap());
@@ -26,6 +31,7 @@ pub(super) fn record(detail: AuditDetail, target: AuditTarget, identified: bool)
         draft: builder.build().unwrap(),
         recorded_at: Utc::now(),
     }
+    .stored()
 }
 #[test]
 fn ocsf_maps_identified_records_to_api_activity_named_by_class() {
@@ -109,8 +115,8 @@ fn export_retry_bytes_and_otlp_correlation_are_stable() {
     assert_eq!(bytes, otlp::OtlpDestination::payload(&records).unwrap());
     let wire: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let log = &wire["resourceLogs"][0]["scopeLogs"][0]["logRecords"][0];
-    assert_eq!(log["traceId"], records[0].draft.request().trace_id.as_str());
-    assert_eq!(log["spanId"], records[0].draft.request().span_id.as_str());
+    assert_eq!(log["traceId"], records[0].request().trace_id.as_str());
+    assert_eq!(log["spanId"], records[0].request().span_id.as_str());
     assert_eq!(log["eventName"], "veoveo.audit.audit.view");
     assert!(log["timeUnixNano"].is_string());
     assert!(encode(&vec!["oversized"; 100], 4).is_err());

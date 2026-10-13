@@ -28,6 +28,8 @@ mod reader;
 pub use reader::*;
 mod registry;
 pub use registry::*;
+mod stored;
+pub use stored::*;
 mod targets;
 pub use targets::*;
 

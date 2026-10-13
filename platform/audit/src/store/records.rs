@@ -5,8 +5,8 @@ use std::time::Duration;
 use veoveo_audit_contract::{
     AUDIT_APPEND_LIMIT, AuditClass, AuditCursor, AuditDailyCount, AuditDailyCursor, AuditDailyPage,
     AuditDailyQuery, AuditDetailType, AuditDraft, AuditOrder, AuditOutcome, AuditPage,
-    AuditPartition, AuditQuery, AuditReadScope, AuditRecord, AuditRecordId, AuditTarget,
-    AuditTraceId, AuditTransactionWrite, platform,
+    AuditPartition, AuditQuery, AuditReadScope, AuditRecord, AuditRecordId, AuditStoredRecord,
+    AuditTarget, AuditTraceId, AuditTransactionWrite, platform,
 };
 use veoveo_types::PrincipalId;
 
@@ -207,29 +207,59 @@ impl AuditStore {
         Ok(true)
     }
 
-    /// The partition's records among `ids`, keyed by identity.
+    /// The partition's records among `ids`, decoded through the registry and keyed by
+    /// identity.
     pub(crate) async fn records_by_id(
         &self,
         partition: &AuditPartition,
         ids: &[AuditRecordId],
     ) -> Result<std::collections::BTreeMap<AuditRecordId, AuditRecord>, AuditStoreError> {
+        self.rows_by_id(partition, ids)
+            .await?
+            .into_iter()
+            .map(|row| {
+                let record = row.checked(self.registry(), partition)?;
+                Ok((record.draft.id(), record))
+            })
+            .collect()
+    }
+
+    /// The partition's records among `ids` as stored, keyed by identity. No owner's
+    /// target or detail is decoded.
+    pub(crate) async fn stored_records_by_id(
+        &self,
+        partition: &AuditPartition,
+        ids: &[AuditRecordId],
+    ) -> Result<std::collections::BTreeMap<AuditRecordId, AuditStoredRecord>, AuditStoreError> {
+        self.rows_by_id(partition, ids)
+            .await?
+            .into_iter()
+            .map(|row| {
+                let record = row.stored()?;
+                if record.partition() != partition {
+                    return Err(AuditStoreError::Integrity);
+                }
+                Ok((record.id(), record))
+            })
+            .collect()
+    }
+
+    async fn rows_by_id(
+        &self,
+        partition: &AuditPartition,
+        ids: &[AuditRecordId],
+    ) -> Result<Vec<RecordRow>, AuditStoreError> {
         if ids.len() > AUDIT_APPEND_LIMIT {
             return Err(AuditStoreError::BatchLimit);
         }
-        let rows = sqlx::query_file_as!(
+        Ok(sqlx::query_file_as!(
             RecordRow,
             "src/store/records/by_id.sql",
             partition.storage_key(),
             ids as &[AuditRecordId],
         )
         .fetch_all(self.pool())
-        .await?;
-        rows.into_iter()
-            .map(|row| {
-                let record = row.checked(self.registry(), partition)?;
-                Ok((record.draft.id(), record))
-            })
-            .collect()
+        .await?)
     }
 }
 

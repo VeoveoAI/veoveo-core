@@ -411,3 +411,219 @@ async fn server_records_take_commit_order_and_seal_without_gaps() {
     })
     .await;
 }
+
+/// A target kind only the inventory server registers.
+#[derive(Debug, Clone, PartialEq, Eq, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields, transform = shelf_schema)]
+struct Shelf {
+    shelf: u32,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+enum ShelfWire {
+    #[serde(rename = "shelf")]
+    Shelf { shelf: u32 },
+}
+
+impl serde::Serialize for Shelf {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(&ShelfWire::Shelf { shelf: self.shelf }, serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Shelf {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let ShelfWire::Shelf { shelf } = serde::Deserialize::deserialize(deserializer)?;
+        Ok(Self { shelf })
+    }
+}
+
+impl AuditTargetOwner for Shelf {
+    const KIND: &'static str = "shelf";
+}
+
+fn shelf_schema(schema: &mut schemars::Schema) {
+    let object = schema.as_object_mut().unwrap();
+    object
+        .get_mut("properties")
+        .and_then(serde_json::Value::as_object_mut)
+        .unwrap()
+        .insert(
+            "kind".into(),
+            serde_json::json!({"type": "string", "const": "shelf"}),
+        );
+    object
+        .get_mut("required")
+        .and_then(serde_json::Value::as_array_mut)
+        .unwrap()
+        .push(serde_json::json!("kind"));
+}
+
+#[tokio::test]
+async fn sealing_verification_and_export_need_no_owner_types() {
+    within(Duration::from_secs(90), async {
+        use axum::{Json, Router, extract::State, routing::post};
+        use veoveo_audit::export::{AuditExportConfig, AuditExporter, OtlpConfig};
+        struct Collector(tokio::task::JoinHandle<()>);
+        impl Drop for Collector {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+        let events = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/v1/logs", listener.local_addr().unwrap())
+            .parse()
+            .unwrap();
+        let app = Router::new()
+            .route(
+                "/v1/logs",
+                post(
+                    |State(events): State<Arc<std::sync::Mutex<Vec<String>>>>,
+                     Json(request): Json<serde_json::Value>| async move {
+                        let names = request["resourceLogs"][0]["scopeLogs"][0]["logRecords"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|log| log["eventName"].as_str().unwrap().to_owned())
+                            .collect::<Vec<_>>();
+                        events.lock().unwrap().extend(names);
+                        ([("content-type", "application/json")], "{}")
+                    },
+                ),
+            )
+            .with_state(events.clone());
+        let _collector = Collector(tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        }));
+        let exports = AuditExportConfig {
+            s3: None,
+            otlp: Some(OtlpConfig {
+                endpoint,
+                allow_http: true,
+                bearer_token_env: None,
+            }),
+        };
+        let destination = AuditExporter::new(exports.clone())
+            .unwrap()
+            .destination_ids()
+            .remove(0);
+
+        // The sealing process knows the platform's classes and `fixture.note` only.
+        let audit = AuditDb::new().await;
+        let mut builder = AuditRegistry::builder();
+        let shelf = builder.register_target::<Shelf>().unwrap();
+        builder.declare::<Moved>().unwrap();
+        let server_registry = Arc::new(builder.build());
+        let inventory = server_audit(&audit, "inventory", server_registry.clone()).await;
+        inventory
+            .declare_as_server(&slug("inventory"))
+            .await
+            .unwrap();
+        let moved = AuditDraft::builder(
+            AuditRequest::background(),
+            shelf.target(&server_registry, Shelf { shelf: 4 }).unwrap(),
+            server_registry.detail(&Moved { count: 3 }).unwrap(),
+            AuditOutcome::Succeeded,
+            AuditReason::Accepted,
+        )
+        .build()
+        .unwrap();
+        let mut transaction = inventory.platform().pool().begin().await.unwrap();
+        AuditTransactionWrite::new(&server_registry, moved.clone())
+            .unwrap()
+            .append_as_server(&mut transaction)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        let noted = draft(note(1));
+        audit.a.append(std::slice::from_ref(&noted)).await.unwrap();
+
+        let key = Arc::new(AuditSigningKey::from_seed(&[53; 32]));
+        let service = AuditService::start(
+            audit.a.clone(),
+            key.clone(),
+            std::num::NonZeroU32::new(1).unwrap(),
+            exports,
+        )
+        .unwrap();
+        let scope = AuditReadScope::new(None, true);
+        let partition = AuditPartition::Installation;
+        let caught_up = tokio::time::timeout(Duration::from_secs(30), async {
+            audit
+                .b
+                .wait_sealed(&scope, &partition, noted.id())
+                .await
+                .unwrap();
+            while audit
+                .b
+                .export_candidate(&destination)
+                .await
+                .unwrap()
+                .is_some()
+            {
+                assert_ne!(service.health().state(), AuditHealthState::Failed);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        assert_ne!(service.health().state(), AuditHealthState::Failed);
+        service.shutdown(Duration::from_secs(15)).await.unwrap();
+        caught_up.expect("sealing and export did not catch up within 30 seconds");
+        let mut exported = events.lock().unwrap().clone();
+        exported.sort();
+        assert_eq!(
+            exported,
+            ["veoveo.audit.fixture.note", "veoveo.audit.inventory.moved"]
+        );
+
+        // Verification reads the stored records and needs no owner's types either.
+        let blocks = audit.a.blocks(&scope, &partition, None, 10).await.unwrap();
+        let checkpoint = audit
+            .a
+            .partition_checkpoint(&partition)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut keys = AuditKeyRing::default();
+        keys.insert(key.public_key()).unwrap();
+        let mut verifier = AuditVerifier::new(
+            &keys,
+            partition.clone(),
+            None,
+            chrono::TimeDelta::minutes(1),
+        )
+        .unwrap();
+        let mut members = Vec::new();
+        for block in &blocks {
+            let records = audit.a.stored_block_records(&scope, block).await.unwrap();
+            assert!(verifier.verify(block, &records).unwrap().is_empty());
+            members.extend(records.iter().map(|record| record.id()));
+        }
+        verifier.finish(&checkpoint).unwrap();
+        assert_eq!(members, [moved.id(), noted.id()]);
+
+        // Decoding the server's target and detail is a reader's concern: the sealing
+        // process's registry cannot, and a reader with the server's types can, and its
+        // decoded records verify against the same blocks.
+        assert!(matches!(
+            audit.a.block_records(&scope, &blocks[0]).await,
+            Err(AuditStoreError::Target(_) | AuditStoreError::Detail(_))
+        ));
+        let mut builder = AuditRegistry::builder();
+        builder.register_target::<Shelf>().unwrap();
+        for declaration in AuditStore::declarations(&audit.db.a).await.unwrap() {
+            builder.declaration(declaration).unwrap();
+        }
+        let reader = AuditStore::new(audit.db.a.clone(), Arc::new(builder.build()));
+        let mut verifier =
+            AuditVerifier::new(&keys, partition, None, chrono::TimeDelta::minutes(1)).unwrap();
+        for block in &blocks {
+            let records = reader.block_records(&scope, block).await.unwrap();
+            assert!(verifier.verify(block, &records).unwrap().is_empty());
+        }
+        verifier.finish(&checkpoint).unwrap();
+    })
+    .await;
+}

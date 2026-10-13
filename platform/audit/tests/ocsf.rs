@@ -154,7 +154,7 @@ async fn upstream_accepts_each_export_class_and_outcome() {
                 };
                 let validation = client
                     .post(format!("{UPSTREAM}/api/v2/validate"))
-                    .json(&Event::from_record(&record))
+                    .json(&Event::from_record(&record.stored()))
                     .send()
                     .await
                     .unwrap()

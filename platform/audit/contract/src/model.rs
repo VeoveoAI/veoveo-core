@@ -186,27 +186,42 @@ pub enum AuditValidationError {
 impl TryFrom<AuditDraftWire> for AuditDraft {
     type Error = AuditValidationError;
     fn try_from(wire: AuditDraftWire) -> Result<Self, Self::Error> {
-        let partition = wire
-            .actor
-            .as_ref()
-            .and_then(|a| a.tenant.clone())
-            .map_or(AuditPartition::Installation, AuditPartition::Tenant);
-        if partition != wire.partition {
-            return Err(AuditValidationError::Partition);
-        }
-        let accepted = matches!(
+        check_envelope(
+            &wire.partition,
+            wire.actor.as_ref(),
             wire.outcome,
-            AuditOutcome::Allowed | AuditOutcome::Succeeded
-        );
-        if accepted != (wire.reason == AuditReason::Accepted) {
-            return Err(AuditValidationError::Outcome);
-        }
-        const MAX_COUNTER: u64 = (1u64 << 53) - 1;
-        if wire.latency_ms.is_some_and(|value| value > MAX_COUNTER) {
-            return Err(AuditValidationError::CounterRange);
-        }
+            wire.reason,
+            wire.latency_ms,
+        )?;
         Ok(Self(wire))
     }
+}
+
+/// The envelope rules every record satisfies, whether its owner's types are known or
+/// only its stored document: the partition follows the actor's tenant, an accepted
+/// outcome carries the accepted reason, and the latency fits the exact I-JSON range.
+pub(crate) fn check_envelope(
+    partition: &AuditPartition,
+    actor: Option<&AuditActor>,
+    outcome: AuditOutcome,
+    reason: AuditReason,
+    latency_ms: Option<u64>,
+) -> Result<(), AuditValidationError> {
+    let expected = actor
+        .and_then(|actor| actor.tenant.clone())
+        .map_or(AuditPartition::Installation, AuditPartition::Tenant);
+    if &expected != partition {
+        return Err(AuditValidationError::Partition);
+    }
+    let accepted = matches!(outcome, AuditOutcome::Allowed | AuditOutcome::Succeeded);
+    if accepted != (reason == AuditReason::Accepted) {
+        return Err(AuditValidationError::Outcome);
+    }
+    const MAX_COUNTER: u64 = (1u64 << 53) - 1;
+    if latency_ms.is_some_and(|value| value > MAX_COUNTER) {
+        return Err(AuditValidationError::CounterRange);
+    }
+    Ok(())
 }
 impl From<AuditDraft> for AuditDraftWire {
     fn from(draft: AuditDraft) -> Self {

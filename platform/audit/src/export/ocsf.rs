@@ -41,7 +41,7 @@ struct Product {
 }
 #[derive(Serialize)]
 struct Source<'a> {
-    veoveo: &'a AuditRecord,
+    veoveo: &'a AuditStoredRecord,
 }
 #[derive(Serialize)]
 #[serde(untagged)]
@@ -83,8 +83,10 @@ impl<'a> User<'a> {
     }
 }
 impl<'a> Event<'a> {
-    pub fn from_record(record: &'a AuditRecord) -> Self {
-        let draft = &record.draft;
+    /// Map a record as stored. The mapping reads only the envelope, so it needs no
+    /// owner's target codec or detail declaration.
+    pub fn from_record(record: &'a AuditStoredRecord) -> Self {
+        let draft = record;
         let (class_uid, activity_id, activity_name, fields) = classify(record);
         let (status_id, status) = match draft.outcome() {
             AuditOutcome::Succeeded => (1, "Success"),
@@ -112,15 +114,15 @@ impl<'a> Event<'a> {
                 original_event_uid: draft.id(),
                 correlation_uid: draft.request().id,
                 tenant_uid: draft.actor().and_then(|actor| actor.tenant.as_ref()),
-                processed_time: record.recorded_at.timestamp_millis(),
+                processed_time: record.recorded_at().timestamp_millis(),
             },
             fields,
             unmapped: Source { veoveo: record },
         }
     }
 }
-fn classify(record: &AuditRecord) -> (u16, u8, &str, Fields<'_>) {
-    let draft = &record.draft;
+fn classify(record: &AuditStoredRecord) -> (u16, u8, &str, Fields<'_>) {
+    let draft = record;
     let class = draft.class().as_str();
     if let (Some(actor), Some(ip)) = (draft.actor(), draft.request().source_ip) {
         return (

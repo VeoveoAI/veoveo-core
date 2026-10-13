@@ -42,7 +42,9 @@ disagree with it, and the class column references `audit.detail_type`, so a reco
 undeclared class cannot be stored. A trigger assigns the writing transaction and
 `clock_timestamp()` on every insert, and records and blocks reject `UPDATE`. Readers
 decode each draft through the audit registry and reject a row whose occurrence time
-disagrees with it.
+disagrees with it. Sealing and export instead read each row as an `AuditStoredRecord`:
+the stored draft document, admitted for its envelope only, checked against its row's
+identity, partition, class and occurrence time.
 
 `AuditStore::declare` records the registry's declarations, the platform's included,
 through the installation owner. Every owner declares before its first append; repeating
@@ -102,6 +104,14 @@ gaps across blocks. One transaction inserts the blocks, advances each partition 
 from its previous sequence and hash, and moves the sealed position from the value the
 pass read.
 
+The sealer signs records as stored. It admits each candidate's envelope and leaves its
+target and detail as the owner wrote them, and each Merkle leaf hashes the canonical
+bytes of that stored document. A decoded record serializes to the same bytes, so a
+reader that decodes records verifies them against the same root. The sealing process
+therefore needs no owner's target codec or detail declaration: a record that a
+registered server appended under a class or target kind only that server knows seals
+like any other.
+
 A record whose transaction began writing after an open write transaction waits until
 that transaction ends; the sealer then retries every 250 milliseconds. After the first
 record of a quiet period commits, the sealer waits one second so records committed
@@ -138,7 +148,9 @@ generic plan as well. Daily counts page through `audit.daily` newest day first o
 most `AUDIT_DAILY_MAX_DAYS`, 366 days, and a later page's days stop at its cursor's day.
 A view receipt, an `audit.view` record, admits an audit view only for the same actor
 within 15 minutes. Block reads return the members in position order and fail when a member record
-is missing. A filtered block read returns every matching member, as an export reads it;
+is missing; `block_records` decodes them through the registry, and
+`stored_block_records` returns them as stored for export and for verification without
+owner types. A filtered block read returns every matching member, as an export reads it;
 the query's order and page size do not apply, and a query with a cursor is refused.
 `export_range` reads the newest head and the last retired block in one statement.
 
@@ -176,7 +188,9 @@ It does not prove that an installation removed every holder of the old seed.
 
 ## Owner Targets
 
-The installation composes one immutable `AuditTargetRegistry` and gives the same
-registry to `AuditStore`, `AuditTransactionWrite` and every reader. Owner codecs are
+The installation composes one immutable `AuditRegistry` and gives the same registry to
+`AuditStore`, `AuditTransactionWrite` and every reader. Decoding an owner's target or
+detail is a reader's concern; sealing, verification of stored records and export work
+without it. Owner codecs are
 independent of enabled workloads, so records of a disabled owner stay readable. Target
 admission rules are in the [contract design](contract/DESIGN.md).

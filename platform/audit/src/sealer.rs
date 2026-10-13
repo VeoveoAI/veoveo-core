@@ -118,10 +118,7 @@ impl AuditSealer {
         let mut role = self.role.lock().await;
         let connection = role.connection();
         let from = AuditStore::sealed_position(connection).await?;
-        let mut candidates = self
-            .audit
-            .seal_candidates(connection, SEAL_PAGE + 1)
-            .await?;
+        let mut candidates = AuditStore::seal_candidates(connection, SEAL_PAGE + 1).await?;
         let full = candidates.len() > SEAL_PAGE;
         candidates.truncate(SEAL_PAGE);
         let Some(to) = candidates.last().map(|candidate| candidate.position) else {
@@ -137,14 +134,14 @@ impl AuditSealer {
             });
         };
         let mut previous = from;
-        let mut partitions = BTreeMap::<AuditPartition, Vec<AuditRecord>>::new();
+        let mut partitions = BTreeMap::<AuditPartition, Vec<AuditStoredRecord>>::new();
         for candidate in candidates {
             if candidate.position <= previous {
                 return Err(AuditStoreError::Integrity.into());
             }
             previous = candidate.position;
             partitions
-                .entry(candidate.record.draft.partition().clone())
+                .entry(candidate.record.partition().clone())
                 .or_default()
                 .push(candidate.record);
         }

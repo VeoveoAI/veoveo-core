@@ -97,9 +97,10 @@ seconds and the run to 180 seconds, and prints structured validation results.
 It reads no installation records. This network qualification complements the local
 mapping tests; default test runs do not contact the public validator.
 
-Every event preserves the complete typed source as `unmapped.veoveo`, including
-attribution, reason and timestamps. This supplies the record bytes for verification
-against the signed block. Admission maps to status Other with label `Allowed`, since
+The exporter reads each block's members as stored records, so it needs no owner's
+target codec or detail declaration. Every event preserves the complete stored record as
+`unmapped.veoveo`, including attribution, reason and timestamps. This supplies the
+record bytes for verification against the signed block. Admission maps to status Other with label `Allowed`, since
 an admission cannot establish operation completion.
 
 A record with an actor and a source endpoint maps to API Activity 6003 with activity

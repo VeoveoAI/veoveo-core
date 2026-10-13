@@ -4,7 +4,7 @@ use super::AuditStoreError;
 use chrono::{DateTime, Utc};
 use veoveo_audit_contract::{
     AuditBlock, AuditBlockSequence, AuditClass, AuditDecodeError, AuditDraft, AuditPartition,
-    AuditRecord, AuditRecordId, AuditRegistry, stored_time,
+    AuditRecord, AuditRecordId, AuditRegistry, AuditStoredRecord, stored_time,
 };
 
 /// One `audit.record` row as readers select it.
@@ -41,6 +41,22 @@ impl RecordRow {
             draft,
             recorded_at: self.recorded_at,
         })
+    }
+
+    /// Admit the stored document for its envelope only, without decoding the owner's
+    /// target or detail, and require it to agree with its row. Sealing and export read
+    /// records this way.
+    pub fn stored(self) -> Result<AuditStoredRecord, AuditStoreError> {
+        let record = AuditStoredRecord::admit(self.draft, self.recorded_at)
+            .map_err(|_| AuditStoreError::Integrity)?;
+        if record.id() != self.id
+            || self.partition != record.partition().storage_key()
+            || record.class() != &self.class
+            || stored_time(record.occurred_at()) != self.occurred_at
+        {
+            return Err(AuditStoreError::Integrity);
+        }
+        Ok(record)
     }
 
     /// Admit the stored draft and require it to belong to the partition the query
