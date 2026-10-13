@@ -11,7 +11,7 @@ mod store;
 #[path = "../../../testing/fixtures/database.rs"]
 mod database;
 
-use database::{Conformance, Rule};
+use database::Conformance;
 
 /// The tables whose rows each belong to one audit partition.
 const PARTITIONED: [&str; 8] = [
@@ -35,21 +35,5 @@ async fn audit_queries_and_schema_follow_the_database_rules() {
     for table in PARTITIONED {
         check = check.tenant_columns(table, ["partition"]);
     }
-    check
-        .pending(
-            Rule::IndexUse,
-            "platform/audit/src/store/seal/pending.sql",
-            "the plan reads record_commit_order from its start and compares each record \
-             with the sealed position in a join filter; a scalar subquery for the sealed \
-             position would make it an index condition",
-        )
-        .pending(
-            Rule::IndexUse,
-            "platform/audit/src/store/delivery/retention_candidates.sql",
-            "the acknowledgement test hashes every delivered export_delivery row; a \
-             per-block test of (partition, sequence, destination = ANY) would seek the \
-             primary key",
-        )
-        .check()
-        .await;
+    check.check().await;
 }

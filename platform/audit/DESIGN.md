@@ -74,7 +74,9 @@ the lock, so a sealer that lost the role cannot write.
 A pass reads up to 4,096 records whose `(txid, sequence)` follows the sealed position
 and whose transaction ID is below `pg_snapshot_xmin(pg_current_snapshot())`, in that
 order. Every transaction below the horizon has ended, so no record can later appear
-before the last one read. The sealer signs one block per partition. Each record takes
+before the last one read. The pass reads the sealed position once, so the comparison
+seeks `record_commit_order` past the sealed records. The sealer signs one block per
+partition. Each record takes
 the partition position after the one before it, starting at 1, so positions have no
 gaps across blocks. One transaction inserts the blocks, advances each partition head
 from its previous sequence and hash, and moves the sealed position from the value the
@@ -140,7 +142,9 @@ admitting records when finalization or receipt cleanup fails.
 
 Once a minute the sealer retires up to 128 blocks within two seconds. A block is retired
 when it is its partition's oldest retained block, was sealed before the cutoff and every
-configured export destination acknowledged it. Retirement deletes its records and
+configured export destination acknowledged it. The candidate read walks partition heads
+in key order and seeks each oldest block and its deliveries by their primary keys, so
+its cost follows the number of partitions. Retirement deletes its records and
 delivery intents, makes it the partition's retention anchor and keeps each destination's
 cursor.
 
