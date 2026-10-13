@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-    "mcp/conformance",
     "mcp/contract",
     "mcp/ext-apps",
     "mcp/ext-knowledge",
@@ -23,7 +22,6 @@ members = [
     "platform/task-runtime/contract",
     "platform/types",
     "testing/fixtures/library",
-    "testing/fixtures/modular-mcp",
 ]
 
 [workspace.package]
