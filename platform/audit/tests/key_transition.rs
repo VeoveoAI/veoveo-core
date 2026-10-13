@@ -39,6 +39,10 @@ async fn drained_key_transition_preserves_the_archive_and_requires_post_cutover_
             Default::default(),
         )
         .unwrap();
+        // A standby that stops seals nothing of its own, so the first service must hold
+        // the sealer role before the records it is expected to seal on shutdown.
+        let mut first_health = first.health();
+        state(&mut first_health, AuditHealthState::Active).await;
         let writer = AuditWriter::start(audit.a.clone());
         let before = (0..3).map(|_| record()).collect::<Vec<_>>();
         for draft in &before {
