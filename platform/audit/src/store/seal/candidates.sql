@@ -1,3 +1,4 @@
+-- veoveo: all tenants (the sealer seals the records of every partition in commit order)
 -- Records after the sealed position whose transactions sort below the snapshot horizon,
 -- in commit order. Every transaction below the horizon has ended, so no record can later
 -- appear before the last one returned.

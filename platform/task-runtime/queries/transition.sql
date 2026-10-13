@@ -1,3 +1,4 @@
+-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 -- A worker transition: the caller's instance must own the Task at the expected revision.
 -- A terminal status releases ownership.
 UPDATE tasks.task

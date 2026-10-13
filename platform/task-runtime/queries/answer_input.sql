@@ -1,3 +1,4 @@
+-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 -- Answer one outstanding input. The parent row lock orders the answer against
 -- cancellation and completion, and an accepted answer advances the parent's revision.
 WITH parent AS (

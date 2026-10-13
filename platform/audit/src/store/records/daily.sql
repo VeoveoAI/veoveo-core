@@ -1,6 +1,7 @@
 -- One page of a partition's daily counts, newest day first, then by class and outcome.
 -- After a cursor the days stop at the cursor's day, a bound that stays an index range in
 -- a generic plan; the cursor's own day continues after its class and outcome.
+-- veoveo: scan (the cursor's own day is filtered by class and outcome inside the day range the index seeks)
 SELECT
     d.day AS "day!",
     d.class AS "class!: AuditClass",

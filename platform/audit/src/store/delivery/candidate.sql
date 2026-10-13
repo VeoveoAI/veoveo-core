@@ -1,3 +1,4 @@
+-- veoveo: all tenants (the exporter serves every partition, least recently served first)
 -- The next block one destination has not acknowledged, from the partition it served
 -- least recently. Partition heads, cursors and anchors select it; block history is not
 -- scanned.

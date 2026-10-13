@@ -1,3 +1,4 @@
+-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 -- The owning worker asks for input; the Task waits until a caller answers.
 WITH parent AS (
     UPDATE tasks.task

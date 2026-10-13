@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- veoveo: unbounded (a publication replaces the membership rules of one Work Context)\nDELETE FROM identity.work_context_membership\nWHERE work_context = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "091766f24c63e698e8c94d03b29e2f23125c3469d0760e6469c4ba36ebcd3bdc"
+}

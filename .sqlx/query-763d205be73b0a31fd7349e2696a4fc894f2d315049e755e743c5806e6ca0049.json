@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- Records after the sealed position whose transactions sort below the snapshot horizon,\n-- in commit order. Every transaction below the horizon has ended, so no record can later\n-- appear before the last one returned.\nSELECT\n    r.sequence,\n    r.txid::text::bigint AS \"txid!\",\n    r.id AS \"id: AuditRecordId\",\n    r.partition,\n    r.class AS \"class: AuditClass\",\n    r.occurred_at,\n    r.draft,\n    r.recorded_at\nFROM audit.sealer AS s\nJOIN audit.record AS r ON (r.txid, r.sequence) > (s.txid, s.sequence)\nWHERE r.txid < pg_snapshot_xmin(pg_current_snapshot())\nORDER BY r.txid, r.sequence\nLIMIT $1\n",
+  "query": "-- veoveo: all tenants (the sealer seals the records of every partition in commit order)\n-- Records after the sealed position whose transactions sort below the snapshot horizon,\n-- in commit order. Every transaction below the horizon has ended, so no record can later\n-- appear before the last one returned.\nSELECT\n    r.sequence,\n    r.txid::text::bigint AS \"txid!\",\n    r.id AS \"id: AuditRecordId\",\n    r.partition,\n    r.class AS \"class: AuditClass\",\n    r.occurred_at,\n    r.draft,\n    r.recorded_at\nFROM audit.sealer AS s\nJOIN audit.record AS r ON (r.txid, r.sequence) > (s.txid, s.sequence)\nWHERE r.txid < pg_snapshot_xmin(pg_current_snapshot())\nORDER BY r.txid, r.sequence\nLIMIT $1\n",
   "describe": {
     "columns": [
       {
@@ -103,5 +103,5 @@
       false
     ]
   },
-  "hash": "9370eb104ef481534dcca5b5a849b7a03f388392f39f231095a860dbefd015a7"
+  "hash": "763d205be73b0a31fd7349e2696a4fc894f2d315049e755e743c5806e6ca0049"
 }

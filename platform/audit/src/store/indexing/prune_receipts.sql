@@ -1,3 +1,4 @@
+-- veoveo: all tenants (receipt retention removes the expired receipts of every partition)
 -- Remove up to 1,024 receipts older than a day. Rows another replica is removing are
 -- skipped rather than waited for.
 WITH expired AS (

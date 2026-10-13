@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "-- A worker transition: the caller's instance must own the Task at the expected revision.\n-- A terminal status releases ownership.\nUPDATE tasks.task\nSET status = $5,\n    status_message = $6,\n    progress = $7,\n    result = $8,\n    result_uri = $9,\n    error_code = $10,\n    error_message = $11,\n    error_details = $12,\n    completed_at = CASE WHEN $5 IN ('succeeded', 'failed', 'cancelled') THEN now() END,\n    owner_instance = CASE\n        WHEN $5 IN ('succeeded', 'failed', 'cancelled') THEN NULL\n        ELSE owner_instance\n    END\nWHERE id = $1 AND server = $2 AND owner_instance = $3 AND revision = $4\nRETURNING\n    id,\n    server,\n    tenant,\n    owner_tenant,\n    owner_principal,\n    owner_kind AS \"owner_kind: PrincipalKind\",\n    owner_issuer,\n    owner_subject,\n    profile,\n    data_labels,\n    work_context,\n    authority AS \"authority: Json<InvocationAuthority>\",\n    task_type,\n    recovery_class AS \"recovery_class: RecoveryClass\",\n    input,\n    idempotency_key,\n    ttl_ms,\n    poll_interval_ms,\n    status AS \"status: TaskStatus\",\n    status_message,\n    progress,\n    result,\n    result_uri,\n    error_code,\n    error_message,\n    error_details,\n    owner_instance AS \"owner_instance: InstanceId\",\n    revision,\n    retention_pins,\n    created_at,\n    updated_at,\n    started_at,\n    cancel_requested_at,\n    completed_at,\n    retention_expires_at\n",
+  "query": "-- veoveo: all tenants (a worker claims the oldest queued Task of its server, whichever tenant owns it)\nUPDATE tasks.task AS task\nSET status = 'running', status_message = 'Running', owner_instance = $2, started_at = now()\nFROM (\n    SELECT id\n    FROM tasks.task\n    WHERE server = $1 AND status = 'queued'\n    ORDER BY created_at, id\n    LIMIT 1\n    FOR UPDATE SKIP LOCKED\n) AS claimable\nWHERE task.id = claimable.id\nRETURNING\n    task.id,\n    task.server,\n    task.tenant,\n    task.owner_tenant,\n    task.owner_principal,\n    task.owner_kind AS \"owner_kind: PrincipalKind\",\n    task.owner_issuer,\n    task.owner_subject,\n    task.profile,\n    task.data_labels,\n    task.work_context,\n    task.authority AS \"authority: Json<InvocationAuthority>\",\n    task.task_type,\n    task.recovery_class AS \"recovery_class: RecoveryClass\",\n    task.input,\n    task.idempotency_key,\n    task.ttl_ms,\n    task.poll_interval_ms,\n    task.status AS \"status: TaskStatus\",\n    task.status_message,\n    task.progress,\n    task.result,\n    task.result_uri,\n    task.error_code,\n    task.error_message,\n    task.error_details,\n    task.owner_instance AS \"owner_instance: InstanceId\",\n    task.revision,\n    task.retention_pins,\n    task.created_at,\n    task.updated_at,\n    task.started_at,\n    task.cancel_requested_at,\n    task.completed_at,\n    task.retention_expires_at\n",
   "describe": {
     "columns": [
       {
@@ -391,18 +391,8 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Text",
-        "Int4",
-        "Int8",
-        "Text",
-        "Text",
-        "Float8",
-        "Jsonb",
-        "Text",
-        "Text",
-        "Text",
-        "Jsonb"
+        "Int4"
       ]
     },
     "nullable": [
@@ -443,5 +433,5 @@
       true
     ]
   },
-  "hash": "1e1c76bc608d6948298d8d4b157b48266192d241b108284c8ce32b5d6bda350b"
+  "hash": "84d872a926b49f16127bee5d5a6b14d02cbdbd1435d083a8c3b8927f4e08cbbb"
 }

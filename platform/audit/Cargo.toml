@@ -34,8 +34,10 @@ object_store.workspace = true
 reqwest = { workspace = true, features = ["rustls-no-provider", "stream"] }
 
 [dev-dependencies]
-# The PostgreSQL fixture in testing/fixtures/store.rs, included by path.
+# The PostgreSQL fixture in testing/fixtures/store.rs and the database conformance checks
+# in testing/fixtures/database.rs, included by path.
 hex.workspace = true
+pg_query.workspace = true
 secrecy.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }

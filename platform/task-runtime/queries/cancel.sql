@@ -1,3 +1,4 @@
+-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 -- Request cancellation. An unowned Task has no worker to observe the request, so it
 -- is cancelled at once.
 UPDATE tasks.task

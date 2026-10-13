@@ -1,3 +1,4 @@
+-- veoveo: all tenants (a worker claims the oldest queued Task of its server, whichever tenant owns it)
 UPDATE tasks.task AS task
 SET status = 'running', status_message = 'Running', owner_instance = $2, started_at = now()
 FROM (

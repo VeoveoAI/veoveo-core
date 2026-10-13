@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT input.request_key, input.method, input.params, input.response, input.created_at,\n    input.responded_at\nFROM tasks.task_input AS input\nJOIN tasks.task AS task ON task.id = input.task_id\nWHERE task.id = $1 AND task.server = $2 AND input.request_key = $3\n",
+  "query": "-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)\nSELECT input.request_key, input.method, input.params, input.response, input.created_at,\n    input.responded_at\nFROM tasks.task_input AS input\nJOIN tasks.task AS task ON task.id = input.task_id\nWHERE task.id = $1 AND task.server = $2 AND input.request_key = $3\n",
   "describe": {
     "columns": [
       {
@@ -86,5 +86,5 @@
       true
     ]
   },
-  "hash": "298e88c5fe0778afca34dbc3cdcef4baa4415ae82f7c5b7a1f08084d08e329f0"
+  "hash": "0c3d20080fd4116d86ac82fb93c3cecb7231f6e8a5433cb2eecd5983aa1af0e4"
 }

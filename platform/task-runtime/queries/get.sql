@@ -1,3 +1,4 @@
+-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 SELECT
     id,
     server,

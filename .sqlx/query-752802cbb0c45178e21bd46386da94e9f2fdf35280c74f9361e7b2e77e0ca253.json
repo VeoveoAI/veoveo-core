@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n    control_plane_digest AS \"control_plane_digest!\",\n    policy_revision AS \"policy_revision!\",\n    context_digest AS \"context_digest!\",\n    profile_policy_digest\nFROM gateway.artifact_upload_authority($1, $2)\n",
+  "query": "-- veoveo: unbounded (the function returns at most the row of the one Work Context it is given)\nSELECT\n    control_plane_digest AS \"control_plane_digest!\",\n    policy_revision AS \"policy_revision!\",\n    context_digest AS \"context_digest!\",\n    profile_policy_digest\nFROM gateway.artifact_upload_authority($1, $2)\n",
   "describe": {
     "columns": [
       {
@@ -41,5 +41,5 @@
       null
     ]
   },
-  "hash": "0f7d7cf88cc90dfbb811a1a1d906e6371d9da6aab2c15d8958fad35037062495"
+  "hash": "752802cbb0c45178e21bd46386da94e9f2fdf35280c74f9361e7b2e77e0ca253"
 }

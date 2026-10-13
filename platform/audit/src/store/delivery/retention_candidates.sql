@@ -1,3 +1,4 @@
+-- veoveo: all tenants (retention retires the oldest block of every partition)
 -- Each partition's oldest retained block, when it was sealed before the cutoff and every
 -- configured destination acknowledged it.
 SELECT b.partition, b.sequence, b.head_hash, b.sealed_at, b.block

@@ -112,3 +112,6 @@ append, bound client revocation, publication conflicts, Work Context replacement
 upload authority digests, Task route removal with their Work Context and by expiry, the
 registration notifications, batched pruning that two replicas share, and plans that read
 the replacement, Work Context and expiry indexes with sequential scans disabled.
+`tests/database_conformance.rs` holds every query under `src` and the `kernel`,
+`identity` and `gateway` schemas to the
+[server schema rules](../../docs/DATABASE.md#server-schema-rules).

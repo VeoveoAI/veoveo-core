@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Work Contexts the new revision no longer defines. Their grants, membership rules and\n-- Task routes go with them.\n-- veoveo: all tenants (a publication replaces the Work Contexts of every tenant)\n-- veoveo: unbounded (the publication removes every omitted Work Context in its own transaction)\n-- veoveo: scan (finding the omitted Work Contexts reads every Work Context once per publication)\nDELETE FROM identity.work_context\nWHERE NOT (id = ANY ($1))\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c43e4e8c8587963e79ef33ecfd447219735e631b16392f48bf9594d2ecd57e37"
+}

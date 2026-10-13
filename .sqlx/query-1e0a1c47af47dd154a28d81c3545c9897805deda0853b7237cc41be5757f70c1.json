@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- veoveo: unbounded (a publication replaces the grants of one Work Context)\nDELETE FROM identity.work_context_grant\nWHERE work_context = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1e0a1c47af47dd154a28d81c3545c9897805deda0853b7237cc41be5757f70c1"
+}

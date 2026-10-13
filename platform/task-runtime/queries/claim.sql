@@ -1,3 +1,4 @@
+-- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 UPDATE tasks.task AS task
 SET status = 'running', status_message = 'Running', owner_instance = $3, started_at = now()
 FROM (

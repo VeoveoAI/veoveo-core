@@ -37,9 +37,15 @@ uuid = { workspace = true, features = ["serde", "v5"] }
 
 [dev-dependencies]
 hex.workspace = true
+# The database conformance checks in testing/fixtures/database.rs, included by path.
+pg_query.workspace = true
 tokio = { workspace = true, features = ["full"] }
 uuid = { workspace = true, features = ["v4", "v7"] }
 
 [[test]]
 name = "gateway"
+required-features = ["gateway"]
+
+[[test]]
+name = "database_conformance"
 required-features = ["gateway"]

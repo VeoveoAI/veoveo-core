@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Delete up to $2 Task routes that expired at or before $1, earliest first. A route a\n-- concurrent projection holds waits for a later batch.\n-- veoveo: all tenants (retention removes the expired routes of every tenant)\nDELETE FROM gateway.task_route\nWHERE id IN (\n    SELECT id\n    FROM gateway.task_route\n    WHERE expires_at <= $1\n    ORDER BY expires_at\n    LIMIT $2\n    FOR UPDATE SKIP LOCKED\n)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1b264f1bfcd32c38392566b85fa22a0d8a111a82ce00d23421541c3762fca93d"
+}

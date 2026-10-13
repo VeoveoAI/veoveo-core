@@ -1,3 +1,4 @@
+-- veoveo: all tenants (the sealer seals the records of every partition in commit order)
 -- Whether a committed record follows the sealed position.
 SELECT EXISTS (
     SELECT

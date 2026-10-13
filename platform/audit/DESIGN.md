@@ -45,6 +45,11 @@ they cannot disagree with it. A trigger assigns the writing transaction and
 decode each draft through the target registry and reject a row whose class or
 occurrence time disagrees with it.
 
+`tests/database_conformance.rs` holds the audit queries and the `audit` schema to the
+[server schema rules](../../docs/DATABASE.md#server-schema-rules), with each table's
+`partition` in place of a tenant column. The sealer, the exporter and retention read
+every partition, and their statements say so in their markers.
+
 ## Appends
 
 Domain code appends inside its own transaction with `AuditTransactionWrite`, so the

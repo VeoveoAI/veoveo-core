@@ -192,3 +192,6 @@ result and failure shapes, owner reads and pages, subscriptions across a listene
 reconnect, row-level security between two server logins and batched retention pruning.
 Unit tests on the same fixture check that another server's Tasks never wake a runtime's
 listener and that a runtime prunes expired Tasks on its own schedule.
+`tests/database_conformance.rs` holds every query under `queries` and the `tasks`
+schema to the [server schema rules](../../docs/DATABASE.md#server-schema-rules). Worker
+statements address Tasks by ID across the server's tenants and say so in their markers.
