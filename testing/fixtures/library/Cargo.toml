@@ -21,7 +21,6 @@ store = [
 # Tenant-predicate, row-bound, index-use and schema checks over a crate's queries. Only
 # test code depends on this feature, so pg_query never links into a service.
 database-conformance = ["store", "dep:pg_query", "dep:serde", "dep:serde_json"]
-tool-inputs = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 hex = { workspace = true, optional = true }
