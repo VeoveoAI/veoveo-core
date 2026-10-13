@@ -28,9 +28,9 @@ An installation has one database. Each owner has one schema:
 |---|---|---|
 | `kernel` | Core | Migration history, process instances and shared functions |
 | `identity` | Core | Enterprises, tenants, principals and Work Contexts |
-| `gateway` | Core | Control-plane revisions, OAuth state, registrations and Task routes |
+| `gateway` | The Gateway | Control-plane revisions, OAuth state, registrations and Task routes, from the Gateway's own migrations |
 | `tasks` | Core | Tasks, their input exchanges and idempotency keys |
-| `audit` | Core | Audit records, blocks, seals, export cursors and indexing windows |
+| `audit` | Core | Declared audit classes, audit records, blocks, seals and export cursors |
 | `<server>` | A registered server | The server's own tables and functions; the name is the server slug with `-` replaced by `_` |
 
 The Gateway connects as the installation owner, a role that owns the database and has
@@ -80,8 +80,9 @@ connection for notifications.
 
 Kernel migrations live in `platform/store/migrations` and record their history in
 `kernel._sqlx_migrations`. Their versions are grouped by schema in hundreds: `01xx` for
-`kernel`, `02xx` for `identity`, `03xx` for `gateway`, `04xx` for `tasks` and `05xx` for
-`audit`. A server's migrations live in its own crate and record their history in
+`kernel`, `02xx` for `identity`, `04xx` for `tasks` and `05xx` for `audit`. The Gateway's
+migrations live in its repository and record their history in its own schema. A
+server's migrations live in its own crate and record their history in
 `<server>._sqlx_migrations`; `PlatformStore::migrate_server` applies them on a dedicated
 connection after taking the group role, with the server's schema as the search path.
 Each file is plain SQL, applied in version order inside one transaction. A changed
