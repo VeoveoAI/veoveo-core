@@ -147,7 +147,12 @@ impl fmt::Display for LoginName {
     }
 }
 
-/// A notification channel. Each schema notifies on the channel named after it.
+/// The longest channel name, PostgreSQL's identifier limit.
+const MAX_CHANNEL: usize = 63;
+
+/// A notification channel. Each schema notifies on the channel named after it. A table
+/// whose trigger names a qualifier column notifies on `<schema>.<qualifier>` instead,
+/// such as `tasks.time` for the Tasks of server `time`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Channel(Cow<'static, str>);
 
@@ -157,10 +162,56 @@ impl Channel {
     pub const TASKS: Self = Self(Cow::Borrowed("tasks"));
     pub const AUDIT: Self = Self(Cow::Borrowed("audit"));
 
+    /// Admit a schema channel, an unquoted identifier, or a qualified channel whose
+    /// qualifier holds lowercase letters, digits, hyphens or underscores. A channel is at
+    /// most 63 bytes.
     pub fn parse(value: impl Into<Cow<'static, str>>) -> Result<Self, StoreError> {
         let value = value.into();
-        check_identifier("channel", &value)?;
+        let (schema, qualifier) = match value.split_once('.') {
+            Some((schema, qualifier)) => (schema, Some(qualifier)),
+            None => (value.as_ref(), None),
+        };
+        let invalid = |reason| Err(StoreError::invalid_name("channel", value.as_ref(), reason));
+        if check_identifier("channel", schema).is_err() {
+            return invalid(
+                "a schema name: a lowercase letter or underscore, then lowercase letters, digits or underscores",
+            );
+        }
+        if qualifier.is_some_and(|qualifier| {
+            qualifier.is_empty()
+                || !qualifier
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+        }) {
+            return invalid("a qualifier of lowercase letters, digits, hyphens or underscores");
+        }
+        if value.len() > MAX_CHANNEL {
+            return invalid("at most 63 bytes");
+        }
         Ok(Self(value))
+    }
+
+    /// The channel `<schema>.<qualifier>` on which a trigger of this schema that names a
+    /// qualifier column notifies.
+    pub fn qualified(&self, qualifier: &str) -> Result<Self, StoreError> {
+        if self.qualifier().is_some() {
+            return Err(StoreError::invalid_name(
+                "channel",
+                format!("{}.{qualifier}", self.0),
+                "a qualified channel takes no second qualifier",
+            ));
+        }
+        Self::parse(format!("{}.{qualifier}", self.0))
+    }
+
+    /// The schema whose tables notify on this channel.
+    pub fn schema(&self) -> &str {
+        self.0.split_once('.').map_or(&self.0, |(schema, _)| schema)
+    }
+
+    /// The qualifier of a qualified channel.
+    pub fn qualifier(&self) -> Option<&str> {
+        self.0.split_once('.').map(|(_, qualifier)| qualifier)
     }
 
     pub fn as_str(&self) -> &str {
@@ -256,6 +307,35 @@ mod tests {
         assert_eq!(Channel::parse("time_zones").unwrap().as_str(), "time_zones");
         assert!(Channel::parse("Time").is_err());
         assert!(Channel::parse("a-b").is_err());
+        let tasks = Channel::TASKS.qualified("time-zones").unwrap();
+        assert_eq!(tasks.as_str(), "tasks.time-zones");
+        assert_eq!(
+            (tasks.schema(), tasks.qualifier()),
+            ("tasks", Some("time-zones"))
+        );
+        assert_eq!(Channel::parse("tasks.time-zones").unwrap(), tasks);
+        assert_eq!(
+            (Channel::TASKS.schema(), Channel::TASKS.qualifier()),
+            ("tasks", None)
+        );
+        let longest = Channel::TASKS
+            .qualified(&"t".repeat(MAX_SERVER_NAME))
+            .unwrap();
+        assert_eq!(longest.as_str().len(), 54);
+        for rejected in [
+            "tasks.",
+            ".time",
+            "tasks.Time",
+            "tasks.time.zones",
+            "tasks.time zones",
+            "Tasks.time",
+        ] {
+            assert!(Channel::parse(rejected).is_err(), "{rejected}");
+        }
+        assert!(Channel::TASKS.qualified(&"t".repeat(58)).is_err());
+        assert!(Channel::TASKS.qualified(&"t".repeat(57)).is_ok());
+        assert!(tasks.qualified("again").is_err());
+        assert!(Channel::TASKS.qualified("").is_err());
         assert!(SingletonName::parse("audit.sealer").is_ok());
         assert!(SingletonName::parse("").is_err());
         assert!(SingletonName::parse("Audit").is_err());

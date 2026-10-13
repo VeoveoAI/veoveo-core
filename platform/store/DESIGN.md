@@ -11,7 +11,7 @@ the crate implements.
 | PostgreSQL 18 | Server 18.6; one database per installation, kernel schemas `kernel`, `identity`, `gateway`, `tasks` and `audit` |
 | sqlx 0.9.0 | `PgPool`, `PgListener`, compile-time checked `query_file!` macros, `Migrator` with this crate's `sqlx.toml` |
 | `postgres://` connection URIs | The URL names host and database and may name the user; the password travels separately |
-| `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads: `{"table", "operation", "key", "tenant"}` on the schema's channel |
+| `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads: `{"table", "operation", "key", "tenant"}` on the schema's channel, or only on `<schema>.<qualifier>` when the trigger names a qualifier column |
 | Advisory locks | Instances lock `(1987471726, id)`; singletons lock `(1987474279, hashtext(name))` |
 
 ## Contents
@@ -24,7 +24,7 @@ the crate implements.
 | `migrate_server` | A server's own migrations in its schema, as its group role |
 | `Instance`, `reap_instances`, `instance_alive` | Process liveness through `kernel.instance` and its advisory lock |
 | `Singleton` | One replica per role, on the connection that holds the lock |
-| `listen`, `ChangeSignal` | Wake signals, with `Reconcile` at start and after every reconnection |
+| `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
 | `ensure_identity`, `work_context_by_key` | Identity records for the Gateway and registered servers |
 | `gateway` module, `gateway` feature | The Gateway's state, typed with the Gateway contracts; described below |
 

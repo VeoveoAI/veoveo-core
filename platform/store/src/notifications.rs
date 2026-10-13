@@ -1,5 +1,6 @@
 //! Change notifications: `kernel.notify_change` triggers send a JSON wake signal on the
-//! schema's channel, and listeners read current rows under their own authorization.
+//! schema's channel, or on `<schema>.<qualifier>` when the trigger names a qualifier
+//! column, and listeners read current rows under their own authorization.
 use std::time::Duration;
 
 use futures::{StreamExt, stream::BoxStream};
@@ -24,6 +25,7 @@ pub enum ChangeOperation {
 /// One row change. The key and tenant locate the row; the consumer rereads it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
+    /// The channel it arrived on, qualified when the trigger names a qualifier column.
     pub channel: Channel,
     pub table: String,
     pub operation: ChangeOperation,
