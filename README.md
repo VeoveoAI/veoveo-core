@@ -15,7 +15,7 @@ one revision of this repository.
 | `platform/store` | `veoveo-platform-store` | PostgreSQL access: the connection pool, kernel and identity migrations, process instances, singletons, change notifications, registered servers' roles and schemas, keyset pages and batched maintenance |
 | `platform/oauth` | `veoveo-oauth-client` | RS256 client-assertion signing |
 | `platform/http` | `veoveo-http` | Shared HTTP admission |
-| `platform/task-runtime` | `veoveo-task-runtime` | Durable Tasks in PostgreSQL: claims, recovery, durable steps, owner reads, inputs, subscriptions and retention |
+| `platform/task-runtime` | `veoveo-task-runtime` | Durable Tasks in PostgreSQL: claims, recovery, durable steps, operations parked on providers, owner reads, inputs, subscriptions and retention |
 | `platform/task-runtime/contract` | `veoveo-task-contract` | The Task vocabulary |
 | `platform/audit` | `veoveo-audit` | The audit log in PostgreSQL: group-committed appends, partition-scoped reads and change streams, the singleton sealer, signed blocks, export, retention and verification |
 | `platform/audit/contract` | `veoveo-audit-contract` | The audit record envelope, owner-declared classes and details, targets, blocks and reader types, and the append inside a caller's PostgreSQL transaction |

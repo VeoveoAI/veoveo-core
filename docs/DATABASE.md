@@ -29,7 +29,7 @@ An installation has one database. Each owner has one schema:
 | `kernel` | Core | Migration history, process instances and shared functions |
 | `identity` | Core | Enterprises, tenants, principals and Work Contexts |
 | `gateway` | The Gateway | Control-plane revisions, OAuth state, registrations and Task routes, from the Gateway's own migrations |
-| `tasks` | Core | Tasks, their input exchanges, steps and idempotency keys |
+| `tasks` | Core | Tasks, their input exchanges, steps, operations with their provider events, and idempotency keys |
 | `audit` | Core | Declared audit classes, audit records, blocks, seals and export cursors; servers declare and append through two functions |
 | `<server>` | A registered server | The server's own tables and functions; the name is the server slug with `-` replaced by `_` |
 

@@ -10,11 +10,12 @@ Task, and the caller reads, answers, cancels and watches it through `OwnerTaskQu
 
 | Standard or interface | Profile |
 |---|---|
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0410` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
+| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0411` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads, keyed by Task ID and tenant, on the channel of the Task's server, `tasks.<server>` |
 | Row-level security | A member of `veoveo_server` reads and writes only the Tasks of its own servers |
-| RFC 9562 UUIDv7 | Native Task identity, where lookups reject other versions, and the operation identity of a Task step |
+| RFC 9562 UUIDv7 | Native Task identity, where lookups reject other versions, and the operation identity of a Task step or operation |
+| RFC 4648 base64url, FIPS 180-4 SHA-256 | Callback tokens: 256 random bits in 43 unpadded base64url characters, stored only as their SHA-256 |
 
 The Task contract's statuses and recovery classes, `resume` and
 `interrupted_indeterminate`, are the runtime's own vocabulary. A protocol adapter maps
@@ -85,7 +86,8 @@ stops claiming.
 ## Work
 
 `TaskRuntime::work` returns a stream of Tasks this instance claimed. It claims the
-oldest queued Task of its server for each polled item with `FOR UPDATE SKIP LOCKED`, so
+oldest queued Task of its server, or a parked Task whose cancellation awaits its
+provider, for each polled item with `FOR UPDATE SKIP LOCKED`, so
 replicas sharing the queue take different Tasks without waiting. With the queue empty,
 the stream waits for a created or changed Task of its server, a reap round of its
 instance or a listener reconnect, and then claims again. Another server's Tasks never
@@ -110,7 +112,9 @@ withheld and the unchanged Task is returned, unless cancellation is pending, whi
 settled.
 
 `TaskRuntime::cancel` and `OwnerTaskQuery::cancel` request cancellation in one statement.
-An unowned Task has no worker to observe the request and is cancelled at once. An owned
+An unowned Task has no worker to observe the request and is cancelled at once, except a
+Task parked on an operation, which a claim takes to carry the cancellation to the
+provider. An owned
 Task becomes `cancel_requested`, and its worker settles it. A local worker registered with
 `register_worker` is stopped through its token. A finished Task is returned unchanged.
 
@@ -203,12 +207,97 @@ result: the `task_step_settle` trigger rejects any other update, and check const
 admit only UUIDv7 operation IDs and valid keys. A `resume` Task that recovery returns to
 the queue keeps its steps, and pruning removes them with their Task.
 
+## Operations
+
+An operation is outside work a Task hands to a provider: a generation, a solver run, a
+virtual machine to provision. The worker records it before it calls the provider, parks
+the Task while the outcome is pending, and resumes when the outcome arrives. A parked
+Task holds no worker and no connection, and a restart leaves it waiting.
+
+```rust
+let spec = OperationSpec::events(OperationKey::parse("generate")?, provider, hours(6));
+let job = runtime
+    .dispatch_operation(task.task_id, &spec, |attempt| async move {
+        match attempt.dispatch {
+            StepDispatch::First => provider.submit(&input, attempt.operation_id, attempt.callback).await,
+            // An earlier attempt may have reached the provider: reconcile, never resubmit.
+            StepDispatch::Unsettled { .. } => provider.find(attempt.operation_id).await,
+        }
+    })
+    .await?;
+match runtime.wait_operation::<Prediction, _>(task.task_id, &spec.key, &calls).await? {
+    WaitOutcome::Settled(prediction) => store_outputs(prediction).await?,
+    WaitOutcome::Expired => mark_unknown().await?,
+    WaitOutcome::Cancelled { receipt } => settle_cancelled(receipt).await?,
+}
+```
+
+| Table | Holds |
+|---|---|
+| `tasks.task_operation` | One row per Task and `OperationKey`: the UUIDv7 operation ID the provider call uses as its idempotency key, the `ProviderName` the server chose, the provider's `ExternalJobId` once submitted, the state, how the outcome arrives, the check schedule and count, the deadline, the SHA-256 of the callback token, the outcome once settled and the cancellation's start and receipt |
+| `tasks.task_operation_event` | Each event the provider reported, by server, provider and event ID: the operation, the payload, whether it was final and whether it settled the operation |
+
+`dispatch_operation` records the operation in the statement that checks the worker's
+ownership, then calls the closure with an `OperationAttempt`. The first attempt receives
+a fresh `CallbackToken` for the provider's callback URL; the runtime keeps only its
+SHA-256. A successful closure records its `Submission` and the operation becomes
+`submitted`. An operation an earlier attempt recorded without a submission reaches the
+closure as `StepDispatch::Unsettled`, with the same operation ID and no token, because
+the provider may already hold the first one. A dispatch that finds its operation
+submitted or settled returns it without calling the closure.
+
+An operation's outcome arrives in one of two ways, which `Completion` declares:
+
+| Completion | How the outcome arrives |
+|---|---|
+| `Events` | The server's webhook handler checks the provider's signature and calls `deliver` with an `EventTarget`: the callback URL's operation ID and token, the operation ID alone, or the provider's job ID |
+| `Checks` | The wait calls the server's `OperationCalls::check` on a `CheckSchedule`: the first check after a delay, then at an interval that grows by the backoff, at most the schedule's limit of checks |
+
+`deliver` stores the event and settles the operation in one transaction, under the
+operation's row lock. The first final event settles a pending or unresolved operation and
+queues the Task parked on it; a repeated event ID stores nothing; a final event after the
+operation settled, or after its Task finished, is stored as late. Any replica delivers,
+and the server acknowledges the provider only after `deliver` returns. `Delivery::Unknown`
+answers an event that names no operation of the server or carries the wrong token.
+
+`wait_operation` returns a settled operation's outcome decoded as the caller's type.
+Otherwise it parks the Task: one statement locks the operation, confirms it is still
+pending with no check due, and moves the Task to `waiting` with no owner and
+`parked_on` naming the operation, then the wait fails with `TaskError::Parked`. The
+worker propagates it and stops without settling the Task. The recovery trigger skips a
+Task parked on an operation, so a reaped instance changes nothing. A delivery queues the
+Task, and its next run replays its finished steps and its dispatch from the database and
+reaches the wait again, which returns the outcome.
+
+Every runtime runs a due pass. It queues Tasks parked on an operation whose check is due,
+marks pending operations whose deadline passed as `unresolved` and queues the Tasks
+parked on them, in batches with `SKIP LOCKED`, then sleeps until the server's next due
+time, at most `DUE_INTERVAL`, five seconds. A resumed wait on a checked operation runs the
+check and records it as an event. A wait on an unresolved operation returns
+`WaitOutcome::Expired`: the outcome is unknown, which never counts as a failure, and a
+later final event still settles the operation.
+
+A cancellation of a parked Task leaves it `cancel_requested` and unowned instead of
+cancelling it at once, because the provider may still be working. Claims take such a
+Task without moving it to running. Its wait records that the cancellation started, calls
+`OperationCalls::cancel`, stores the provider's receipt and returns
+`WaitOutcome::Cancelled`; the worker then settles the Task as cancelled. A process that
+ends during the cancel call leaves the cancellation started without a receipt, and
+recovery cancels the Task. Events the provider sends after that are stored as late.
+
+The operation table keeps each operation's identity, provider, completion profile and
+dispatch time, and a settled operation its outcome: `task_operation_settle` rejects any
+other change, and events never change. Retention never prunes a Task with an operation
+that has not settled, so a late event still finds it; an operator releases such a Task by
+settling or deleting its operation.
+
 ## Retention
 
 Creation sets `retention_expires_at` from the TTL, seven days by default, and rejects a
 deadline after year 9999. A creation may add retention pins, and
 `acknowledge_retention_pin` removes one. `prune_expired` deletes the server's finished
-Tasks whose retention expired and that hold no pin, with their inputs and steps, in the store's
+Tasks whose retention expired, that hold no pin and whose operations have settled, with
+their inputs, steps and operations, in the store's
 [batches](../store/DESIGN.md#batched-maintenance), earliest expiry first.
 
 The runtime owns retention. Every runtime prunes its server's expired Tasks every
@@ -226,9 +315,14 @@ each class and fencing after an instance's session is terminated and reaped,
 cancellation of owned and unowned Tasks, resumable settlement, input exchanges with
 concurrent answers and concurrent requests past the input limit, steps recorded,
 returned without rerunning and left unsettled across a failed attempt and an instance's
-death, step fencing and the step table's constraints, idempotent creation,
+death, step fencing and the step table's constraints, operations parked across an instance's
+death and resumed by another instance with their steps replayed, repeated and late
+events, concurrent final events of which exactly one settles, check schedules with their
+backoff and limit, deadlines that leave the outcome open and keep the Task from
+retention until a late event, cancellation carried to the provider with its receipt,
+unsettled dispatches reported with the same operation ID, idempotent creation,
 result and failure shapes, owner reads and pages, subscriptions across a listener
-reconnect, row-level security between two server logins over Tasks and steps, and
+reconnect, row-level security between two server logins over Tasks, steps and operations, and
 batched retention pruning with the steps it removes.
 Unit tests on the same fixture check that another server's Tasks never wake a runtime's
 listener and that a runtime prunes expired Tasks on its own schedule.
