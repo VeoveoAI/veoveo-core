@@ -52,9 +52,11 @@ docker build --target check .
 
 The check stage first applies the kernel migrations to a scratch PostgreSQL database
 and runs `cargo sqlx prepare --workspace --check`, so query metadata in `.sqlx` that no
-longer matches the queries fails the gate. It then runs `cargo fmt`, `cargo clippy`,
-`cargo deny`, `cargo hack` and `cargo nextest`. The same commands run inside the
-development environment.
+longer matches the queries fails the gate. It then runs `cargo fmt`, `cargo clippy`
+with every feature, `cargo deny`, `cargo hack` with each feature on its own, and `cargo
+nextest` with every feature, so feature-gated suites such as the Gateway store tests and
+the database conformance checks run too. The same commands run inside the development
+environment.
 
 Tests that need a database start a private PostgreSQL cluster per test process from
 the PostgreSQL 18 programs on `PATH`. The `dev` image installs the PGDG

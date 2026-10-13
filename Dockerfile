@@ -52,4 +52,4 @@ RUN cargo fmt --check \
     && cargo clippy --locked --all-targets --all-features -- -D warnings \
     && cargo deny --locked check \
     && cargo hack check --each-feature --no-dev-deps \
-    && cargo nextest run --locked --profile ci
+    && cargo nextest run --locked --all-features --profile ci
