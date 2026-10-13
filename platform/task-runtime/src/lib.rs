@@ -3,8 +3,8 @@
 //! Every Task is a row of `tasks.task`. A process instance owns the Tasks it claims,
 //! worker writes compare that ownership, and the database moves a dead instance's Tasks
 //! to their recovery state. Callers reach their own Tasks through
-//! `TaskRuntime::for_owner`, and the `tasks` notification channel wakes workers and
-//! subscribers.
+//! `TaskRuntime::for_owner`, and each server's notification channel, `tasks.<server>`,
+//! wakes that server's workers and subscribers.
 
 mod claims;
 mod config;
@@ -22,6 +22,10 @@ mod service;
 mod signals;
 mod snapshot;
 mod subscriptions;
+#[cfg(test)]
+#[allow(dead_code, reason = "the unit tests use part of the shared fixture")]
+#[path = "../../../testing/fixtures/store.rs"]
+mod test_store;
 mod transition;
 mod work;
 

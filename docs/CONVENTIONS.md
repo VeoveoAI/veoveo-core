@@ -143,8 +143,10 @@ server may register one of them, `public`, `information-schema` or a slug starti
 `-` written as `_`, such as `time_zones` for `time-zones`. Its tables are
 `<schema>.<singular>` and its functions `<schema>.<name>()`. Its group role is
 `server_<schema>` and the login of each registration `<schema>_<suffix>`. Each schema
-notifies changes on the channel named after it, and its migrations record their history
-in `<schema>._sqlx_migrations`. Columns, constraints and indexes are `snake_case`.
+notifies changes on the channel named after it. A kernel table whose rows each belong to
+one server notifies on `<schema>.<server>` instead, such as `tasks.time`. A server's
+migrations record their history in `<schema>._sqlx_migrations`. Columns, constraints and
+indexes are `snake_case`.
 
 ## Runtime And Repository Names
 

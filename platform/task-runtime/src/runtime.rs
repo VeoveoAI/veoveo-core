@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 use sqlx::PgPool;
 use tokio::{sync::Mutex, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use veoveo_platform_store::{Instance, InstanceId, PlatformStore, StoreError};
+use veoveo_platform_store::{Channel, Instance, InstanceId, PlatformStore, StoreError};
 use veoveo_types::{ServerSlug, TaskId};
 
 use crate::{
@@ -84,9 +84,15 @@ impl TaskRuntime {
         self.store.pool()
     }
 
-    /// Read the `tasks` channel through this runtime's shared listener.
+    /// The channel on which the changes of this server's Tasks, and only those, arrive:
+    /// `tasks.<server>`. It fails for a server name too long for a PostgreSQL channel.
+    pub fn channel(&self) -> Result<Channel, TaskError> {
+        Ok(Channel::TASKS.qualified(self.server.as_str())?)
+    }
+
+    /// Read this server's channel through this runtime's shared listener.
     pub(crate) async fn signals(&self) -> Result<TaskSignals, TaskError> {
-        self.signals.subscribe(&self.store).await
+        self.signals.subscribe(&self.store, self.channel()?).await
     }
 
     /// This server's Task, without a caller selection. Callers read through `for_owner`.

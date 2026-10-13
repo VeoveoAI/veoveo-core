@@ -13,10 +13,11 @@ pub type TaskWork = Pin<Box<dyn Stream<Item = Result<TaskSnapshot, TaskError>> +
 impl TaskRuntime {
     /// Claim queued Tasks of this server, one per item the consumer polls.
     ///
-    /// The stream subscribes to the `tasks` channel, claims every queued Task, then waits.
-    /// A created or changed Task, each reap round of this instance, and a listener
-    /// reconnect start another round of claims, so work that a dead instance returned to
-    /// the queue is claimed again. Every item is owned by this runtime's instance; the
+    /// The stream subscribes to its server's channel, `tasks.<server>`, claims every
+    /// queued Task, then waits. A created or changed Task of this server, each reap round
+    /// of this instance, and a listener reconnect start another round of claims, so work
+    /// that a dead instance returned to the queue is claimed again. Another server's
+    /// Tasks never wake it. Every item is owned by this runtime's instance; the
     /// consumer executes it and settles it with a worker transition. Replicas share the
     /// queue, and each Task goes to one of them. The stream ends with an error when the
     /// instance loses its lock, because its claims no longer hold.

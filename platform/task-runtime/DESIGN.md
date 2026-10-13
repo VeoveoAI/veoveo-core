@@ -11,9 +11,9 @@ methods.
 | Standard or interface | Profile |
 |---|---|
 | MCP `2026-07-28` Tasks | The official RMCP Task model: task-augmented `tools/call`, `tasks/get`, `tasks/update`, `tasks/cancel` and Task status notifications on `subscriptions/listen`. Stored statuses map onto `working`, `input_required`, `completed`, `failed` and `cancelled` |
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0405` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
+| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0406` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
-| `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads on the `tasks` channel, keyed by Task ID and tenant |
+| `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads, keyed by Task ID and tenant, on the channel of the Task's server, `tasks.<server>` |
 | Row-level security | A member of `veoveo_server` reads and writes only the Tasks of its own servers |
 | RFC 9562 UUIDv7 | Native Task identity; lookups reject other versions |
 | `ai.veoveo/task-retention-pin` | Request `_meta` key that adds an internal retention pin to a new Task |
@@ -52,7 +52,8 @@ Task and request key; its rows go with their Task.
 Three triggers maintain the table. `task_revision` advances `revision` and `updated_at`
 on every update and rejects a change to the Task's identity, owner or request.
 `task_recovery` applies recovery when a Task loses its owner. `task_notify` reports every
-insert, update and delete on the `tasks` channel.
+insert, update and delete on the channel of the Task's server, such as `tasks.time`, and
+on no other channel.
 
 ## Ownership And Recovery
 
@@ -79,8 +80,9 @@ stops claiming.
 `TaskRuntime::work` returns a stream of Tasks this instance claimed. It claims the
 oldest queued Task of its server for each polled item with `FOR UPDATE SKIP LOCKED`, so
 replicas sharing the queue take different Tasks without waiting. With the queue empty,
-the stream waits for a created or changed Task, a reap round of its instance or a
-listener reconnect, and then claims again. A Task returned to the queue by any reaper
+the stream waits for a created or changed Task of its server, a reap round of its
+instance or a listener reconnect, and then claims again. Another server's Tasks never
+wake it. A Task returned to the queue by any reaper
 therefore reaches a live worker. The stream ends with an error when the instance loses
 its lock. `claim` takes one queued Task by ID, and `claim_next` takes the oldest.
 
@@ -137,7 +139,8 @@ Task is delivered only when its revision changed, and intermediate revisions may
 coalesce.
 
 One `PlatformStore::listen` connection per runtime serves every subscription and work
-stream. It starts with the first reader and closes after the last one leaves.
+stream. It listens on `TaskRuntime::channel`, `tasks.<server>`, starts with the first
+reader and closes after the last one leaves.
 
 ## Input Exchanges
 
@@ -170,8 +173,10 @@ it.
 
 `tests/tasks` runs against a fresh database from the
 [PostgreSQL fixture](../../testing/fixtures/DESIGN.md). It covers concurrent claims, the
-work stream, recovery of each class and fencing after an instance's session is
-terminated and reaped, cancellation of owned and unowned Tasks, resumable settlement,
-input exchanges with concurrent answers, idempotent creation, result and failure shapes,
-owner reads and pages, subscriptions across a listener reconnect, row-level security
-between two server logins and retention pruning.
+work stream, notifications that reach only the channel of the Task's server, recovery of
+each class and fencing after an instance's session is terminated and reaped,
+cancellation of owned and unowned Tasks, resumable settlement, input exchanges with
+concurrent answers, idempotent creation, result and failure shapes, owner reads and
+pages, subscriptions across a listener reconnect, row-level security between two server
+logins and retention pruning. A unit test in `signals.rs` checks on the same fixture that
+another server's Tasks never wake a runtime's listener.

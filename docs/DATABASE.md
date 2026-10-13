@@ -120,19 +120,28 @@ the holder's connection ends, Postgres grants the lock to the next waiter.
 ## Work Claims
 
 Workers claim queued work with `SELECT … FOR UPDATE SKIP LOCKED` and record their instance
-as the owner in the same transaction. A trigger notifies the owner's channel when work is
-created or released, and workers also claim at startup and after each reap.
+as the owner in the same transaction. A trigger notifies the channel of the work's server
+when work is created or released, and workers also claim at startup and after each reap.
 
 ## Change Notifications
 
-Row triggers execute `kernel.notify_change(key_column, tenant_column)`, which calls
-`pg_notify` with a JSON payload naming the table, the operation (`insert`, `update` or
-`delete`) and the row's key and tenant; a key longer than 1,024 bytes is sent as null.
-Each schema has one channel named after the schema. A consumer listens through
-`PlatformStore::listen`, a `PgListener` on its own connection that yields `Reconcile`
-once subscribed and again after every reconnection, because Postgres does not replay
-notifications sent while it was disconnected. Notifications are wake signals: consumers
-read current rows under their own authorization and never trust payload content as data.
+Row triggers execute `kernel.notify_change(key_column [, tenant_column [,
+qualifier_column]])`, which calls `pg_notify` with a JSON payload naming the table, the
+operation (`insert`, `update` or `delete`) and the row's key and tenant. A key longer than
+1,024 bytes is sent as null, and an empty tenant column name sends no tenant. Each schema
+has one channel named after the schema. A trigger that names a qualifier column notifies
+only `<schema>.<qualifier>`, with the column's value as the qualifier. A table whose rows
+each belong to one server qualifies by its `server` column, so `tasks.task` notifies
+`tasks.time` for a Task of server `time`, and each server's listener wakes only for its
+own rows. The qualifier column is `NOT NULL` and keeps its value for the row's life, and
+a qualified channel fits PostgreSQL's 63-byte identifier limit.
+
+A consumer listens through `PlatformStore::listen`, a `PgListener` on its own connection
+that yields `Reconcile` once subscribed and again after every reconnection, because
+Postgres does not replay notifications sent while it was disconnected. `Channel` admits a
+schema channel or a qualified one, and `Channel::qualified` builds the latter.
+Notifications are wake signals: consumers read current rows under their own authorization
+and never trust payload content as data.
 
 ## Timed Changes
 

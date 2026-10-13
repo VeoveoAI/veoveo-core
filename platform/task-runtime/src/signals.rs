@@ -1,6 +1,7 @@
-//! Wake signals from the `tasks` notification channel. One listener connection per
-//! runtime fans signals out to every subscription and work stream. A signal only names a
-//! changed Task; readers reread current rows under their own authorization.
+//! Wake signals from the runtime's server channel, `tasks.<server>`, which carries the
+//! changes of that server's Tasks only. One listener connection per runtime fans signals
+//! out to every subscription and work stream. A signal only names a changed Task;
+//! readers reread current rows under their own authorization.
 use std::collections::BTreeSet;
 
 use futures::StreamExt;
@@ -25,9 +26,13 @@ pub(crate) struct SignalHub {
 }
 
 impl SignalHub {
-    /// Join the shared listener, starting it if no reader holds it. Returns once the
-    /// listener is subscribed, so a read that follows misses no change.
-    pub(crate) async fn subscribe(&self, store: &PlatformStore) -> Result<TaskSignals, TaskError> {
+    /// Join the shared listener on `channel`, starting it if no reader holds it. Returns
+    /// once the listener is subscribed, so a read that follows misses no change.
+    pub(crate) async fn subscribe(
+        &self,
+        store: &PlatformStore,
+        channel: Channel,
+    ) -> Result<TaskSignals, TaskError> {
         let mut source = self.source.lock().await;
         if let Some(sender) = source
             .as_ref()
@@ -38,7 +43,7 @@ impl SignalHub {
                 receiver: sender.subscribe(),
             });
         }
-        let mut changes = store.listen(vec![Channel::TASKS]);
+        let mut changes = store.listen(vec![channel]);
         loop {
             match changes.next().await {
                 Some(Ok(ChangeSignal::Reconcile)) => break,
@@ -141,5 +146,103 @@ impl TaskSignals {
                 ) => return Some(wake),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeSet, sync::Arc, time::Duration};
+
+    use veoveo_platform_store::{Instance, PrincipalKind};
+    use veoveo_types::{
+        AccessSubject, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
+        ServerSlug, TaskId, TaskTypeName, TenantId, WorkContextId, WorkContextMembershipLevel,
+        WorkContextOutputPolicy,
+    };
+
+    use crate::{CreateTask, RecoveryClass, TaskOwner, TaskRuntime, test_store::TestDb};
+
+    fn owner() -> TaskOwner {
+        let principal = PrincipalId::parse("pilot").unwrap();
+        let tenant = TenantId::parse("mission-tenant").unwrap();
+        TaskOwner {
+            principal_key: principal.clone(),
+            principal_kind: PrincipalKind::User,
+            issuer: "https://issuer.test".parse().unwrap(),
+            subject: "pilot".parse().unwrap(),
+            profile: "operator".parse().unwrap(),
+            tenant_key: Some(tenant.clone()),
+            data_labels: BTreeSet::new(),
+            authority: InvocationAuthority {
+                work_context: WorkContextId::parse("mission").unwrap(),
+                tenant,
+                membership: WorkContextMembershipLevel::Owner,
+                policy_revision: PolicyVersion::parse("r1").unwrap(),
+                output_policy: WorkContextOutputPolicy {
+                    owner: AccessSubject::Principal(principal.clone()),
+                    initial_grants: Vec::new(),
+                    classification: None,
+                    data_labels: BTreeSet::new(),
+                },
+                provenance: InvocationProvenance::Direct {
+                    initiator: principal,
+                },
+            },
+        }
+    }
+
+    async fn runtime(db: &TestDb, server: &str) -> TaskRuntime {
+        let server = ServerSlug::parse(server).unwrap();
+        let instance = Instance::start(&db.a, &server).await.unwrap();
+        TaskRuntime::new(db.a.clone(), server, Arc::new(instance))
+    }
+
+    async fn create(runtime: &TaskRuntime) -> TaskId {
+        runtime
+            .create(CreateTask {
+                task_id: TaskId::new(),
+                owner: owner(),
+                server: runtime.server().clone(),
+                task_type: TaskTypeName::from_static("fixture.run"),
+                request: serde_json::json!({}),
+                recovery_class: RecoveryClass::Resume,
+                idempotency_key: None,
+                ttl_ms: None,
+                poll_interval_ms: None,
+                retention_pins: BTreeSet::new(),
+            })
+            .await
+            .unwrap()
+            .snapshot
+            .task_id
+    }
+
+    #[tokio::test]
+    async fn a_runtime_wakes_only_for_its_own_servers_tasks() {
+        tokio::time::timeout(Duration::from_secs(60), async {
+            let db = TestDb::new().await;
+            let time = runtime(&db, "time").await;
+            let other = runtime(&db, "other").await;
+            let mut signals = time.signals().await.unwrap();
+            for _ in 0..3 {
+                create(&other).await;
+            }
+            assert!(
+                tokio::time::timeout(Duration::from_millis(500), signals.next())
+                    .await
+                    .is_err(),
+                "another server's Tasks woke the runtime"
+            );
+            let own = create(&time).await;
+            let wake = tokio::time::timeout(Duration::from_secs(10), signals.next())
+                .await
+                .expect("the runtime's own Task wakes it")
+                .expect("the listener runs");
+            assert_eq!(wake.changed, BTreeSet::from([own]));
+            assert!(wake.claimable);
+            assert!(!wake.reconcile);
+        })
+        .await
+        .expect("the case finishes within 60 seconds");
     }
 }

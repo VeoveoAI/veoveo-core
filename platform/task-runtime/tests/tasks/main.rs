@@ -7,6 +7,7 @@ mod store;
 mod claims;
 mod inputs;
 mod lifecycle;
+mod notifications;
 mod owner;
 mod recovery;
 mod subscriptions;
