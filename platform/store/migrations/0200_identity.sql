@@ -95,6 +95,12 @@ CREATE TABLE identity.work_context_membership (
 -- deterministic identifier. Existing rows keep their security fields: a stored tenant or
 -- principal that disagrees with the given keys raises SQLSTATE VV001 or VV002. A given
 -- display name replaces the stored one; without one, a new principal takes the fallback.
+--
+-- Each row also has a unique natural key that ON CONFLICT (id) does not arbitrate, so
+-- two first-time inserts of the same row would race on it. Creating a missing row
+-- therefore first takes the transaction advisory lock (1987476603, hash of its
+-- identifier): concurrent first calls create the row once, and the later caller's
+-- insert finds the committed row. A call for rows that exist takes no lock.
 CREATE FUNCTION identity.ensure_identity(
     enterprise uuid,
     tenant uuid,
@@ -111,18 +117,30 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
-    INSERT INTO identity.enterprise (id, slug, name)
-    VALUES (ensure_identity.enterprise, 'installation', 'Veoveo installation')
-    ON CONFLICT (id) DO NOTHING;
+    IF NOT EXISTS (
+        SELECT FROM identity.enterprise AS e WHERE e.id = ensure_identity.enterprise
+    ) THEN
+        PERFORM pg_catalog.pg_advisory_xact_lock(
+            1987476603, pg_catalog.hashtext(ensure_identity.enterprise::text)
+        );
+        INSERT INTO identity.enterprise (id, slug, name)
+        VALUES (ensure_identity.enterprise, 'installation', 'Veoveo installation')
+        ON CONFLICT (id) DO NOTHING;
+    END IF;
 
-    INSERT INTO identity.tenant (id, enterprise, slug, name)
-    VALUES (
-        ensure_identity.tenant,
-        ensure_identity.enterprise,
-        ensure_identity.tenant_key,
-        ensure_identity.tenant_key
-    )
-    ON CONFLICT (id) DO NOTHING;
+    IF NOT EXISTS (SELECT FROM identity.tenant AS t WHERE t.id = ensure_identity.tenant) THEN
+        PERFORM pg_catalog.pg_advisory_xact_lock(
+            1987476603, pg_catalog.hashtext(ensure_identity.tenant::text)
+        );
+        INSERT INTO identity.tenant (id, enterprise, slug, name)
+        VALUES (
+            ensure_identity.tenant,
+            ensure_identity.enterprise,
+            ensure_identity.tenant_key,
+            ensure_identity.tenant_key
+        )
+        ON CONFLICT (id) DO NOTHING;
+    END IF;
     PERFORM FROM identity.tenant AS t
     WHERE t.id = ensure_identity.tenant
         AND (t.enterprise <> ensure_identity.enterprise OR t.slug <> ensure_identity.tenant_key);
@@ -131,6 +149,13 @@ BEGIN
             USING ERRCODE = 'VV001';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT FROM identity.principal AS p WHERE p.id = ensure_identity.principal
+    ) THEN
+        PERFORM pg_catalog.pg_advisory_xact_lock(
+            1987476603, pg_catalog.hashtext(ensure_identity.principal::text)
+        );
+    END IF;
     INSERT INTO identity.principal AS p
         (id, tenant, principal_key, kind, issuer, subject, display_name)
     VALUES (

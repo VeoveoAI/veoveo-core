@@ -139,6 +139,51 @@ async fn a_tenant_stored_under_another_key_conflicts() {
 }
 
 #[tokio::test]
+async fn concurrent_first_logins_converge_on_one_identity() {
+    let db = TestDb::new().await;
+    let server = db.server_store(&ServerSlug::parse("clock").unwrap()).await;
+    let stores = [db.a.clone(), db.b.clone(), server];
+    for round in 0..24 {
+        // Every round names a tenant and principals nobody recorded yet, so the calls
+        // race to create the enterprise, the tenant and each principal.
+        let tenant = format!("tenant-{round}");
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(12));
+        let calls = (0..12).map(|call| {
+            let store = stores[call % stores.len()].clone();
+            let barrier = barrier.clone();
+            let tenant = tenant.clone();
+            let principal = format!("user-{}", call % 3);
+            async move {
+                barrier.wait().await;
+                store
+                    .ensure_identity(
+                        &tenant,
+                        &principal,
+                        ISSUER,
+                        &format!("https://issuer.example/{tenant}/{principal}"),
+                        PrincipalKind::User,
+                    )
+                    .await
+            }
+        });
+        for result in futures::future::join_all(calls).await {
+            result.unwrap();
+        }
+        for principal in ["user-0", "user-1", "user-2"] {
+            let count = sqlx::query_file_scalar!(
+                "tests/queries/identity/principal_count.sql",
+                &tenant,
+                principal,
+            )
+            .fetch_one(db.a.pool())
+            .await
+            .unwrap();
+            assert_eq!(count, 1, "{tenant} {principal}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn registered_servers_record_identities_through_the_kernel_function() {
     let db = TestDb::new().await;
     let server = db.server_store(&ServerSlug::parse("clock").unwrap()).await;

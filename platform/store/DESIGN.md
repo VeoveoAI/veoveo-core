@@ -12,7 +12,7 @@ the crate implements.
 | sqlx 0.9.0 | `PgPool`, `PgListener`, compile-time checked `query_file!` macros, `Migrator` with this crate's `sqlx.toml` |
 | `postgres://` connection URIs | The URL names host and database and may name the user; the password travels separately |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads: `{"table", "operation", "key", "tenant"}` on the schema's channel, or only on `<schema>.<qualifier>` when the trigger names a qualifier column |
-| Advisory locks | Instances lock `(1987471726, id)`; singletons lock `(1987474279, hashtext(name))` |
+| Advisory locks | Instances lock `(1987471726, id)`; singletons lock `(1987474279, hashtext(name))`; first-time identity creation takes the transaction lock `(1987476603, hashtext(id))` |
 | [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) §5 base64url, JSON | Keyset cursors: unpadded base64url over the JSON object `{"scope", "position"}`; `scope` is a `sha256:` digest under the domain `https://veoveo.ai/formats/keyset-cursor-scope` |
 
 ## Contents

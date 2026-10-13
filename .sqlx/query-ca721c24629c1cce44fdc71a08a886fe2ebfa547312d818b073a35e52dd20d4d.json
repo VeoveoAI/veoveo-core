@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- The principal rows of one tenant key and principal key.\nSELECT count(*) AS \"count!\"\nFROM identity.principal AS p\nJOIN identity.tenant AS t ON t.id = p.tenant\nWHERE t.slug = $1 AND p.principal_key = $2\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ca721c24629c1cce44fdc71a08a886fe2ebfa547312d818b073a35e52dd20d4d"
+}

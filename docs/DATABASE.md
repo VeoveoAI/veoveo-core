@@ -13,7 +13,7 @@ grants that Postgres enforces.
 | PostgreSQL frontend/backend protocol | Through [sqlx](https://docs.rs/sqlx/0.9.0) 0.9.0 with Rustls; every static query is checked at compile time against the migrated schema |
 | SQL migrations | sqlx `Migrator`, one migration set for the kernel schemas and one per server schema, checksummed and applied under the migrator's advisory lock; `platform/store/sqlx.toml` names the kernel history table |
 | `LISTEN` / `NOTIFY` | Change notifications; payloads are JSON objects under 8,000 bytes |
-| Advisory locks | Process instance liveness and singleton election |
+| Advisory locks | Process instance liveness, singleton election and first-time identity creation |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | Row-level security, roles and `GRANT` | Isolation between the kernel and registered servers |
 | `xid8` and `pg_snapshot_xmin` | Commit-safe ordering for the audit log |
@@ -68,6 +68,14 @@ once per statement. Kernel writes that span owners, such as recording an identit
 owner, so it asks `kernel.servers_of(session_user)` for the servers of the calling login
 instead. Every function in a kernel schema is revoked from `PUBLIC`, and the migrations
 grant each one that servers call.
+
+`identity.ensure_identity` records an identity on every login, so concurrent first logins
+of one principal call it at the same time. Its inserts arbitrate on the deterministic
+identifier, and each table also has a unique natural key, such as a principal's tenant and
+principal key, that the insert does not arbitrate. Before creating a missing row the
+function takes the transaction advisory lock `(1987476603, hashtext(id))`, so the first
+caller creates it and the others find the committed row. A call for rows that exist
+takes no lock and writes nothing unless the display name changes.
 
 Servers hold no privilege on the audit tables. A server login declares its audit classes
 with `audit.declare_server_classes(classes, schemas)`, which admits only classes under
