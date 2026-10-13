@@ -30,7 +30,7 @@ An installation has one database. Each owner has one schema:
 | `identity` | Core | Enterprises, tenants, principals and Work Contexts |
 | `gateway` | The Gateway | Control-plane revisions, OAuth state, registrations and Task routes, from the Gateway's own migrations |
 | `tasks` | Core | Tasks, their input exchanges and idempotency keys |
-| `audit` | Core | Declared audit classes, audit records, blocks, seals and export cursors |
+| `audit` | Core | Declared audit classes, audit records, blocks, seals and export cursors; servers declare and append through two functions |
 | `<server>` | A registered server | The server's own tables and functions; the name is the server slug with `-` replaced by `_` |
 
 The Gateway connects as the installation owner, a role that owns the database and has
@@ -64,8 +64,19 @@ its `server` column names a server whose group role the current user belongs to.
 `kernel.current_servers()` returns those slugs as a `text[]`; a policy reads it through a
 scalar subquery, `server = ANY ((SELECT kernel.current_servers())::text[])`, so it runs
 once per statement. Kernel writes that span owners, such as recording an identity, are
-`SECURITY DEFINER` functions granted to `veoveo_server`. Every function in a kernel
-schema is revoked from `PUBLIC`, and the migrations grant each one that servers call.
+`SECURITY DEFINER` functions granted to `veoveo_server`. Such a function runs as its
+owner, so it asks `kernel.servers_of(session_user)` for the servers of the calling login
+instead. Every function in a kernel schema is revoked from `PUBLIC`, and the migrations
+grant each one that servers call.
+
+Servers hold no privilege on the audit tables. A server login declares its audit classes
+with `audit.declare_server_classes(classes, schemas)`, which admits only classes under
+the `<server>.` prefix of one of its servers and stores that server with each class, and
+appends with `audit.append_server_records(drafts, occurred)`, which admits only records
+of classes its servers declared. Both are `SECURITY DEFINER` functions owned by the
+installation owner, with `search_path` pinned and `EXECUTE` granted to `veoveo_server`
+only. The append runs the owner's `audit.append` inside the server's transaction, so a
+server's records commit with its change and take the ordering below.
 
 ## Connections
 

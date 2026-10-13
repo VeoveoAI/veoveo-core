@@ -27,7 +27,7 @@ Export protocols are in the [export design](src/export/DESIGN.md).
 
 | Relation | Holds |
 |---|---|
-| `audit.detail_type` | Each declared class with its owner, the JSON Schema of its detail and the time of its last declaration |
+| `audit.detail_type` | Each declared class with its owner, the JSON Schema of its detail, the time of its last declaration and, for a class a registered server declared, that server |
 | `audit.record` | One row per record: the draft as `jsonb` and its occurrence time, generated lookup columns, the insertion sequence, the writing transaction and the database time of the insert |
 | `audit.sealer` | The sealed position: the transaction and sequence of the last sealed record |
 | `audit.block` | Each signed block document with its partition, sequence, head hash and sealing time |
@@ -44,11 +44,20 @@ undeclared class cannot be stored. A trigger assigns the writing transaction and
 decode each draft through the audit registry and reject a row whose occurrence time
 disagrees with it.
 
-`AuditStore::declare` records the registry's declarations, the platform's included.
-Every owner declares before its first append; repeating a declaration changes nothing,
-and a changed schema replaces the stored one. `AuditStore::declarations` returns every
-stored declaration, from which a reader builds a registry that reads every owner's
-records.
+`AuditStore::declare` records the registry's declarations, the platform's included,
+through the installation owner. Every owner declares before its first append; repeating
+a declaration changes nothing, and a changed schema replaces the stored one.
+`AuditStore::declarations` returns every stored declaration, from which a reader builds a
+registry that reads every owner's records.
+
+A registered server audits through its own login, which holds no privilege on the audit
+tables. `AuditStore::declare_as_server(server)` declares the registry's classes under the
+`<server>.` prefix through `audit.declare_server_classes`. That SECURITY DEFINER function
+admits a class only under the prefix of a server whose group role the calling login
+holds, records that server in `audit.detail_type`, requires a closed object schema of at
+most 64 KiB and replaces a schema only for the server that declared the class. A class
+the installation owner declared, or one outside the login's prefix, fails as
+`AuditStoreError::ForeignClass`.
 
 `tests/database_conformance.rs` holds the audit queries and the `audit` schema to the
 [server schema rules](../../docs/DATABASE.md#server-schema-rules), with each table's
@@ -59,7 +68,13 @@ every partition, and their statements say so in their markers.
 
 Domain code appends inside its own transaction with `AuditTransactionWrite`, so the
 records commit or roll back with the domain change. `AuditStore::append` runs the same
-append in a transaction of its own. Repeating an append of the same drafts changes
+append in a transaction of its own. A registered server calls
+`AuditTransactionWrite::append_as_server` on a connection of its own login, after the
+same registry and schema checks. Its records go through `audit.append_server_records`,
+a SECURITY DEFINER function that admits only classes its login's servers declared and
+then runs the owner's `audit.append` in the server's transaction, so the records take the
+same commit ordering, sealed positions and identity checks as every other record. Another
+owner's class fails as `AuditAppendError::ForeignClass` and aborts the transaction. Repeating an append of the same drafts changes
 nothing. A draft that reuses a stored identity with other content raises `VV501`, which
 aborts the transaction.
 
