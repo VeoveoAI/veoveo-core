@@ -1,4 +1,4 @@
-//! Durable MCP Tasks in the installation's PostgreSQL database.
+//! Durable Tasks in the installation's PostgreSQL database.
 //!
 //! Every Task is a row of `tasks.task`. A process instance owns the Tasks it claims,
 //! worker writes compare that ownership, and the database moves a dead instance's Tasks
@@ -10,16 +10,13 @@ mod claims;
 mod config;
 mod create;
 mod error;
-pub mod hosting;
 mod inputs;
-mod mcp;
 mod owner;
 mod owner_query;
 mod resumable;
 mod retention;
 mod row;
 mod runtime;
-mod service;
 mod signals;
 mod snapshot;
 mod subscriptions;
@@ -35,21 +32,12 @@ mod work;
 pub use config::TaskRuntimeConfig;
 pub use create::{CreateTask, CreateTaskResult};
 pub use error::TaskError;
-pub use hosting::{DurableListener, DurableTasks, TasksOnly, WithResources};
 pub use inputs::{MAX_TASK_INPUTS, TaskInputExchange, TaskInputRequest, TaskInputSubmission};
-pub use mcp::{mcp_task_completion, project_snapshot, task_seed};
 pub use owner::TaskOwner;
 pub use owner_query::OwnerTaskQuery;
 pub use resumable::ResumeCancellationPolicy;
 pub use retention::RETENTION_INTERVAL;
-pub use runtime::TaskRuntime;
-pub use service::{
-    DurableTaskService, DurableTaskSubscription, DurableTaskUpdateStream,
-    TASK_RETENTION_PIN_META_KEY, authorized_snapshot, cancel_durable_task, durable_input_responses,
-    get_durable_task, listen_durable_subscriptions, restore_task_retention_meta, retention_pins,
-    start_durable_tool_task, subscribe_authorized_snapshots, subscribe_durable_tasks,
-    update_durable_task,
-};
+pub use runtime::{TaskRuntime, parse_task_id};
 pub use snapshot::{
     TaskFailure, TaskPage, TaskPageCursor, TaskPayloadState, TaskRetentionPin,
     TaskRetentionPinError, TaskSnapshot,

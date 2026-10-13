@@ -14,11 +14,9 @@ path = "src/lib.rs"
 veoveo-task-contract = { workspace = true, features = ["postgres"] }
 veoveo-types.workspace = true
 veoveo-platform-store.workspace = true
-veoveo-mcp-contract = { workspace = true, features = ["runtime"] }
 async-stream = "0.3.6"
 chrono.workspace = true
 futures.workspace = true
-rmcp.workspace = true
 schemars.workspace = true
 secrecy.workspace = true
 serde.workspace = true

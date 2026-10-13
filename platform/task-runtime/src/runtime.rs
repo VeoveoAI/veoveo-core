@@ -241,8 +241,8 @@ pub(crate) fn validate_task_id(task_id: TaskId) -> Result<TaskId, TaskError> {
     Ok(task_id)
 }
 
-/// Admit an MCP Task handle as a native UUIDv7 identity.
-pub(crate) fn parse_task_id(value: &str) -> Result<TaskId, TaskError> {
+/// Admit an external Task handle as a native UUIDv7 identity.
+pub fn parse_task_id(value: &str) -> Result<TaskId, TaskError> {
     let task_id = value
         .parse::<TaskId>()
         .map_err(|error| TaskError::invalid_record(error.to_string()))?;
