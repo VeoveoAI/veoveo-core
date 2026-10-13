@@ -74,8 +74,11 @@ take a `TransactionAppend`, rows another owner records in the same transaction; 
 Gateway passes its audit records, and a refused append rolls the change back.
 
 `registration` notifies the `gateway` channel when a row is inserted or deleted or its
-metadata changes. The Gateway's liveness stamps change `live_at` only and wake no
-listener. A `task_route` references its tenant, owner and Work Context in `identity` and
+metadata changes. Its `orphaned_at` is null while the registration's login holds a live
+kernel instance. The Gateway sets it when it first finds the login without one, clears
+it when an instance appears, and removes the registration with its login once
+`orphaned_at` is older than the grace period. An installation whose servers stay alive
+therefore writes nothing while it is idle, and neither mark wakes a listener. A `task_route` references its tenant, owner and Work Context in `identity` and
 goes with the Work Context when a publication removes it.
 
 ## Tests

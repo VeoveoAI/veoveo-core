@@ -711,7 +711,7 @@ async fn task_routes_go_with_their_work_context() {
 }
 
 #[tokio::test]
-async fn registration_changes_wake_the_gateway_channel_and_liveness_stamps_do_not() {
+async fn registration_changes_wake_the_gateway_channel_and_orphan_marks_do_not() {
     let db = TestDb::new().await;
     let mut changes = db.b.listen(vec![Channel::GATEWAY]);
     assert_eq!(
@@ -752,13 +752,18 @@ async fn registration_changes_wake_the_gateway_channel_and_liveness_stamps_do_no
         }
     };
     expect(ChangeOperation::Insert)(changes.next().await);
-    sqlx::query_file!(
-        "tests/queries/gateway/stamp_registration.sql",
-        "observatory-1"
-    )
-    .execute(db.a.pool())
-    .await
-    .unwrap();
+    // Marking the registration orphaned and clearing the mark change orphaned_at alone.
+    for orphaned in [true, false] {
+        let marked = sqlx::query_file_scalar!(
+            "tests/queries/gateway/mark_orphaned.sql",
+            "observatory-1",
+            orphaned
+        )
+        .fetch_one(db.a.pool())
+        .await
+        .unwrap();
+        assert_eq!(marked.is_some(), orphaned);
+    }
     sqlx::query_file!(
         "tests/queries/gateway/update_registration.sql",
         "observatory-1",
@@ -767,7 +772,7 @@ async fn registration_changes_wake_the_gateway_channel_and_liveness_stamps_do_no
     .execute(db.a.pool())
     .await
     .unwrap();
-    // The liveness stamp sent nothing, so the next signal is the metadata change.
+    // The orphan marks sent nothing, so the next signal is the metadata change.
     expect(ChangeOperation::Update)(changes.next().await);
     assert!(
         tokio::time::timeout(std::time::Duration::from_millis(200), changes.next())

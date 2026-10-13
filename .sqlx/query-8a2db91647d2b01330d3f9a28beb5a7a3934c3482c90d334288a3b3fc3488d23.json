@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gateway.registration (\n    client_id, server, metadata, software_statement, access_token_digest, login,\n    issued_at, updated_at\n)\nVALUES ($1, $2, $3, 'statement', $4, $5, now(), now())\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8a2db91647d2b01330d3f9a28beb5a7a3934c3482c90d334288a3b3fc3488d23"
+}
