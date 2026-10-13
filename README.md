@@ -18,7 +18,6 @@ revision of this repository.
 | `platform/task-runtime/contract` | `veoveo-task-contract` | The Task vocabulary |
 | `platform/audit` | `veoveo-audit` | The audit log in PostgreSQL: group-committed appends, partition-scoped reads and change streams, the singleton sealer, signed blocks, export, retention and verification |
 | `platform/audit/contract` | `veoveo-audit-contract` | Audit record, target, block and reader types, and the append inside a caller's PostgreSQL transaction |
-| `platform/artifacts/contract` | `veoveo-artifact-contract` | Artifact identities, metadata and release states |
 | `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision |
 | `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database, the database conformance checks and tool-input cases |
 

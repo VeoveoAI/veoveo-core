@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-    "platform/artifacts/contract",
     "platform/audit",
     "platform/audit/contract",
     "platform/http",
@@ -93,4 +92,3 @@ uuid = { version = "1.24.1", features = ["serde", "v4", "v5", "v7"] }
 zeroize = "=1.9.0"
 veoveo-types = { path = "platform/types" }
 veoveo-platform-store = { path = "platform/store" }
-veoveo-artifact-contract = { path = "platform/artifacts/contract" }
