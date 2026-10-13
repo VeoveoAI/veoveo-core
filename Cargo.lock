@@ -3969,22 +3969,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "veoveo-policy"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "schemars",
- "serde",
- "serde_json",
- "veoveo-audit-contract",
- "veoveo-gateway-contract",
- "veoveo-mcp-contract",
- "veoveo-mcp-ext-registration",
- "veoveo-types",
-]
-
-[[package]]
 name = "veoveo-task-contract"
 version = "0.1.0"
 dependencies = [
