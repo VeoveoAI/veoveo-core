@@ -514,3 +514,80 @@ async fn offline_queries_are_reported_by_their_files_and_filtered_by_source() {
         "{server}"
     );
 }
+
+/// An owner's migrator, which keeps its history in its own schema and creates it, as an
+/// owner's `sqlx.toml` declares.
+async fn owner_migrator(schema: &'static str) -> Migrator {
+    let mut migrator = migrator(schema).await;
+    migrator.dangerous_set_table_name(format!("{schema}._sqlx_migrations"));
+    migrator.create_schema(schema);
+    migrator
+}
+
+#[tokio::test]
+async fn an_owner_schema_is_migrated_after_the_kernel_and_checked_as_the_installation_owner() {
+    let report = Conformance::new()
+        .owner("inventory", owner_migrator("inventory").await)
+        .query(
+            "item by name",
+            "SELECT id FROM inventory.item WHERE tenant = $1 AND name = $2",
+        )
+        .query(
+            "applied migration",
+            "SELECT success FROM inventory._sqlx_migrations WHERE version = $1",
+        )
+        .query(
+            "unscoped item read",
+            "SELECT id FROM inventory.item WHERE name = $1 LIMIT 10",
+        )
+        .run()
+        .await;
+    assert_eq!(of(&report, "item by name"), vec![], "{report}");
+    // The history table exists in the owner's schema, so the statement plans.
+    assert_eq!(of(&report, "applied migration"), vec![], "{report}");
+    assert_eq!(of(&report, "inventory"), vec![], "{report}");
+    assert_reports(
+        &report,
+        "unscoped item read",
+        Rule::TenantPredicate,
+        "inventory.item",
+    );
+}
+
+#[tokio::test]
+async fn an_owner_schema_is_held_to_the_schema_rules() {
+    let report = Conformance::new()
+        .owner("stockroom", owner_migrator("stockroom").await)
+        .run()
+        .await;
+    assert_reports(&report, "stockroom.bin", Rule::Schema, "retention");
+    assert!(
+        !report
+            .violations
+            .iter()
+            .any(|violation| violation.subject.contains("_sqlx_migrations")),
+        "the history table is exempt from the schema rules\n{report}"
+    );
+}
+
+#[tokio::test]
+#[should_panic(expected = "an owner's migrations keep their history in its own schema")]
+async fn an_owner_history_outside_its_schema_is_refused() {
+    let _ = Conformance::new().owner("inventory", migrator("inventory").await);
+}
+
+#[tokio::test]
+#[should_panic(expected = "a conformance check covers one server or one owner schema, not both")]
+async fn an_owner_and_a_server_in_one_check_are_refused() {
+    let _ = Conformance::new()
+        .server(&slug("ledger"), migrator("ledger").await)
+        .owner("inventory", owner_migrator("inventory").await);
+}
+
+#[tokio::test]
+#[should_panic(expected = "is a kernel schema")]
+async fn a_kernel_schema_is_not_an_owner_schema() {
+    let mut kernel = migrator("inventory").await;
+    kernel.dangerous_set_table_name("audit._sqlx_migrations");
+    let _ = Conformance::new().owner("audit", kernel);
+}

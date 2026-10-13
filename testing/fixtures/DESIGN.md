@@ -57,6 +57,7 @@ service. Core's own suites include the file by path next to `store.rs`.
 |---|---|
 | `Conformance::new()` | An empty check |
 | `server(&slug, migrator)` | Applies the server's migrations as one of its logins, checks the server's schema and plans every query as that login; without it, queries are planned as the installation owner |
+| `owner(schema, migrator)` | Applies the migrations of a component that owns a schema of the installation database, such as the Gateway, as the installation owner after the kernel migrations, and checks that schema; queries are planned as the installation owner. The migrator must keep its history in `<schema>._sqlx_migrations`, the schema must not be a kernel schema, and a check covers one owner or one server, never both |
 | `schema(name)` | Another schema whose tables the index-use and schema rules cover, such as a kernel schema |
 | `queries_from(dir)` | Every `query-*.json` of a sqlx offline directory, each named by the `.sql` file under the directory's parent whose SHA-256 is its hash |
 | `sources(dir)` | Keeps the queries whose `.sql` file lies under `dir`; repeatable |
@@ -66,7 +67,8 @@ service. Core's own suites include the file by path next to `store.rs`.
 | `pending(rule, subject, reason)` | Known violations of one rule under one query file or table, reported as pending |
 | `check()`, `run()` | Panics with the report when a rule is broken, or returns the `Report` |
 
-The check clones a fixture database, reads the catalog through the owner pool and the
+The check clones a fixture database, applies the owner's or the server's migrations,
+reads the catalog through the owner pool and the
 search path of the planning session, and analyzes each query once. The tenant and
 row-bound rules work on pg_query's parse tree: a query level records its relations and
 the equalities of its WHERE and join conditions, each limited to the relations it can

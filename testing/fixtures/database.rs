@@ -1,7 +1,7 @@
 //! Database conformance checks for a crate's compile-checked queries and its schema.
 //!
-//! [`Conformance`] migrates a fixture database, reads every query of a sqlx offline
-//! directory and checks four rules: tenant predicates, row bounds, index use under
+//! [`Conformance`] migrates a fixture database, applies a server's or an owner's
+//! migrations, reads every query of a sqlx offline directory and checks four rules: tenant predicates, row bounds, index use under
 //! generic plans and the schema rules of `docs/DATABASE.md`. One call reports every
 //! violation and every exemption. Requires the PostgreSQL 18 server programs on `PATH`.
 //!
@@ -19,7 +19,7 @@ use std::{
 };
 
 use sqlx::migrate::Migrator;
-use veoveo_platform_store::ServerSchema;
+use veoveo_platform_store::{KERNEL_SCHEMAS, ServerSchema};
 use veoveo_types::ServerSlug;
 
 use super::store::TestDb;
@@ -54,6 +54,7 @@ const LIMIT: Duration = Duration::from_secs(300);
 pub struct Conformance {
     schemas: BTreeSet<String>,
     server: Option<(ServerSlug, Migrator)>,
+    owner: Option<(String, Migrator)>,
     directories: Vec<PathBuf>,
     sources: Vec<PathBuf>,
     inline: Vec<(String, String)>,
@@ -81,9 +82,42 @@ impl Conformance {
             self.server.is_none(),
             "a conformance check covers one server"
         );
+        assert!(
+            self.owner.is_none(),
+            "a conformance check covers one server or one owner schema, not both"
+        );
         let schema = ServerSchema::new(server).expect("a server slug names a server schema");
         self.schemas.insert(schema.schema().to_owned());
         self.server = Some((server.clone(), migrator));
+        self
+    }
+
+    /// Apply an owner's migrations after the kernel migrations, as the installation
+    /// owner, the way a component that owns a schema of the installation database, such
+    /// as the Gateway, applies them at startup, and check `schema`. Queries are planned
+    /// as the installation owner. The migrator creates its schema and keeps its history
+    /// inside it, in `<schema>._sqlx_migrations`, as the owner's `sqlx.toml` declares.
+    pub fn owner(mut self, schema: impl Into<String>, migrator: Migrator) -> Self {
+        let schema = schema.into();
+        assert!(
+            self.owner.is_none(),
+            "a conformance check covers one owner schema"
+        );
+        assert!(
+            self.server.is_none(),
+            "a conformance check covers one server or one owner schema, not both"
+        );
+        assert!(
+            !KERNEL_SCHEMAS.contains(&schema.as_str()),
+            "`{schema}` is a kernel schema, which core's migrations own"
+        );
+        let history = format!("{schema}._sqlx_migrations");
+        assert_eq!(
+            migrator.table_name, history,
+            "an owner's migrations keep their history in its own schema"
+        );
+        self.schemas.insert(schema.clone());
+        self.owner = Some((schema, migrator));
         self
     }
 
@@ -161,6 +195,7 @@ impl Conformance {
         let Self {
             schemas,
             server,
+            owner,
             directories,
             sources,
             inline,
@@ -171,6 +206,12 @@ impl Conformance {
         let queries = queries::load(&directories, &sources, &inline)
             .unwrap_or_else(|error| panic!("Database conformance queries: {error}"));
         let db = TestDb::new().await;
+        if let Some((schema, migrator)) = owner {
+            migrator
+                .run(db.a.pool())
+                .await
+                .unwrap_or_else(|error| panic!("Database conformance owner `{schema}`: {error}"));
+        }
         let server_schema = server.as_ref().map(|(server, _)| {
             ServerSchema::new(server)
                 .expect("a server slug names a server schema")
