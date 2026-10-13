@@ -8,6 +8,7 @@ CREATE TABLE account (
 );
 
 CREATE INDEX account_page ON account (tenant, created_at, id);
+CREATE INDEX account_created ON account (created_at, id);
 
 COMMENT ON TABLE account IS 'Retention: until the tenant deletes the account.';
 
@@ -33,3 +34,12 @@ CREATE TABLE setting (
 );
 
 COMMENT ON TABLE setting IS 'Retention: one row for the life of the installation.';
+
+-- How far an exporter has read the accounts of every tenant.
+CREATE TABLE export_position (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    created_at timestamptz NOT NULL,
+    id uuid NOT NULL
+);
+
+COMMENT ON TABLE export_position IS 'Retention: one row for the life of the installation.';

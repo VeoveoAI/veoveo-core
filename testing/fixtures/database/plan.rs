@@ -25,7 +25,8 @@ pub(super) async fn explain(
 
 /// The scans of tables in `schemas` that read rows without an index seek: sequential
 /// scans, index scans without an index condition, and index scans under a LIMIT that
-/// filter an index column instead of seeking it.
+/// filter an index column instead of seeking it. A nested loop's join filter tests the
+/// rows of its outer scan, so under a LIMIT it counts as that scan's filter.
 ///
 /// An index scan without a condition still counts as a seek path in two places. Under
 /// a LIMIT with no filter it is a top-N read in index order. As the input of a hash or
@@ -35,7 +36,12 @@ pub(super) async fn explain(
 pub(super) fn scans(plan: &Value, catalog: &Catalog, schemas: &BTreeSet<String>) -> Vec<String> {
     let mut found = Vec::new();
     if let Some(root) = plan.get(0).and_then(|explained| explained.get("Plan")) {
-        visit(root, false, None, catalog, schemas, &mut found);
+        let mut checks = Checks {
+            catalog,
+            schemas,
+            found: &mut found,
+        };
+        checks.visit(root, Above::default());
     }
     found
 }
@@ -43,22 +49,69 @@ pub(super) fn scans(plan: &Value, catalog: &Catalog, schemas: &BTreeSet<String>)
 /// The join-key columns of each relation a hash or merge join compares, by alias.
 type JoinKeys = BTreeMap<String, BTreeSet<String>>;
 
-fn visit(
-    node: &Value,
+/// What the plan nodes above a node say about it.
+#[derive(Clone, Copy, Default)]
+struct Above<'p> {
+    /// A LIMIT stops the read early.
     limited: bool,
-    joined: Option<&JoinKeys>,
-    catalog: &Catalog,
-    schemas: &BTreeSet<String>,
-    found: &mut Vec<String>,
-) {
-    let text = |field: &str| node.get(field).and_then(Value::as_str);
-    let kind = text("Node Type").unwrap_or_default();
-    let limited = limited || kind == "Limit";
-    if let (Some(schema), Some(table)) = (text("Schema"), text("Relation Name"))
-        && let Some(id) = catalog.resolve(Some(schema), table)
-        && schemas.contains(schema)
-        && !catalog.relation(id).singleton
-    {
+    /// The hash or merge join this node feeds compares these keys.
+    joined: Option<&'p JoinKeys>,
+    /// The nested loop whose outer input this node is filters its rows with this.
+    join_filter: Option<&'p str>,
+}
+
+struct Checks<'c> {
+    catalog: &'c Catalog,
+    schemas: &'c BTreeSet<String>,
+    found: &'c mut Vec<String>,
+}
+
+impl Checks<'_> {
+    fn visit(&mut self, node: &Value, above: Above<'_>) {
+        let text = |field: &str| node.get(field).and_then(Value::as_str);
+        let kind = text("Node Type").unwrap_or_default();
+        let limited = above.limited || kind == "Limit";
+        self.scan(node, kind, Above { limited, ..above });
+        let keys = match kind {
+            "Hash Join" => text("Hash Cond").map(join_keys),
+            "Merge Join" => text("Merge Cond").map(join_keys),
+            _ => None,
+        };
+        for child in node
+            .get("Plans")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let outer = child.get("Parent Relationship").and_then(Value::as_str) == Some("Outer");
+            let child_above = Above {
+                limited,
+                // A hash join's inner input is the Hash node above the scan.
+                joined: match kind {
+                    "Hash Join" | "Merge Join" => keys.as_ref(),
+                    "Hash" => above.joined,
+                    _ => None,
+                },
+                join_filter: match kind {
+                    "Nested Loop" if limited && outer => text("Join Filter"),
+                    _ => None,
+                },
+            };
+            self.visit(child, child_above);
+        }
+    }
+
+    fn scan(&mut self, node: &Value, kind: &str, above: Above<'_>) {
+        let text = |field: &str| node.get(field).and_then(Value::as_str);
+        let (Some(schema), Some(table)) = (text("Schema"), text("Relation Name")) else {
+            return;
+        };
+        let Some(id) = self.catalog.resolve(Some(schema), table) else {
+            return;
+        };
+        if !self.schemas.contains(schema) || self.catalog.relation(id).singleton {
+            return;
+        }
         let alias = text("Alias").unwrap_or(table);
         let label = if alias == table {
             format!("`{schema}.{table}`")
@@ -66,62 +119,81 @@ fn visit(
             format!("`{schema}.{table} AS {alias}`")
         };
         let index = text("Index Name").unwrap_or_default();
-        let filter = text("Filter");
-        let seekable_join = joined.and_then(|keys| keys.get(alias)).is_some_and(|keys| {
-            catalog.relation(id).indexes.iter().any(|index| {
-                index.not_null.is_some()
-                    && index
-                        .columns
-                        .first()
-                        .and_then(Option::as_ref)
-                        .is_some_and(|leading| keys.contains(leading))
-            })
-        });
+        let filtered: BTreeSet<String> = text("Filter")
+            .into_iter()
+            .chain(above.join_filter)
+            .flat_map(qualified_references)
+            .filter(|(relation, _)| relation == alias)
+            .map(|(_, column)| column)
+            .collect();
+        let seekable_join = above
+            .joined
+            .and_then(|keys| keys.get(alias))
+            .is_some_and(|keys| {
+                self.catalog.relation(id).indexes.iter().any(|index| {
+                    index.not_null.is_some()
+                        && index
+                            .columns
+                            .first()
+                            .and_then(Option::as_ref)
+                            .is_some_and(|leading| keys.contains(leading))
+                })
+            });
         match (kind, text("Index Cond")) {
-            ("Seq Scan", _) => found.push(format!("Seq Scan on {label}")),
+            ("Seq Scan", _) => self.found.push(format!("Seq Scan on {label}")),
             ("Index Scan" | "Index Only Scan", None)
-                if !seekable_join && (!limited || filter.is_some()) =>
+                if !seekable_join && (!above.limited || !filtered.is_empty()) =>
             {
-                found.push(format!(
+                self.found.push(format!(
                     "{kind} using `{index}` on {label} has no index condition"
                 ));
             }
-            ("Index Scan" | "Index Only Scan", Some(condition)) if limited => {
-                lost_seek(
-                    &[(index, condition)],
-                    filter,
-                    schema,
-                    &label,
-                    catalog,
-                    found,
-                );
+            ("Index Scan" | "Index Only Scan", Some(condition)) if above.limited => {
+                self.lost_seek(&[(index, condition)], &filtered, schema, &label);
             }
-            ("Bitmap Heap Scan", _) if limited => {
+            ("Bitmap Heap Scan", _) if above.limited => {
                 let mut indexes = Vec::new();
                 bitmap_indexes(node, &mut indexes);
-                lost_seek(&indexes, filter, schema, &label, catalog, found);
+                self.lost_seek(&indexes, &filtered, schema, &label);
             }
             _ => {}
         }
     }
-    let keys = match kind {
-        "Hash Join" => text("Hash Cond").map(join_keys),
-        "Merge Join" => text("Merge Cond").map(join_keys),
-        _ => None,
-    };
-    for child in node
-        .get("Plans")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        // A hash join's inner input is the Hash node above the scan.
-        let inherited = match kind {
-            "Hash Join" | "Merge Join" => keys.as_ref(),
-            "Hash" => joined,
-            _ => None,
-        };
-        visit(child, limited, inherited, catalog, schemas, found);
+
+    /// Report a scan under a LIMIT whose filter tests a key column of an index it reads
+    /// by, although no index condition seeks that column: under a generic plan the
+    /// predicate, typically an optional keyset bound, no longer narrows the index range.
+    fn lost_seek(
+        &mut self,
+        indexes: &[(&str, &str)],
+        filtered: &BTreeSet<String>,
+        schema: &str,
+        label: &str,
+    ) {
+        let sought: BTreeSet<String> = indexes
+            .iter()
+            .flat_map(|(_, condition)| qualified_references(condition))
+            .map(|(_, column)| column)
+            .collect();
+        for (index, _) in indexes {
+            let keys: Vec<String> = self
+                .catalog
+                .index(schema, index)
+                .map(|(_, index)| index.columns.iter().flatten().cloned().collect())
+                .unwrap_or_default();
+            let lost: Vec<String> = keys
+                .into_iter()
+                .filter(|key| filtered.contains(key) && !sought.contains(key))
+                .map(|key| format!("`{key}`"))
+                .collect();
+            if !lost.is_empty() {
+                self.found.push(format!(
+                    "a scan of {label} through `{index}` under a LIMIT filters {} instead of \
+                     seeking it in the index",
+                    lost.join(", ")
+                ));
+            }
+        }
     }
 }
 
@@ -132,45 +204,6 @@ fn join_keys(condition: &str) -> JoinKeys {
         keys.entry(alias).or_default().insert(column);
     }
     keys
-}
-
-/// Report a scan under a LIMIT whose filter tests a key column of an index it reads by,
-/// although no index condition seeks that column: under a generic plan the predicate,
-/// typically an optional keyset bound, no longer narrows the index range.
-fn lost_seek(
-    indexes: &[(&str, &str)],
-    filter: Option<&str>,
-    schema: &str,
-    label: &str,
-    catalog: &Catalog,
-    found: &mut Vec<String>,
-) {
-    let Some(filter) = filter else {
-        return;
-    };
-    let filtered = qualified_columns(filter);
-    let sought: BTreeSet<String> = indexes
-        .iter()
-        .flat_map(|(_, condition)| qualified_columns(condition))
-        .collect();
-    for (index, _) in indexes {
-        let keys: Vec<String> = catalog
-            .index(schema, index)
-            .map(|(_, index)| index.columns.iter().flatten().cloned().collect())
-            .unwrap_or_default();
-        let lost: Vec<String> = keys
-            .into_iter()
-            .filter(|key| filtered.contains(key) && !sought.contains(key))
-            .map(|key| format!("`{key}`"))
-            .collect();
-        if !lost.is_empty() {
-            found.push(format!(
-                "a scan of {label} through `{index}` under a LIMIT filters {} instead of \
-                 seeking it in the index",
-                lost.join(", ")
-            ));
-        }
-    }
 }
 
 /// The indexes and conditions of the Bitmap Index Scans below a Bitmap Heap Scan.
@@ -189,14 +222,6 @@ fn bitmap_indexes<'p>(node: &'p Value, indexes: &mut Vec<(&'p str, &'p str)>) {
         }
         bitmap_indexes(child, indexes);
     }
-}
-
-/// The column names in an EXPLAIN VERBOSE expression.
-fn qualified_columns(expression: &str) -> BTreeSet<String> {
-    qualified_references(expression)
-        .into_iter()
-        .map(|(_, column)| column)
-        .collect()
 }
 
 /// The `(relation, column)` references of an EXPLAIN VERBOSE expression, where every

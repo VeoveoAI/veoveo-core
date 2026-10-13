@@ -102,6 +102,13 @@ const CONFORMING: &[(&str, &str)] = &[
          DELETE FROM ledger.entry WHERE id IN (SELECT id FROM ledger.entry \
          WHERE expires_at <= $1 ORDER BY expires_at LIMIT $2)",
     ),
+    (
+        "export after a position read once",
+        "-- veoveo: all tenants (the exporter reads every tenant's accounts)\n\
+         SELECT a.id FROM ledger.account AS a \
+         WHERE (a.created_at, a.id) > (SELECT p.created_at, p.id FROM ledger.export_position AS p) \
+         ORDER BY a.created_at, a.id LIMIT $1",
+    ),
 ];
 
 #[tokio::test]
@@ -177,6 +184,13 @@ async fn each_broken_query_rule_is_reported_under_its_query() {
             "SELECT id FROM ledger.account WHERE tenant = $1 \
              AND ($2::timestamptz IS NULL OR (created_at, id) > ($2, $3::uuid)) \
              ORDER BY created_at, id LIMIT $4",
+        ),
+        (
+            "export after a joined position",
+            "-- veoveo: all tenants (the exporter reads every tenant's accounts)\n\
+             SELECT a.id FROM ledger.export_position AS p \
+             JOIN ledger.account AS a ON (a.created_at, a.id) > (p.created_at, p.id) \
+             ORDER BY a.created_at, a.id LIMIT $1",
         ),
         (
             "marker without reason",
@@ -268,6 +282,12 @@ async fn each_broken_query_rule_is_reported_under_its_query() {
         "lost keyset seek",
         Rule::IndexUse,
         "filters `created_at`, `id` instead of seeking",
+    );
+    assert_reports(
+        &report,
+        "export after a joined position",
+        Rule::IndexUse,
+        "on `ledger.account AS a`",
     );
     assert_reports(
         &report,
