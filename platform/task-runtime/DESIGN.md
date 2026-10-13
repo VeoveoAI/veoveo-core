@@ -157,7 +157,14 @@ unanswered requests for the `input_required` projection.
 Creation sets `retention_expires_at` from the TTL, seven days by default, and rejects a
 deadline after year 9999. A request's `ai.veoveo/task-retention-pin` adds a pin, and
 `acknowledge_retention_pin` removes one. `prune_expired` deletes the server's finished
-Tasks whose retention expired and that hold no pin, with their inputs.
+Tasks whose retention expired and that hold no pin, with their inputs, in the store's
+[batches](../store/DESIGN.md#batched-maintenance), earliest expiry first.
+
+The runtime owns retention. Every runtime prunes its server's expired Tasks every
+`RETENTION_INTERVAL`, ten minutes, first one interval after it starts, until its last
+clone is dropped or its instance is lost. Replicas run their passes independently, and
+`FOR UPDATE SKIP LOCKED` gives each batch's rows to one of them. A failed pass is logged
+and the next one runs on schedule.
 
 ## Hosted Server Adapter
 
@@ -176,7 +183,8 @@ it.
 work stream, notifications that reach only the channel of the Task's server, recovery of
 each class and fencing after an instance's session is terminated and reaped,
 cancellation of owned and unowned Tasks, resumable settlement, input exchanges with
-concurrent answers, idempotent creation, result and failure shapes, owner reads and
-pages, subscriptions across a listener reconnect, row-level security between two server
-logins and retention pruning. A unit test in `signals.rs` checks on the same fixture that
-another server's Tasks never wake a runtime's listener.
+concurrent answers, idempotent creation,
+result and failure shapes, owner reads and pages, subscriptions across a listener
+reconnect, row-level security between two server logins and batched retention pruning.
+Unit tests on the same fixture check that another server's Tasks never wake a runtime's
+listener and that a runtime prunes expired Tasks on its own schedule.

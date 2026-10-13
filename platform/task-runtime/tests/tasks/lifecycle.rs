@@ -5,8 +5,8 @@ use crate::store::TestDb;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 use veoveo_task_runtime::{
-    RecoveryClass, ResumeCancellationPolicy, TaskError, TaskFailure, TaskPayloadState,
-    TaskRetentionPin, TaskStatus, TaskTransition,
+    MaintenanceBatch, Pruned, RecoveryClass, ResumeCancellationPolicy, TaskError, TaskFailure,
+    TaskPayloadState, TaskRetentionPin, TaskStatus, TaskTransition,
 };
 use veoveo_types::{ResourceUri, ServerSlug, TenantId};
 
@@ -459,8 +459,19 @@ async fn pruning_removes_expired_unpinned_finished_tasks() {
         unfinished.ttl_ms = Some(0);
         let unfinished = runtime.create(unfinished).await.unwrap().snapshot;
 
-        assert_eq!(runtime.prune_expired().await.unwrap(), vec![ids[0]]);
+        let batch = MaintenanceBatch::new(1).unwrap();
+        assert_eq!(
+            runtime.prune_expired(batch).await.unwrap(),
+            Pruned {
+                rows: 1,
+                batches: 2
+            }
+        );
         assert!(runtime.get(ids[0]).await.unwrap().is_none());
+        assert!(
+            runtime.get(ids[1]).await.unwrap().is_some(),
+            "a pin keeps it"
+        );
         assert!(runtime.get(unfinished.task_id).await.unwrap().is_some());
 
         // Pruning released the idempotency key.
@@ -480,7 +491,8 @@ async fn pruning_removes_expired_unpinned_finished_tasks() {
                 .unwrap(),
             acknowledged
         );
-        assert_eq!(runtime.prune_expired().await.unwrap(), vec![ids[1]]);
+        assert_eq!(runtime.prune_expired(batch).await.unwrap().rows, 1);
+        assert!(runtime.get(ids[1]).await.unwrap().is_none());
     })
     .await;
 }

@@ -151,71 +151,12 @@ impl TaskSignals {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, sync::Arc, time::Duration};
+    use std::{collections::BTreeSet, time::Duration};
 
-    use veoveo_platform_store::{Instance, PrincipalKind};
-    use veoveo_types::{
-        AccessSubject, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
-        ServerSlug, TaskId, TaskTypeName, TenantId, WorkContextId, WorkContextMembershipLevel,
-        WorkContextOutputPolicy,
+    use crate::{
+        test_store::TestDb,
+        test_support::{create, runtime},
     };
-
-    use crate::{CreateTask, RecoveryClass, TaskOwner, TaskRuntime, test_store::TestDb};
-
-    fn owner() -> TaskOwner {
-        let principal = PrincipalId::parse("pilot").unwrap();
-        let tenant = TenantId::parse("mission-tenant").unwrap();
-        TaskOwner {
-            principal_key: principal.clone(),
-            principal_kind: PrincipalKind::User,
-            issuer: "https://issuer.test".parse().unwrap(),
-            subject: "pilot".parse().unwrap(),
-            profile: "operator".parse().unwrap(),
-            tenant_key: Some(tenant.clone()),
-            data_labels: BTreeSet::new(),
-            authority: InvocationAuthority {
-                work_context: WorkContextId::parse("mission").unwrap(),
-                tenant,
-                membership: WorkContextMembershipLevel::Owner,
-                policy_revision: PolicyVersion::parse("r1").unwrap(),
-                output_policy: WorkContextOutputPolicy {
-                    owner: AccessSubject::Principal(principal.clone()),
-                    initial_grants: Vec::new(),
-                    classification: None,
-                    data_labels: BTreeSet::new(),
-                },
-                provenance: InvocationProvenance::Direct {
-                    initiator: principal,
-                },
-            },
-        }
-    }
-
-    async fn runtime(db: &TestDb, server: &str) -> TaskRuntime {
-        let server = ServerSlug::parse(server).unwrap();
-        let instance = Instance::start(&db.a, &server).await.unwrap();
-        TaskRuntime::new(db.a.clone(), server, Arc::new(instance))
-    }
-
-    async fn create(runtime: &TaskRuntime) -> TaskId {
-        runtime
-            .create(CreateTask {
-                task_id: TaskId::new(),
-                owner: owner(),
-                server: runtime.server().clone(),
-                task_type: TaskTypeName::from_static("fixture.run"),
-                request: serde_json::json!({}),
-                recovery_class: RecoveryClass::Resume,
-                idempotency_key: None,
-                ttl_ms: None,
-                poll_interval_ms: None,
-                retention_pins: BTreeSet::new(),
-            })
-            .await
-            .unwrap()
-            .snapshot
-            .task_id
-    }
 
     #[tokio::test]
     async fn a_runtime_wakes_only_for_its_own_servers_tasks() {
@@ -225,7 +166,7 @@ mod tests {
             let other = runtime(&db, "other").await;
             let mut signals = time.signals().await.unwrap();
             for _ in 0..3 {
-                create(&other).await;
+                create(&other, None).await;
             }
             assert!(
                 tokio::time::timeout(Duration::from_millis(500), signals.next())
@@ -233,7 +174,7 @@ mod tests {
                     .is_err(),
                 "another server's Tasks woke the runtime"
             );
-            let own = create(&time).await;
+            let own = create(&time, None).await;
             let wake = tokio::time::timeout(Duration::from_secs(10), signals.next())
                 .await
                 .expect("the runtime's own Task wakes it")

@@ -236,7 +236,14 @@ async fn row_level_security_confines_a_server_login_to_its_own_tasks() {
                 .await
                 .is_err()
         );
-        assert!(intruder.prune_expired().await.unwrap().is_empty());
+        assert_eq!(
+            intruder
+                .prune_expired(veoveo_task_runtime::MaintenanceBatch::DEFAULT)
+                .await
+                .unwrap()
+                .rows,
+            0
+        );
 
         // Each login still runs its own work, and the owner sees both.
         assert_eq!(

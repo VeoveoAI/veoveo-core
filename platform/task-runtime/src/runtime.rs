@@ -1,5 +1,5 @@
 //! The Task runtime of one server process.
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use sqlx::PgPool;
 use tokio::{sync::Mutex, task::JoinHandle};
@@ -10,6 +10,7 @@ use veoveo_types::{ServerSlug, TaskId};
 use crate::{
     TaskError, TaskOwner, TaskPayloadState, TaskRetentionPin, TaskRuntimeConfig, TaskSnapshot,
     TaskStatus,
+    retention::Retention,
     row::{TaskRow, columns::*},
     signals::{SignalHub, TaskSignals},
 };
@@ -34,6 +35,7 @@ pub struct TaskRuntime {
     instance: Arc<Instance>,
     workers: Arc<Mutex<HashMap<TaskId, Worker>>>,
     signals: Arc<SignalHub>,
+    _retention: Arc<Retention>,
 }
 
 impl TaskRuntime {
@@ -44,14 +46,28 @@ impl TaskRuntime {
         Ok(Self::new(store, server, Arc::new(instance)))
     }
 
-    /// A runtime of `server` whose claims belong to `instance`.
+    /// A runtime of `server` whose claims belong to `instance`. It prunes the server's
+    /// expired Tasks every [`RETENTION_INTERVAL`](crate::RETENTION_INTERVAL) until its
+    /// last clone is dropped or the instance is lost, so it must be created inside a
+    /// Tokio runtime.
     pub fn new(store: PlatformStore, server: ServerSlug, instance: Arc<Instance>) -> Self {
+        Self::with_retention_interval(store, server, instance, crate::RETENTION_INTERVAL)
+    }
+
+    pub(crate) fn with_retention_interval(
+        store: PlatformStore,
+        server: ServerSlug,
+        instance: Arc<Instance>,
+        interval: Duration,
+    ) -> Self {
+        let retention = Retention::spawn(store.clone(), server.clone(), &instance, interval);
         Self {
             store,
             server,
             instance,
             workers: Arc::default(),
             signals: Arc::default(),
+            _retention: Arc::new(retention),
         }
     }
 
@@ -213,19 +229,6 @@ impl TaskRuntime {
             Some(row) => TaskSnapshot::try_from(row),
             None => self.get(task_id).await?.ok_or(TaskError::NotFound(task_id)),
         }
-    }
-
-    /// Delete this server's finished Tasks whose retention expired and that no consumer
-    /// pins. Their input exchanges go with them.
-    pub async fn prune_expired(&self) -> Result<Vec<TaskId>, TaskError> {
-        Ok(
-            sqlx::query_file_scalar!("queries/prune_expired.sql", self.server.as_str())
-                .fetch_all(self.pool())
-                .await?
-                .into_iter()
-                .map(TaskId::from_uuid)
-                .collect(),
-        )
     }
 }
 

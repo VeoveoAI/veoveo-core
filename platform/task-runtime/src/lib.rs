@@ -16,6 +16,7 @@ mod mcp;
 mod owner;
 mod owner_query;
 mod resumable;
+mod retention;
 mod row;
 mod runtime;
 mod service;
@@ -26,6 +27,8 @@ mod subscriptions;
 #[allow(dead_code, reason = "the unit tests use part of the shared fixture")]
 #[path = "../../../testing/fixtures/store.rs"]
 mod test_store;
+#[cfg(test)]
+mod test_support;
 mod transition;
 mod work;
 
@@ -38,6 +41,7 @@ pub use mcp::{mcp_task_completion, project_snapshot, task_seed};
 pub use owner::TaskOwner;
 pub use owner_query::OwnerTaskQuery;
 pub use resumable::ResumeCancellationPolicy;
+pub use retention::RETENTION_INTERVAL;
 pub use runtime::TaskRuntime;
 pub use service::{
     DurableTaskService, DurableTaskSubscription, DurableTaskUpdateStream,
@@ -52,6 +56,6 @@ pub use snapshot::{
 };
 pub use subscriptions::{OwnerTaskSubscription, TaskUpdateStream};
 pub use transition::TaskTransition;
-pub use veoveo_platform_store::{Instance, InstanceId, PrincipalKind};
+pub use veoveo_platform_store::{Instance, InstanceId, MaintenanceBatch, PrincipalKind, Pruned};
 pub use veoveo_task_contract::{RecoveryClass, TaskStatus};
 pub use work::TaskWork;
