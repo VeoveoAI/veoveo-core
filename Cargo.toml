@@ -12,6 +12,7 @@ members = [
     "platform/audit/contract",
     "platform/gateway/contract",
     "platform/http",
+    "platform/installation/contract",
     "platform/knowledge/contract",
     "platform/macros",
     "platform/oauth",
@@ -36,6 +37,7 @@ publish = false
 [workspace.dependencies]
 veoveo-task-contract = { path = "platform/task-runtime/contract" }
 veoveo-embedding-contract = { path = "platform/runtimes/embedding/contract" }
+veoveo-installation-contract = { path = "platform/installation/contract" }
 veoveo-knowledge-contract = { path = "platform/knowledge/contract" }
 veoveo-mcp-ext-knowledge = { path = "mcp/ext-knowledge", default-features = false }
 veoveo-macros = { path = "platform/macros" }

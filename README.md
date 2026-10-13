@@ -24,6 +24,7 @@ revision of this repository.
 | `platform/knowledge/contract` | `veoveo-knowledge-contract` | Knowledge source and retrieval types |
 | `platform/runtimes/embedding/contract` | `veoveo-embedding-contract` | Embedding request and profile types |
 | `platform/gateway/contract` | `veoveo-gateway-contract` | Gateway catalog registry, actions and admission types |
+| `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision |
 | `mcp/contract` | `veoveo-mcp-contract` | The hosted MCP server contract and its hosting runtime |
 | `mcp/ext-apps` | `veoveo-mcp-ext-apps` | The MCP Apps extension |
 | `mcp/ext-knowledge` | `veoveo-mcp-ext-knowledge` | The `ai.veoveo/knowledge-source` extension |

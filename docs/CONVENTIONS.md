@@ -150,6 +150,20 @@ indexes are `snake_case`.
 
 ## Runtime And Repository Names
 
+A repository's kind says what it holds, and its code shortens runtime names.
+`veoveo-core` and organization singletons such as `veoveo-docs` have no kind.
+
+| Kind | Code | Holds |
+|---|---|---|
+| `service` | `srv` | A platform service that implements a core contract |
+| `mcp` | `mcp` | A domain MCP server |
+| `runtime` | `rt` | A native or GPU runtime that a service uses |
+| `app` | `app` | A user-facing application |
+| `sdk` | `sdk` | A client library |
+| `template` | `tpl` | A GitHub template repository |
+| `showcase` | `demo` | A demonstration workload |
+| `qualify` | `qual` | A qualification suite for a third-party runtime |
+
 | Thing | Form |
 |---|---|
 | Repository, crate, binary, image name | `veoveo-<kind>-<name>` |

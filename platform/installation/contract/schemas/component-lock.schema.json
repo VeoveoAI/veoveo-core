@@ -1,0 +1,131 @@
+{
+  "$defs": {
+    "ComponentLockFormat": {
+      "description": "The format of a component lock.",
+      "enum": [
+        "https://veoveo.ai/formats/component-lock"
+      ],
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "grammar": "format_uri",
+            "kind": "builtin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "ComponentName": {
+      "maxLength": 100,
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "declaration": {
+              "applicability": "the declared scalar identity schema",
+              "authority": {
+                "kind": "owner",
+                "module": "veoveo_installation_contract::component"
+              },
+              "profile": "ComponentName",
+              "version": "unversioned"
+            },
+            "kind": "owner_identity"
+          }
+        }
+      },
+      "pattern": "^veoveo-(service|mcp|runtime|app|showcase)-[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "ComponentRepository": {
+      "format": "uri",
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "declaration": {
+              "applicability": "the declared scalar identity schema",
+              "authority": {
+                "kind": "owner",
+                "module": "veoveo_installation_contract::component"
+              },
+              "profile": "ComponentRepository",
+              "version": "unversioned"
+            },
+            "kind": "owner_identity"
+          }
+        }
+      },
+      "pattern": "^https://github\\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/veoveo-(service|mcp|runtime|app|showcase)-[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "GitRevision": {
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "declaration": {
+              "applicability": "the declared scalar identity schema",
+              "authority": {
+                "kind": "owner",
+                "module": "veoveo_installation_contract::component"
+              },
+              "profile": "GitRevision",
+              "version": "unversioned"
+            },
+            "kind": "owner_identity"
+          }
+        }
+      },
+      "not": {
+        "const": "0000000000000000000000000000000000000000"
+      },
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "LockedComponent": {
+      "additionalProperties": false,
+      "description": "One component pinned to a revision of its repository; the repository's name is the component's name.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/ComponentName"
+        },
+        "repository": {
+          "$ref": "#/$defs/ComponentRepository"
+        },
+        "revision": {
+          "$ref": "#/$defs/GitRevision"
+        }
+      },
+      "required": [
+        "name",
+        "repository",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://veoveo.ai/formats/component-lock",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An installation's component lock: the repository and Git revision of each component it runs, each component named once.",
+  "properties": {
+    "components": {
+      "items": {
+        "$ref": "#/$defs/LockedComponent"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "format": {
+      "$ref": "#/$defs/ComponentLockFormat"
+    }
+  },
+  "required": [
+    "format",
+    "components"
+  ],
+  "title": "ComponentLock",
+  "type": "object"
+}

@@ -3839,6 +3839,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "veoveo-installation-contract"
+version = "0.1.0"
+dependencies = [
+ "jsonschema",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "veoveo-types",
+]
+
+[[package]]
 name = "veoveo-knowledge-contract"
 version = "0.1.0"
 dependencies = [
