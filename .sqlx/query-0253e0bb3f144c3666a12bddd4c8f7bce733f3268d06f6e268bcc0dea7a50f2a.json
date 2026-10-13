@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- The server that declared a class, or NULL when the installation owner declared it.\nSELECT t.server\nFROM audit.detail_type AS t\nWHERE t.class = $1\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "server",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit.detail_type",
+            "name": "server"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "0253e0bb3f144c3666a12bddd4c8f7bce733f3268d06f6e268bcc0dea7a50f2a"
+}
