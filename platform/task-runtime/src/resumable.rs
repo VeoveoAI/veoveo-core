@@ -2,22 +2,46 @@
 use tokio_util::sync::CancellationToken;
 use veoveo_types::TaskId;
 
-use crate::{RecoveryClass, TaskError, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition};
+use crate::{
+    RecoveryClass, TaskError, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition,
+    transition::Admission,
+};
 
-/// How a genuine failure concurrent with a cancellation request settles.
+/// What a cancellation request pending when a worker settles its Task keeps of the
+/// worker's outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, veoveo_types::Vocabulary)]
 pub enum ResumeCancellationPolicy {
+    /// The Task ends `Cancelled`, whatever the worker settles.
     CancellationWins,
+    /// A genuine failure stands; any other outcome becomes `Cancelled`.
     PreserveFailure,
+    /// A finished outcome stands, success or genuine failure, because the cancellation
+    /// arrived after the work was done; only unfinished work becomes `Cancelled`.
+    PreserveOutcome,
+}
+
+impl ResumeCancellationPolicy {
+    /// Whether `transition` stands against a pending cancellation request.
+    fn keeps(self, transition: &TaskTransition) -> bool {
+        match self {
+            Self::CancellationWins => false,
+            Self::PreserveFailure => matches!(transition, TaskTransition::Failed(_)),
+            Self::PreserveOutcome => matches!(
+                transition,
+                TaskTransition::Succeeded { .. } | TaskTransition::Failed(_)
+            ),
+        }
+    }
 }
 
 impl TaskRuntime {
     /// Settle a `resume` Task this instance owns from its current revision.
     ///
-    /// A pending cancellation request turns the outcome into `Cancelled`, except that
-    /// `PreserveFailure` keeps a genuine failure. With `stop` cancelled, a success is
-    /// not published: the call returns the unchanged Task, unless cancellation is
-    /// pending, which it settles. A settled Task is returned as it is.
+    /// A pending cancellation request turns the outcome into `Cancelled`, except what
+    /// `policy` keeps: `PreserveFailure` a genuine failure, `PreserveOutcome` a success
+    /// or a genuine failure. With `stop` cancelled, a success is not published: the call
+    /// returns the unchanged Task, unless cancellation is pending, which it settles. A
+    /// settled Task is returned as it is.
     pub async fn transition_resumable(
         &self,
         id: TaskId,
@@ -93,14 +117,12 @@ impl TaskRuntime {
         stop: Option<&CancellationToken>,
     ) -> Result<TaskSnapshot, TaskError> {
         self.ensure_owner(current)?;
-        let transition = if current.status == TaskStatus::CancelRequested
-            && !(policy == ResumeCancellationPolicy::PreserveFailure
-                && matches!(transition, TaskTransition::Failed(_)))
-        {
-            TaskTransition::Cancelled
-        } else {
-            transition
-        };
+        let transition =
+            if current.status == TaskStatus::CancelRequested && !policy.keeps(&transition) {
+                TaskTransition::Cancelled
+            } else {
+                transition
+            };
         if matches!(transition, TaskTransition::Succeeded { .. })
             && stop.is_some_and(CancellationToken::is_cancelled)
         {
@@ -114,7 +136,12 @@ impl TaskRuntime {
             }
             return Ok(admitted.clone());
         }
-        self.transition_if_current(current, transition).await
+        let admission = match policy {
+            ResumeCancellationPolicy::PreserveOutcome => Admission::FinishedOverCancellation,
+            _ => Admission::Worker,
+        };
+        self.transition_admitted(current, transition, admission)
+            .await
     }
 
     fn resume_identity(

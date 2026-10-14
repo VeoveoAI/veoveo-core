@@ -116,8 +116,13 @@ waiting or cancel-requested Tasks. A terminal status records the completion time
 clears the owner. `ensure_owner` lets a worker check ownership at its own checkpoints.
 
 `transition_resumable` and `transition_resumable_if_current` settle `resume` Tasks. A
-pending cancellation turns the outcome into `Cancelled`, except that
-`ResumeCancellationPolicy::PreserveFailure` keeps a genuine failure. A rejected write
+pending cancellation turns the outcome into `Cancelled`, except what the
+`ResumeCancellationPolicy` keeps. `CancellationWins` keeps nothing, `PreserveFailure`
+keeps a genuine failure, and `PreserveOutcome` keeps a success or a genuine failure,
+because a request that arrives after the work finished does not undo it. Only under
+`PreserveOutcome` may a success follow `cancel_requested`; a plain worker transition
+still cannot. Unfinished work, such as a progress update, is cancelled under every
+policy. A rejected write
 rereads the Task once. A finished Task is returned as it is, a cancellation request is
 settled, and any other change fails. While a stop token is cancelled, a success is
 withheld and the unchanged Task is returned, unless cancellation is pending, which is

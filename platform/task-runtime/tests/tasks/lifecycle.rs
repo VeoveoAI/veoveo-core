@@ -369,6 +369,90 @@ async fn resumable_settlement_applies_cancellation_policy_and_stop_tokens() {
             settled
         );
 
+        // PreserveOutcome keeps a finished outcome, success or genuine failure.
+        let task = claimed(&worker, RecoveryClass::Resume).await;
+        caller.cancel(task.task_id).await.unwrap();
+        let kept = worker
+            .transition_resumable_if_current(
+                &task,
+                success(json!({"verified": true})),
+                ResumeCancellationPolicy::PreserveOutcome,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(kept.status, TaskStatus::Succeeded);
+        assert_eq!(kept.result, Some(json!({"verified": true})));
+        let task = claimed(&worker, RecoveryClass::Resume).await;
+        caller.cancel(task.task_id).await.unwrap();
+        let kept = worker
+            .transition_resumable(
+                task.task_id,
+                TaskTransition::Failed(failure.clone()),
+                ResumeCancellationPolicy::PreserveOutcome,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(kept.status, TaskStatus::Failed);
+        assert_eq!(kept.error, Some(failure.clone()));
+        // Work that has not finished is cancelled under every policy.
+        for policy in [
+            ResumeCancellationPolicy::CancellationWins,
+            ResumeCancellationPolicy::PreserveFailure,
+            ResumeCancellationPolicy::PreserveOutcome,
+        ] {
+            let task = claimed(&worker, RecoveryClass::Resume).await;
+            caller.cancel(task.task_id).await.unwrap();
+            let unfinished = worker
+                .transition_resumable(
+                    task.task_id,
+                    TaskTransition::Running {
+                        message: "halfway".into(),
+                        progress: 0.5,
+                    },
+                    policy,
+                    None,
+                )
+                .await
+                .unwrap();
+            assert_eq!(unfinished.status, TaskStatus::Cancelled, "{policy}");
+            let task = claimed(&worker, RecoveryClass::Resume).await;
+            caller.cancel(task.task_id).await.unwrap();
+            let cancelled = worker
+                .transition_resumable(task.task_id, TaskTransition::Cancelled, policy, None)
+                .await
+                .unwrap();
+            assert_eq!(cancelled.status, TaskStatus::Cancelled, "{policy}");
+        }
+        // A stopping worker still withholds success and settles a pending cancellation,
+        // under PreserveOutcome as under the other policies.
+        let stop = CancellationToken::new();
+        stop.cancel();
+        let task = claimed(&worker, RecoveryClass::Resume).await;
+        caller.cancel(task.task_id).await.unwrap();
+        let stopped = worker
+            .transition_resumable(
+                task.task_id,
+                success(json!({})),
+                ResumeCancellationPolicy::PreserveOutcome,
+                Some(&stop),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stopped.status, TaskStatus::Cancelled);
+        let task = claimed(&worker, RecoveryClass::Resume).await;
+        let unchanged = worker
+            .transition_resumable(
+                task.task_id,
+                success(json!({})),
+                ResumeCancellationPolicy::PreserveOutcome,
+                Some(&stop),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unchanged, task);
+
         // A stopped worker does not publish success.
         let task = claimed(&worker, RecoveryClass::Resume).await;
         let stop = CancellationToken::new();

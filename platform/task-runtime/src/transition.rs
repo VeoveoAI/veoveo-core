@@ -66,6 +66,17 @@ pub(crate) fn is_terminal(status: TaskStatus) -> bool {
     )
 }
 
+/// The worker transitions a write admits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Admission {
+    /// The transitions of [`allowed_transition`].
+    Worker,
+    /// Also a success over a pending cancellation request, which
+    /// `ResumeCancellationPolicy::PreserveOutcome` keeps because the work finished before
+    /// the request arrived.
+    FinishedOverCancellation,
+}
+
 /// Worker transitions start from a claimed Task: running, waiting or cancel-requested.
 pub(crate) fn allowed_transition(from: TaskStatus, to: TaskStatus) -> bool {
     match from {
@@ -105,11 +116,25 @@ impl TaskRuntime {
         current: &TaskSnapshot,
         transition: TaskTransition,
     ) -> Result<TaskSnapshot, TaskError> {
+        self.transition_admitted(current, transition, Admission::Worker)
+            .await
+    }
+
+    /// As `transition_if_current`, admitting the transitions `admission` names.
+    pub(crate) async fn transition_admitted(
+        &self,
+        current: &TaskSnapshot,
+        transition: TaskTransition,
+        admission: Admission,
+    ) -> Result<TaskSnapshot, TaskError> {
         if current.server != *self.server() {
             return Err(TaskError::WrongServer(current.server.to_string()));
         }
         let next = transition.status();
-        if !allowed_transition(current.status, next) {
+        let finished_over_cancellation = admission == Admission::FinishedOverCancellation
+            && current.status == TaskStatus::CancelRequested
+            && next == TaskStatus::Succeeded;
+        if !allowed_transition(current.status, next) && !finished_over_cancellation {
             return Err(TaskError::InvalidTransition {
                 from: current.status,
                 to: next,
