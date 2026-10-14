@@ -1,5 +1,9 @@
 //! The Task runtime of one server process.
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+    time::Duration,
+};
 
 use sqlx::PgPool;
 use tokio::{sync::Mutex, task::JoinHandle};
@@ -18,6 +22,10 @@ use crate::{
 
 /// Bounded retries of a control write that raced a concurrent change.
 pub(crate) const MAX_ATTEMPTS: usize = 8;
+
+/// The most distinct Task IDs one [`TaskRuntime::get_many`] reads, the size of the
+/// largest owner page.
+pub const MAX_GET_MANY: usize = 1000;
 
 struct Worker {
     cancellation: CancellationToken,
@@ -184,6 +192,36 @@ impl TaskRuntime {
         .await?
         .map(TaskSnapshot::try_from)
         .transpose()
+    }
+
+    /// This server's Tasks among `task_ids`, in ID order, read in one query. A missing ID
+    /// and another server's Task are left out, and a repeated ID counts once. A batch
+    /// takes at most [`MAX_GET_MANY`] distinct IDs.
+    pub async fn get_many(&self, task_ids: &[TaskId]) -> Result<Vec<TaskSnapshot>, TaskError> {
+        let task_ids = task_ids
+            .iter()
+            .copied()
+            .map(validate_task_id)
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        if task_ids.len() > MAX_GET_MANY {
+            return Err(TaskError::BatchTooLarge {
+                requested: task_ids.len(),
+                max: MAX_GET_MANY,
+            });
+        }
+        if task_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = task_ids
+            .iter()
+            .map(|task_id| task_id.as_uuid())
+            .collect::<Vec<_>>();
+        sqlx::query_file_as!(TaskRow, "queries/get_many.sql", self.server.as_str(), &ids,)
+            .fetch_all(self.pool())
+            .await?
+            .into_iter()
+            .map(TaskSnapshot::try_from)
+            .collect()
     }
 
     /// The owner and authority retained with this server's Task.

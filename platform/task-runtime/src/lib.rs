@@ -48,7 +48,7 @@ pub use owner::{TaskOwner, TaskSurface};
 pub use owner_query::OwnerTaskQuery;
 pub use resumable::ResumeCancellationPolicy;
 pub use retention::RETENTION_INTERVAL;
-pub use runtime::{TaskRuntime, parse_task_id};
+pub use runtime::{MAX_GET_MANY, TaskRuntime, parse_task_id};
 pub use snapshot::{
     TaskFailure, TaskPage, TaskPageCursor, TaskPayloadState, TaskRetentionPin,
     TaskRetentionPinError, TaskSnapshot,

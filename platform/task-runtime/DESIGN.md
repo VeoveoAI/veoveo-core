@@ -142,8 +142,14 @@ as `None`.
 `get` reads one Task, and `page` reads up to 1,000 in creation order after a
 `TaskPageCursor`, which records only a position. The cursor's position bounds the
 `task_owner_page` index range in generic plans too. `cancel` requests cancellation and
-`submit_input_responses` answers inputs. `TaskRuntime::get` and `TaskRuntime::owner`
-read a Task of the runtime's server without a caller selection.
+`submit_input_responses` answers inputs.
+
+`TaskRuntime::get` and `TaskRuntime::owner` read a Task of the runtime's server without
+a caller selection. `TaskRuntime::get_many` reads up to 1,000 of the server's Tasks by ID
+in one query and returns them in ID order. It leaves out a missing ID and another
+server's Task, counts a repeated ID once, and refuses a larger batch with
+`BatchTooLarge` before it reads. A server uses it to reconcile its own records with the
+Tasks behind them, such as removing records whose Task retention has pruned.
 
 Row-level security adds a second boundary. A registered server's login is a member of
 `veoveo_server`, and the policies on the three tables admit only rows whose server is in

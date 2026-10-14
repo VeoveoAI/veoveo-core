@@ -1,5 +1,7 @@
 //! Caller selection in SQL and row-level security between servers.
-use veoveo_task_runtime::{Instance, RecoveryClass, TaskError, TaskRuntime, TaskStatus};
+use veoveo_task_runtime::{
+    Instance, MAX_GET_MANY, RecoveryClass, TaskError, TaskRuntime, TaskStatus,
+};
 use veoveo_types::{TaskId, TaskTypeName, WorkContextId};
 
 use crate::{
@@ -193,6 +195,75 @@ async fn pages_follow_creation_order_and_reapply_the_selection() {
                 Err(TaskError::InvalidPageQuery)
             ));
         }
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_batch_reads_only_the_servers_own_tasks() {
+    within(async {
+        let db = TestDb::new().await;
+        let alpha = db.server_store(&slug("alpha")).await;
+        let beta = db.server_store(&slug("beta")).await;
+        let alpha_runtime = runtime_for(&alpha, "alpha").await;
+        let beta_runtime = runtime_for(&beta, "beta").await;
+        let mut alpha_tasks = Vec::new();
+        for _ in 0..2 {
+            alpha_tasks.push(
+                alpha_runtime
+                    .create(draft(&alpha_runtime, &owner(), RecoveryClass::Resume))
+                    .await
+                    .unwrap()
+                    .snapshot
+                    .task_id,
+            );
+        }
+        let beta_task = beta_runtime
+            .create(draft(&beta_runtime, &owner(), RecoveryClass::Resume))
+            .await
+            .unwrap()
+            .snapshot
+            .task_id;
+        alpha_tasks.sort_by_key(|task| task.as_uuid());
+
+        // One query returns the server's Tasks in ID order; another server's Task, a
+        // missing ID and a repeated ID add nothing.
+        let read = alpha_runtime
+            .get_many(&[
+                alpha_tasks[1],
+                beta_task,
+                TaskId::new(),
+                alpha_tasks[0],
+                alpha_tasks[1],
+            ])
+            .await
+            .unwrap();
+        assert_eq!(
+            read.iter().map(|task| task.task_id).collect::<Vec<_>>(),
+            alpha_tasks
+        );
+        assert_eq!(beta_runtime.get_many(&alpha_tasks).await.unwrap().len(), 0);
+        assert!(alpha_runtime.get_many(&[]).await.unwrap().is_empty());
+
+        // A runtime named for another server reads nothing through the login's policy.
+        let intruder = TaskRuntime::new(
+            alpha.clone(),
+            slug("beta"),
+            alpha_runtime.instance().clone(),
+        );
+        assert!(intruder.get_many(&[beta_task]).await.unwrap().is_empty());
+
+        // A batch past the limit is refused before any read.
+        let oversized = (0..=MAX_GET_MANY)
+            .map(|_| TaskId::new())
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            alpha_runtime.get_many(&oversized).await,
+            Err(TaskError::BatchTooLarge {
+                requested,
+                max: MAX_GET_MANY,
+            }) if requested == MAX_GET_MANY + 1
+        ));
     })
     .await;
 }
