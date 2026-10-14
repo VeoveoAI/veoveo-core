@@ -25,6 +25,11 @@ pub enum TaskError {
         "task query requires 1..=32 task types, at most 256 subscribed IDs and a limit in 1..=1000"
     )]
     InvalidPageQuery,
+    #[error("the page cursor continues a {cursor} page, not a {requested} page")]
+    PageOrderMismatch {
+        cursor: crate::TaskPageOrder,
+        requested: crate::TaskPageOrder,
+    },
     #[error("a batch names {requested} Tasks, more than the {max} one read takes")]
     BatchTooLarge { requested: usize, max: usize },
     #[error("task input key is empty, too long, or contains a control character")]

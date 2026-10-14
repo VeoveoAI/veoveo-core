@@ -139,9 +139,12 @@ select 1–32 operations. `in_work_context` adds the caller's Work Context after
 that it belongs to the owner's tenant. A missing Task and another caller's Task both read
 as `None`.
 
-`get` reads one Task, and `page` reads up to 1,000 in creation order after a
-`TaskPageCursor`, which records only a position. The cursor's position bounds the
-`task_owner_page` index range in generic plans too. `cancel` requests cancellation and
+`get` reads one Task. `page` reads up to 1,000 in a `TaskPageOrder`, oldest first or
+newest first by creation time and then ID, after a `TaskPageCursor`. A cursor records
+the position of the last Task and the order of the page that issued it, and a page in
+the other order refuses it with `PageOrderMismatch`. The position bounds the
+`task_owner_page` index range in generic plans in both orders: a newest-first page
+scans the same index backward. `cancel` requests cancellation and
 `submit_input_responses` answers inputs.
 
 `TaskRuntime::get` and `TaskRuntime::owner` read a Task of the runtime's server without

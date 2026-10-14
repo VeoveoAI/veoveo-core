@@ -5,7 +5,8 @@ use std::collections::BTreeSet;
 use veoveo_types::{TaskId, TaskTypeName};
 
 use crate::{
-    TaskError, TaskInputSubmission, TaskOwner, TaskPage, TaskPageCursor, TaskRuntime, TaskSnapshot,
+    TaskError, TaskInputSubmission, TaskOwner, TaskPage, TaskPageCursor, TaskPageOrder,
+    TaskRuntime, TaskSnapshot,
     inputs::{InputResponses, accepts_input, object, validate_input_key},
     owner::OwnerScope,
     row::{TaskRow, columns::*},
@@ -127,34 +128,70 @@ impl OwnerTaskQuery {
         .transpose()
     }
 
-    /// The caller's Tasks in creation order, at most `limit` (1–1000) after `after`.
-    /// A cursor is a position; each page applies the caller's current selection.
+    /// The caller's Tasks in `order`, at most `limit` (1–1000) after `after`. A cursor
+    /// is a position in the order of the page that issued it, and a page in the other
+    /// order refuses it; each page applies the caller's current selection.
     pub async fn page(
         &self,
+        order: TaskPageOrder,
         after: Option<&TaskPageCursor>,
         limit: usize,
     ) -> Result<TaskPage, TaskError> {
         if !(1..=MAX_PAGE).contains(&limit) {
             return Err(TaskError::InvalidPageQuery);
         }
+        if let Some(cursor) = after
+            && cursor.order() != order
+        {
+            return Err(TaskError::PageOrderMismatch {
+                cursor: cursor.order(),
+                requested: order,
+            });
+        }
         let scope = self.scope();
-        let rows = sqlx::query_file_as!(
-            TaskRow,
-            "queries/owner/page.sql",
-            scope.server,
-            scope.tenant,
-            scope.principal,
-            scope.surface,
-            scope.owner_tenant,
-            &scope.labels,
-            scope.task_types.as_deref(),
-            scope.work_context,
-            after.map(|cursor| cursor.created_at),
-            after.map(|cursor| cursor.task_id.as_uuid()),
-            i64::try_from(limit + 1).expect("a bounded page limit fits i64"),
-        )
-        .fetch_all(self.runtime.pool())
-        .await?;
+        let created_at = after.map(TaskPageCursor::created_at);
+        let task_id = after.map(|cursor| cursor.task_id().as_uuid());
+        let fetch = i64::try_from(limit + 1).expect("a bounded page limit fits i64");
+        let rows = match order {
+            TaskPageOrder::OldestFirst => {
+                sqlx::query_file_as!(
+                    TaskRow,
+                    "queries/owner/page.sql",
+                    scope.server,
+                    scope.tenant,
+                    scope.principal,
+                    scope.surface,
+                    scope.owner_tenant,
+                    &scope.labels,
+                    scope.task_types.as_deref(),
+                    scope.work_context,
+                    created_at,
+                    task_id,
+                    fetch,
+                )
+                .fetch_all(self.runtime.pool())
+                .await?
+            }
+            TaskPageOrder::NewestFirst => {
+                sqlx::query_file_as!(
+                    TaskRow,
+                    "queries/owner/page_newest.sql",
+                    scope.server,
+                    scope.tenant,
+                    scope.principal,
+                    scope.surface,
+                    scope.owner_tenant,
+                    &scope.labels,
+                    scope.task_types.as_deref(),
+                    scope.work_context,
+                    created_at,
+                    task_id,
+                    fetch,
+                )
+                .fetch_all(self.runtime.pool())
+                .await?
+            }
+        };
         let has_more = rows.len() > limit;
         let items = rows
             .into_iter()
@@ -164,10 +201,7 @@ impl OwnerTaskQuery {
         let next_cursor = has_more
             .then(|| items.last())
             .flatten()
-            .map(|last| TaskPageCursor {
-                created_at: last.created_at,
-                task_id: last.task_id,
-            });
+            .map(|last| TaskPageCursor::after(order, last));
         Ok(TaskPage { items, next_cursor })
     }
 

@@ -123,12 +123,46 @@ impl TaskFailure {
     }
 }
 
-/// A position in a caller-owned Task collection, ordered by creation time and ID.
+/// The order of a page of a caller's Tasks, by creation time and then ID.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
+pub enum TaskPageOrder {
+    /// The oldest Task first.
+    OldestFirst,
+    /// The newest Task first.
+    NewestFirst,
+}
+
+/// A position in a caller-owned Task collection and the order of the page that reached
+/// it. Only a page creates one, and a page in the other order refuses it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskPageCursor {
-    pub created_at: DateTime<Utc>,
-    pub task_id: TaskId,
+    order: TaskPageOrder,
+    created_at: DateTime<Utc>,
+    task_id: TaskId,
+}
+
+impl TaskPageCursor {
+    pub(crate) fn after(order: TaskPageOrder, last: &TaskSnapshot) -> Self {
+        Self {
+            order,
+            created_at: last.created_at,
+            task_id: last.task_id,
+        }
+    }
+
+    /// The order of the page that issued the cursor; the next page reads in it.
+    pub fn order(&self) -> TaskPageOrder {
+        self.order
+    }
+
+    pub fn created_at(&self) -> DateTime<Utc> {
+        self.created_at
+    }
+
+    pub fn task_id(&self) -> TaskId {
+        self.task_id
+    }
 }
 
 #[derive(Clone, Debug)]

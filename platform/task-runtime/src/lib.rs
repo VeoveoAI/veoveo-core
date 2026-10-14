@@ -50,7 +50,7 @@ pub use resumable::ResumeCancellationPolicy;
 pub use retention::RETENTION_INTERVAL;
 pub use runtime::{MAX_GET_MANY, TaskRuntime, parse_task_id};
 pub use snapshot::{
-    TaskFailure, TaskPage, TaskPageCursor, TaskPayloadState, TaskRetentionPin,
+    TaskFailure, TaskPage, TaskPageCursor, TaskPageOrder, TaskPayloadState, TaskRetentionPin,
     TaskRetentionPinError, TaskSnapshot,
 };
 pub use steps::{MAX_STEP_KEY_BYTES, StepAttempt, StepDispatch, StepKey, StepOperationId};

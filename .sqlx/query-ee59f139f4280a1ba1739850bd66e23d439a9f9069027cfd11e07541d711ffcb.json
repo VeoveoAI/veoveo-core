@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Give the listed Tasks the earliest creation time among them, to probe the page\n-- keyset's ID order between Tasks created at one time. The caller turns the revision\n-- trigger, which keeps a Task's creation time, off around it in one transaction.\nUPDATE tasks.task\nSET created_at = (SELECT min(created_at) FROM tasks.task WHERE id = ANY ($1::uuid[]))\nWHERE id = ANY ($1::uuid[])\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ee59f139f4280a1ba1739850bd66e23d439a9f9069027cfd11e07541d711ffcb"
+}

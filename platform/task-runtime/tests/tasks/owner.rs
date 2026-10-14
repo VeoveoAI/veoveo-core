@@ -1,6 +1,7 @@
 //! Caller selection in SQL and row-level security between servers.
 use veoveo_task_runtime::{
-    Instance, MAX_GET_MANY, RecoveryClass, TaskError, TaskRuntime, TaskStatus,
+    Instance, MAX_GET_MANY, OwnerTaskQuery, RecoveryClass, TaskError, TaskPageOrder, TaskRuntime,
+    TaskStatus,
 };
 use veoveo_types::{TaskId, TaskTypeName, WorkContextId};
 
@@ -167,10 +168,14 @@ async fn pages_follow_creation_order_and_reapply_the_selection() {
             .unwrap();
 
         let query = runtime.for_owner(&owner());
-        let first = query.page(None, 2).await.unwrap();
+        let oldest = TaskPageOrder::OldestFirst;
+        let first = query.page(oldest, None, 2).await.unwrap();
         let cursor = first.next_cursor.clone().expect("more Tasks follow");
-        let second = query.page(Some(&cursor), 2).await.unwrap();
-        let third = query.page(second.next_cursor.as_ref(), 2).await.unwrap();
+        let second = query.page(oldest, Some(&cursor), 2).await.unwrap();
+        let third = query
+            .page(oldest, second.next_cursor.as_ref(), 2)
+            .await
+            .unwrap();
         assert!(third.next_cursor.is_none());
         let paged = first
             .items
@@ -184,17 +189,168 @@ async fn pages_follow_creation_order_and_reapply_the_selection() {
         // A cursor is a position; another caller reading after it sees only its own Tasks.
         let foreign = runtime
             .for_owner(&stranger)
-            .page(Some(&cursor), 10)
+            .page(oldest, Some(&cursor), 10)
             .await
             .unwrap();
         assert_eq!(foreign.items.len(), 1);
         assert!(foreign.items.iter().all(|task| task.owner == stranger));
         for limit in [0, 1001] {
             assert!(matches!(
-                query.page(None, limit).await,
+                query.page(oldest, None, limit).await,
                 Err(TaskError::InvalidPageQuery)
             ));
         }
+    })
+    .await;
+}
+
+/// Every Task the query selects, reading pages of `limit` in `order` until the last.
+async fn every_page(query: &OwnerTaskQuery, order: TaskPageOrder, limit: usize) -> Vec<TaskId> {
+    let mut tasks = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = query.page(order, cursor.as_ref(), limit).await.unwrap();
+        tasks.extend(page.items.iter().map(|task| task.task_id));
+        match page.next_cursor {
+            Some(next) => cursor = Some(next),
+            None => return tasks,
+        }
+    }
+}
+
+/// Give `tasks` one creation time. The revision trigger keeps a Task's creation time, so
+/// the test turns it off around the update in one transaction.
+async fn same_creation_time(db: &TestDb, tasks: &[TaskId]) {
+    let ids = tasks.iter().map(|task| task.as_uuid()).collect::<Vec<_>>();
+    let mut transaction = db.a.pool().begin().await.unwrap();
+    sqlx::raw_sql("ALTER TABLE tasks.task DISABLE TRIGGER task_revision")
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    sqlx::query_file!("tests/queries/same_creation_time.sql", &ids)
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    sqlx::raw_sql("ALTER TABLE tasks.task ENABLE TRIGGER task_revision")
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    transaction.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn pages_read_oldest_or_newest_first_and_keep_the_selection() {
+    within(async {
+        let db = TestDb::new().await;
+        let runtime = runtime(&db).await;
+        let mut mine = Vec::new();
+        for _ in 0..5 {
+            mine.push(
+                runtime
+                    .create(draft(&runtime, &owner(), RecoveryClass::Resume))
+                    .await
+                    .unwrap()
+                    .snapshot
+                    .task_id,
+            );
+        }
+        // Three Tasks share one creation time, so their IDs order them within a page
+        // and across a page boundary.
+        same_creation_time(&db, &mine[1..4]).await;
+        let mut other = draft(&runtime, &owner(), RecoveryClass::Resume);
+        other.task_type = TaskTypeName::new("time.validate_timeline").unwrap();
+        let other_type = runtime.create(other).await.unwrap().snapshot.task_id;
+        let elsewhere = runtime
+            .create(draft(
+                &runtime,
+                &owner_with(OwnerSpec {
+                    work_context: "elsewhere",
+                    ..OwnerSpec::default()
+                }),
+                RecoveryClass::Resume,
+            ))
+            .await
+            .unwrap()
+            .snapshot
+            .task_id;
+        // A Task with a label the caller lacks is never selected.
+        runtime
+            .create(draft(
+                &runtime,
+                &owner_with(OwnerSpec {
+                    labels: &["secret"],
+                    ..OwnerSpec::default()
+                }),
+                RecoveryClass::Resume,
+            ))
+            .await
+            .unwrap();
+
+        let mut visible = mine.clone();
+        visible.extend([other_type, elsewhere]);
+        let mut snapshots = runtime.get_many(&visible).await.unwrap();
+        snapshots.sort_by_key(|task| (task.created_at, task.task_id.as_uuid()));
+        let ordered = |keep: &dyn Fn(&TaskId) -> bool, order: TaskPageOrder| {
+            let mut tasks = snapshots
+                .iter()
+                .map(|task| task.task_id)
+                .filter(|task| keep(task))
+                .collect::<Vec<_>>();
+            if order == TaskPageOrder::NewestFirst {
+                tasks.reverse();
+            }
+            tasks
+        };
+        let all = runtime.for_owner(&owner());
+        let typed = runtime.for_owner(&owner()).of_type(TASK_TYPE);
+        let in_context = runtime.for_owner(&owner()).in_work_context().unwrap();
+        for order in [TaskPageOrder::OldestFirst, TaskPageOrder::NewestFirst] {
+            for limit in [1, 2, 3, 10] {
+                assert_eq!(
+                    every_page(&all, order, limit).await,
+                    ordered(&|_| true, order),
+                    "{order} by {limit}"
+                );
+            }
+            assert_eq!(
+                every_page(&typed, order, 2).await,
+                ordered(&|task| *task != other_type, order),
+            );
+            assert_eq!(
+                every_page(&in_context, order, 2).await,
+                ordered(&|task| *task != elsewhere, order),
+            );
+        }
+
+        // A cursor continues only the order that issued it.
+        let newest = all
+            .page(TaskPageOrder::NewestFirst, None, 2)
+            .await
+            .unwrap()
+            .next_cursor
+            .expect("more Tasks follow");
+        assert_eq!(newest.order(), TaskPageOrder::NewestFirst);
+        assert_eq!(
+            serde_json::to_value(&newest).unwrap()["order"],
+            "newest_first"
+        );
+        assert!(matches!(
+            all.page(TaskPageOrder::OldestFirst, Some(&newest), 2).await,
+            Err(TaskError::PageOrderMismatch {
+                cursor: TaskPageOrder::NewestFirst,
+                requested: TaskPageOrder::OldestFirst,
+            })
+        ));
+        let oldest = all
+            .page(TaskPageOrder::OldestFirst, None, 2)
+            .await
+            .unwrap()
+            .next_cursor
+            .expect("more Tasks follow");
+        assert!(matches!(
+            all.page(TaskPageOrder::NewestFirst, Some(&oldest), 2).await,
+            Err(TaskError::PageOrderMismatch { .. })
+        ));
     })
     .await;
 }
@@ -376,6 +532,62 @@ async fn a_later_page_seeks_its_cursor_in_a_generic_plan() {
                 .iter()
                 .any(|condition| condition.contains("ROW(created_at, id) > ROW(COALESCE(")),
             "{conditions:?}"
+        );
+    })
+    .await;
+}
+
+/// The index scans of every node of an `EXPLAIN (FORMAT JSON)` plan, as index name, scan
+/// direction and index condition.
+fn index_scans(node: &serde_json::Value, scans: &mut Vec<(String, String, String)>) {
+    if let Some(index) = node.get("Index Name").and_then(serde_json::Value::as_str) {
+        let field = |name: &str| {
+            node.get(name)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        scans.push((
+            index.to_owned(),
+            field("Scan Direction"),
+            field("Index Cond"),
+        ));
+    }
+    for child in node
+        .get("Plans")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        index_scans(child, scans);
+    }
+}
+
+#[tokio::test]
+async fn a_later_newest_first_page_scans_the_owner_index_backward() {
+    within(async {
+        let db = TestDb::new().await;
+        let script = include_str!("../queries/plans/owner_page_newest.sql");
+        assert!(
+            script.contains(include_str!("../../queries/owner/page_newest.sql").trim_end()),
+            "the plan script prepares the newest-first page statement verbatim"
+        );
+        let mut connection = db.a.pool().acquire().await.unwrap();
+        let rows = sqlx::raw_sql(script)
+            .fetch_all(&mut *connection)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        let plan: serde_json::Value = sqlx::Row::try_get(&rows[0], 0).unwrap();
+        let mut scans = Vec::new();
+        index_scans(&plan[0]["Plan"], &mut scans);
+        assert!(
+            scans.iter().any(|(index, direction, condition)| {
+                index == "task_owner_page"
+                    && direction == "Backward"
+                    && condition.contains("ROW(created_at, id) < ROW(COALESCE(")
+            }),
+            "{scans:?}"
         );
     })
     .await;
