@@ -22,19 +22,26 @@ pub(crate) const MAX_ATTEMPTS: usize = 8;
 struct Worker {
     cancellation: CancellationToken,
     join: JoinHandle<()>,
+    /// The instance generation whose claim the worker runs.
+    generation: u64,
 }
 
 /// Durable Tasks of one server, executed by one process instance.
 ///
 /// The instance owns every Task this runtime claims. When the process ends, the kernel
 /// reaper deletes its instance row and the Tasks move to their recovery state; a worker
-/// write from a reaped instance matches no row.
+/// write from a reaped instance matches no row. When the reaper deleted the row while the
+/// instance's connection was down, the instance continues as a new generation under a
+/// new id, and the runtime stops the workers of earlier generations before it claims
+/// again, so no Task runs twice in one process.
 #[derive(Clone)]
 pub struct TaskRuntime {
     store: PlatformStore,
     server: ServerSlug,
     instance: Arc<Instance>,
     workers: Arc<Mutex<HashMap<TaskId, Worker>>>,
+    /// The instance generation of each claim whose worker is not registered yet.
+    claimed: Arc<std::sync::Mutex<HashMap<TaskId, u64>>>,
     signals: Arc<SignalHub>,
     _retention: Arc<Retention>,
     _due: Arc<Due>,
@@ -75,6 +82,7 @@ impl TaskRuntime {
             server,
             instance,
             workers: Arc::default(),
+            claimed: Arc::default(),
             signals: Arc::default(),
             _retention: Arc::new(retention),
             _due: Arc::new(due),
@@ -98,12 +106,48 @@ impl TaskRuntime {
         self.instance.id()
     }
 
-    /// Fail once the instance lost its lock, so the process stops taking work.
+    /// Fail once the instance ended, so the process stops taking work.
     pub(crate) fn check_instance(&self) -> Result<(), TaskError> {
         if self.instance.is_lost() {
             return Err(StoreError::InstanceLost.into());
         }
         Ok(())
+    }
+
+    /// The instance id a claim records and its generation. When the instance continued
+    /// as a new generation, a reaper moved the Tasks of the earlier one to recovery, so
+    /// their local workers no longer own them: the runtime stops those workers and waits
+    /// for them before this process can claim one of those Tasks again.
+    pub(crate) async fn claim_instance(&self) -> Result<(InstanceId, u64), TaskError> {
+        self.check_instance()?;
+        let state = self.instance.state();
+        let mut workers = self.workers.lock().await;
+        let earlier: Vec<TaskId> = workers
+            .iter()
+            .filter(|(_, worker)| worker.generation < state.generation)
+            .map(|(task_id, _)| *task_id)
+            .collect();
+        for task_id in earlier {
+            if let Some(worker) = workers.remove(&task_id) {
+                tracing::warn!(
+                    task = %task_id,
+                    instance = %state.id,
+                    "stopping the worker of a Task an earlier instance generation owned"
+                );
+                worker.join.abort();
+                let _ = worker.join.await;
+            }
+        }
+        Ok((state.id, state.generation))
+    }
+
+    /// Remember the generation of a claim until its worker is registered.
+    pub(crate) fn claimed(&self, snapshot: TaskSnapshot, generation: u64) -> TaskSnapshot {
+        self.claimed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(snapshot.task_id, generation);
+        snapshot
     }
 
     pub(crate) fn pool(&self) -> &PgPool {
@@ -195,10 +239,20 @@ impl TaskRuntime {
         join: JoinHandle<()>,
     ) -> Result<(), TaskError> {
         let task_id = validate_task_id(task_id)?;
-        self.workers
+        let generation = self
+            .claimed
             .lock()
-            .await
-            .insert(task_id, Worker { cancellation, join });
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&task_id)
+            .unwrap_or_else(|| self.instance.state().generation);
+        self.workers.lock().await.insert(
+            task_id,
+            Worker {
+                cancellation,
+                join,
+                generation,
+            },
+        );
         Ok(())
     }
 

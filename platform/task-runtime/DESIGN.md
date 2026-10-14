@@ -80,8 +80,18 @@ declares:
 | `interrupted_indeterminate` | `failed` with code `interrupted_indeterminate`, because its effect may have partly happened |
 
 Every worker write requires the caller's instance as owner. A process whose instance
-was reaped settles nothing and receives `TaskError::NotOwner`. A lost instance also
-stops claiming.
+was reaped settles nothing and receives `TaskError::NotOwner`. `release` gives up a
+claim without an outcome, which moves the Task on exactly as the end of its instance
+would.
+
+A process whose instance connection fails keeps running: the instance
+[reconnects](../../docs/DATABASE.md#process-instances) and keeps its Tasks while no
+reaper deleted its row. Once a reaper did, the instance continues as a new generation
+under a new id. Before its next claim the runtime aborts the local workers of earlier
+generations and waits for them, so a Task the reaper returned to the queue never runs
+twice in one process; their writes, made under the new id, match no row in any case.
+An instance that ended, because it shut down or the database refused its login, stops
+claiming.
 
 ## Work
 
@@ -92,8 +102,10 @@ replicas sharing the queue take different Tasks without waiting. With the queue 
 the stream waits for a created or changed Task of its server, a reap round of its
 instance or a listener reconnect, and then claims again. Another server's Tasks never
 wake it. A Task returned to the queue by any reaper
-therefore reaches a live worker. The stream ends with an error when the instance loses
-its lock. `claim` takes one queued Task by ID, and `claim_next` takes the oldest.
+therefore reaches a live worker. A claim that fails, as it does while the database
+connection is down, is tried again after 100 milliseconds, doubling to at most five
+seconds between attempts. The stream ends with an error only when the instance ended.
+`claim` takes one queued Task by ID, and `claim_next` takes the oldest.
 
 ## Transitions
 
@@ -311,7 +323,11 @@ and the next one runs on schedule.
 `tests/tasks` runs against a fresh database from the
 [PostgreSQL fixture](../../testing/fixtures/DESIGN.md). It covers concurrent claims, the
 work stream, notifications that reach only the channel of the Task's server, recovery of
-each class and fencing after an instance's session is terminated and reaped,
+each class and fencing after an instance's session is terminated and reaped, claims,
+wakeups and due checks that continue after every session of a server's login was
+terminated, the workers of an earlier instance generation stopped before the new
+generation claims their Task again, a work stream that ends once the server's login is
+dropped, releases into each recovery class,
 cancellation of owned and unowned Tasks, resumable settlement, input exchanges with
 concurrent answers and concurrent requests past the input limit, steps recorded,
 returned without rerunning and left unsettled across a failed attempt and an instance's

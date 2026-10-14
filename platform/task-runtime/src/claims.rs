@@ -12,18 +12,18 @@ impl TaskRuntime {
     /// Claim one queued Task of this server.
     pub async fn claim(&self, task_id: TaskId) -> Result<TaskSnapshot, TaskError> {
         let task_id = crate::runtime::validate_task_id(task_id)?;
-        self.check_instance()?;
+        let (instance, generation) = self.claim_instance().await?;
         let row = sqlx::query_file_as!(
             TaskRow,
             "queries/claim.sql",
             task_id.as_uuid(),
             self.server().as_str(),
-            self.instance_id() as InstanceId,
+            instance as InstanceId,
         )
         .fetch_optional(self.pool())
         .await?;
         if let Some(row) = row {
-            return TaskSnapshot::try_from(row);
+            return Ok(self.claimed(TaskSnapshot::try_from(row)?, generation));
         }
         match self.get(task_id).await? {
             None => Err(TaskError::NotFound(task_id)),
@@ -40,16 +40,16 @@ impl TaskRuntime {
 
     /// Claim the oldest queued Task of this server that no other worker is claiming.
     pub async fn claim_next(&self) -> Result<Option<TaskSnapshot>, TaskError> {
-        self.check_instance()?;
+        let (instance, generation) = self.claim_instance().await?;
         sqlx::query_file_as!(
             TaskRow,
             "queries/claim_next.sql",
             self.server().as_str(),
-            self.instance_id() as InstanceId,
+            instance as InstanceId,
         )
         .fetch_optional(self.pool())
         .await?
-        .map(TaskSnapshot::try_from)
+        .map(|row| Ok(self.claimed(TaskSnapshot::try_from(row)?, generation)))
         .transpose()
     }
 }

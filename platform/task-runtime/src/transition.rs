@@ -158,6 +158,28 @@ impl TaskRuntime {
         }
     }
 
+    /// Give up this instance's claim on a Task it runs without an outcome, as the end of
+    /// the instance would: a `resume` Task is queued again and continues from its
+    /// finished steps, a requested cancellation completes, and any other Task ends as
+    /// interrupted. A Task this instance no longer owns stays as it is, and the call
+    /// fails with [`TaskError::NotOwner`].
+    pub async fn release(&self, task_id: TaskId) -> Result<TaskSnapshot, TaskError> {
+        let task_id = crate::runtime::validate_task_id(task_id)?;
+        let row = sqlx::query_file_as!(
+            TaskRow,
+            "queries/release.sql",
+            task_id.as_uuid(),
+            self.server().as_str(),
+            self.instance_id() as InstanceId,
+        )
+        .fetch_optional(self.pool())
+        .await?;
+        match row {
+            Some(row) => TaskSnapshot::try_from(row),
+            None => Err(self.rejected(task_id).await),
+        }
+    }
+
     /// Classify a worker write that matched no row.
     pub(crate) async fn rejected(&self, task_id: TaskId) -> TaskError {
         match self.get(task_id).await {

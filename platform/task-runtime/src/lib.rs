@@ -36,7 +36,7 @@ mod work;
 
 pub use config::TaskRuntimeConfig;
 pub use create::{CreateTask, CreateTaskResult};
-pub use error::TaskError;
+pub use error::{TaskError, interrupted_by_connection};
 pub use inputs::{MAX_TASK_INPUTS, TaskInputExchange, TaskInputRequest, TaskInputSubmission};
 pub use operations::{
     CallbackToken, CheckObservation, CheckSchedule, Completion, DUE_INTERVAL, Delivery, DuePass,
@@ -56,6 +56,8 @@ pub use snapshot::{
 pub use steps::{MAX_STEP_KEY_BYTES, StepAttempt, StepDispatch, StepKey, StepOperationId};
 pub use subscriptions::{OwnerTaskSubscription, TaskUpdateStream};
 pub use transition::TaskTransition;
-pub use veoveo_platform_store::{Instance, InstanceId, MaintenanceBatch, PrincipalKind, Pruned};
+pub use veoveo_platform_store::{
+    Instance, InstanceId, InstancePhase, InstanceState, MaintenanceBatch, PrincipalKind, Pruned,
+};
 pub use veoveo_task_contract::{RecoveryClass, TaskStatus};
-pub use work::TaskWork;
+pub use work::{CLAIM_RETRY_FIRST_DELAY, CLAIM_RETRY_MAX_DELAY, TaskWork};

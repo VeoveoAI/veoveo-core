@@ -49,7 +49,40 @@ impl TaskError {
         matches!(self, Self::Parked(_))
     }
 
+    /// The error reports a database connection that ended or could not be had, so the
+    /// same work may succeed on a new connection.
+    pub fn is_connection(&self) -> bool {
+        match self {
+            Self::Store(error) => error.is_connection(),
+            Self::Database(error) => veoveo_platform_store::is_connection_error(error),
+            _ => false,
+        }
+    }
+
     pub(crate) fn invalid_record(message: impl Into<String>) -> Self {
         Self::InvalidRecord(message.into())
     }
+}
+
+/// Whether `error` or one of its sources reports a database connection that ended or
+/// could not be had. A worker uses it to tell work that a lost connection interrupted
+/// from work that failed.
+pub fn interrupted_by_connection(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut next = Some(error);
+    while let Some(error) = next {
+        if error
+            .downcast_ref::<TaskError>()
+            .is_some_and(TaskError::is_connection)
+            || error
+                .downcast_ref::<veoveo_platform_store::StoreError>()
+                .is_some_and(veoveo_platform_store::StoreError::is_connection)
+            || error
+                .downcast_ref::<sqlx::Error>()
+                .is_some_and(veoveo_platform_store::is_connection_error)
+        {
+            return true;
+        }
+        next = error.source();
+    }
+    false
 }

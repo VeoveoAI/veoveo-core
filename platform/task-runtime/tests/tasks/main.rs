@@ -10,6 +10,7 @@ mod lifecycle;
 mod notifications;
 mod operations;
 mod owner;
+mod reconnect;
 mod recovery;
 mod steps;
 mod subscriptions;

@@ -1,11 +1,17 @@
 //! Queued work for this runtime's server, claimed as the consumer asks for it.
-use std::pin::Pin;
+use std::{pin::Pin, time::Duration};
 
 use futures::Stream;
 use tokio::sync::watch;
 use veoveo_platform_store::{ReapRound, StoreError};
 
 use crate::{TaskError, TaskRuntime, TaskSnapshot, signals::TaskSignals};
+
+/// The wait after the first failed claim of a work stream. Each further failure in a row
+/// doubles it, up to [`CLAIM_RETRY_MAX_DELAY`].
+pub const CLAIM_RETRY_FIRST_DELAY: Duration = Duration::from_millis(100);
+/// The longest wait between failed claims of a work stream.
+pub const CLAIM_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 
 /// Tasks this runtime's instance claimed, in the order it claimed them.
 pub type TaskWork = Pin<Box<dyn Stream<Item = Result<TaskSnapshot, TaskError>> + Send + 'static>>;
@@ -19,21 +25,53 @@ impl TaskRuntime {
     /// that a dead instance returned to the queue is claimed again. Another server's
     /// Tasks never wake it. Every item is owned by this runtime's instance; the
     /// consumer executes it and settles it with a worker transition. Replicas share the
-    /// queue, and each Task goes to one of them. The stream ends with an error when the
-    /// instance loses its lock, because its claims no longer hold.
+    /// queue, and each Task goes to one of them. A claim that fails while the database
+    /// connection is down is tried again with backoff, from [`CLAIM_RETRY_FIRST_DELAY`]
+    /// to [`CLAIM_RETRY_MAX_DELAY`]. The stream ends with an error only when the
+    /// instance ended, because its claims no longer hold.
     pub async fn work(&self) -> Result<TaskWork, TaskError> {
         let mut signals = self.signals().await?;
         let mut reaps = self.instance().reaps();
         let runtime = self.clone();
         Ok(Box::pin(async_stream::try_stream! {
+            let mut failures = 0u32;
             loop {
                 runtime.check_instance()?;
-                while let Some(task) = runtime.claim_next().await? {
-                    yield task;
+                match runtime.claim_next().await {
+                    Ok(Some(task)) => {
+                        failures = 0;
+                        yield task;
+                        continue;
+                    }
+                    Ok(None) => failures = 0,
+                    Err(error) if runtime.instance().is_lost() => Err(error)?,
+                    Err(error) => {
+                        failures = failures.saturating_add(1);
+                        tracing::warn!(
+                            server = runtime.server().as_str(),
+                            failures,
+                            %error,
+                            "claiming Tasks failed; trying again"
+                        );
+                        runtime.retry_after(failures).await?;
+                        continue;
+                    }
                 }
                 runtime.await_work(&mut signals, &mut reaps).await?;
             }
         }))
+    }
+
+    /// Wait before the next claim after `failures` failed claims in a row, unless the
+    /// instance ends first.
+    async fn retry_after(&self, failures: u32) -> Result<(), TaskError> {
+        let delay = CLAIM_RETRY_FIRST_DELAY
+            .saturating_mul(1 << failures.saturating_sub(1).min(16))
+            .min(CLAIM_RETRY_MAX_DELAY);
+        tokio::select! {
+            () = tokio::time::sleep(delay) => Ok(()),
+            () = self.instance().lost() => Err(StoreError::InstanceLost.into()),
+        }
     }
 
     /// Wait until claimable work may exist.
