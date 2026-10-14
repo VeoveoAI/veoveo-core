@@ -171,8 +171,10 @@ impl OwnerTaskQuery {
         Ok(TaskPage { items, next_cursor })
     }
 
-    /// Cancel the caller's Task. An unowned Task is cancelled at once; an owned one
-    /// records the request for its worker. A finished Task is returned unchanged.
+    /// Cancel the caller's Task. An unowned Task is cancelled at once; an owned one, or
+    /// one parked on an operation, records the request, and the worker that holds or
+    /// next claims it carries the cancellation through its wait. A finished Task is
+    /// returned unchanged.
     pub async fn cancel(&self, task: TaskId) -> Result<TaskSnapshot, TaskError> {
         let task = crate::runtime::validate_task_id(task)?;
         for _ in 0..crate::runtime::MAX_ATTEMPTS {

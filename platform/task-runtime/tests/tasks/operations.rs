@@ -502,6 +502,52 @@ async fn cancelling_a_parked_task_carries_the_cancellation_to_the_provider() {
 }
 
 #[tokio::test]
+async fn an_owner_cancelling_a_parked_task_leaves_the_cancellation_to_a_claim() {
+    within(async {
+        let db = TestDb::new().await;
+        let worker = runtime(&db).await;
+        let task = claimed(&worker, RecoveryClass::Resume).await;
+        let spec = events(Duration::from_secs(3600));
+        dispatch(&worker, task.task_id, &spec, "job-owner-cancel").await;
+        let calls = Provider::default();
+        assert!(
+            worker
+                .wait_operation::<Prediction, _>(task.task_id, &spec.key, &calls)
+                .await
+                .unwrap_err()
+                .parked()
+        );
+
+        // The parked Task has no owner, yet its operation still runs at the provider:
+        // the caller's cancellation is recorded for the next claim.
+        let requested = worker
+            .for_owner(&owner())
+            .cancel(task.task_id)
+            .await
+            .unwrap();
+        assert_eq!(requested.status, TaskStatus::CancelRequested);
+        assert_eq!(requested.owner_instance, None);
+        assert_eq!(requested.completed_at, None);
+        assert_eq!(calls.cancels.load(Ordering::SeqCst), 0);
+
+        let claimed = worker.claim(task.task_id).await.unwrap();
+        assert_eq!(claimed.status, TaskStatus::CancelRequested);
+        let outcome = worker
+            .wait_operation::<Prediction, _>(task.task_id, &spec.key, &calls)
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            WaitOutcome::Cancelled {
+                receipt: json!({"cancelled": "job-owner-cancel"})
+            }
+        );
+        assert_eq!(calls.cancels.load(Ordering::SeqCst), 1);
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn a_dispatch_without_a_recorded_submission_is_reported_unsettled() {
     within(async {
         let db = TestDb::new().await;

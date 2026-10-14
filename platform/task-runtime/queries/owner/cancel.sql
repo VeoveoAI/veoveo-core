@@ -1,10 +1,17 @@
 -- Request cancellation of the caller's Task, selected by $1–$8 as in `get.sql`. An
--- unowned Task has no worker to observe the request, so it is cancelled at once.
+-- unowned Task has no worker to observe the request, so it is cancelled at once, unless
+-- it is parked on an operation: a claim then carries the cancellation to the provider.
 UPDATE tasks.task
-SET status = CASE WHEN owner_instance IS NULL THEN 'cancelled' ELSE 'cancel_requested' END,
-    status_message = CASE WHEN owner_instance IS NULL THEN 'Cancelled' ELSE 'Cancelling' END,
+SET status = CASE
+        WHEN owner_instance IS NULL AND parked_on IS NULL THEN 'cancelled'
+        ELSE 'cancel_requested'
+    END,
+    status_message = CASE
+        WHEN owner_instance IS NULL AND parked_on IS NULL THEN 'Cancelled'
+        ELSE 'Cancelling'
+    END,
     cancel_requested_at = now(),
-    completed_at = CASE WHEN owner_instance IS NULL THEN now() END
+    completed_at = CASE WHEN owner_instance IS NULL AND parked_on IS NULL THEN now() END
 WHERE server = $1
     AND tenant = $2
     AND owner_principal = $3
