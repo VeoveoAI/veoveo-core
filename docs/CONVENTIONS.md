@@ -116,10 +116,10 @@ registrations of RFC 8414 and RFC 9728. Administrative routes live under one `/a
 prefix.
 
 Issuers, endpoints and resource URLs use `https`. A local installation, whose traffic
-never leaves one host, may use plain `http` for loopback names (`localhost` and
-`*.localhost`, per RFC 6761), loopback addresses and OpenShell's host alias
-`host.openshell.internal`, which reaches the host's loopback interface. Every other
-host requires `https`.
+stays on one host, may use plain `http` for loopback names (`localhost` and
+`*.localhost`, per RFC 6761), loopback addresses and names under `.internal`, the
+top-level domain ICANN reserves for private networks. The local installation names its
+containers there, such as `vv-gateway.internal`. Every other host requires `https`.
 
 ## Environment Variables And Flags
 

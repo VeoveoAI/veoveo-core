@@ -7,11 +7,12 @@ use url::Url;
 
 /// Whether plain HTTP is allowed for this URL's host: only a local installation's
 /// loopback names (RFC 6761 `localhost` and `*.localhost`), loopback addresses and
-/// OpenShell's host alias `host.openshell.internal`, which reaches the host loopback.
+/// names under `.internal`, the top-level domain ICANN reserves for private networks,
+/// which a local installation gives its containers, such as `vv-gateway.internal`.
 pub fn is_local_host(url: &Url) -> bool {
     match url.host() {
         Some(url::Host::Domain(name)) => {
-            name == "localhost" || name.ends_with(".localhost") || name == "host.openshell.internal"
+            name == "localhost" || name.ends_with(".localhost") || name.ends_with(".internal")
         }
         Some(url::Host::Ipv4(address)) => address.is_loopback(),
         Some(url::Host::Ipv6(address)) => address.is_loopback(),
@@ -98,5 +99,32 @@ impl JsonSchema for HttpsUrl {
             "pattern":"^https://[^/?#@\\s]+/[^#\\s]*$",
             "description":"Canonical ASCII HTTPS URL without credentials or a fragment. The URL parser also checks host syntax, escaping and normalization; runtime policy checks access."
         })
+    }
+}
+
+#[cfg(test)]
+mod local_host_tests {
+    use super::*;
+
+    #[test]
+    fn plain_http_is_local_only_on_loopback_and_private_names() {
+        for local in [
+            "http://localhost:8080",
+            "http://gateway.localhost",
+            "http://127.0.0.1:5432",
+            "http://[::1]:9000",
+            "http://vv-gateway.internal:8080",
+        ] {
+            assert!(is_local_host(&Url::parse(local).unwrap()), "{local}");
+        }
+        for remote in [
+            "http://vv-gateway:8080",
+            "http://gateway.example.com",
+            "http://internal.example.com",
+            "http://example.internalx",
+            "http://10.0.0.5",
+        ] {
+            assert!(!is_local_host(&Url::parse(remote).unwrap()), "{remote}");
+        }
     }
 }
