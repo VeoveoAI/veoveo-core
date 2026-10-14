@@ -237,16 +237,9 @@ async fn an_instance_whose_login_was_dropped_ends() {
     let db = TestDb::new().await;
     let clock = db.server_store(&slug("clock")).await;
     let instance = Instance::start(&clock, &slug("clock")).await.unwrap();
-    let pid = lock_backend(&db.b, instance.id())
-        .await
-        .expect("the instance holds its lock");
-    let login = LoginName::parse(clock.config().username()).unwrap();
-    // The server's pool keeps a session open, from which the login may end its own
-    // sessions after the role is gone.
-    assert_eq!(visible_instances(&clock).await.len(), 1);
-    // The Gateway removed the registration and dropped its login.
-    db.b.drop_server_login(&login).await.unwrap();
-    terminate(&clock, pid).await;
+    // The Gateway removed the registration and dropped its login, and the sessions of
+    // the login ended, the instance's lock session among them.
+    db.remove_login(&clock).await;
 
     within(Duration::from_secs(30), instance.lost()).await;
     assert!(instance.is_lost());
