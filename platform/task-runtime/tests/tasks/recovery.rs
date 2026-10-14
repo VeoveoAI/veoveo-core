@@ -2,12 +2,11 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use veoveo_platform_store::StoreError;
 use veoveo_task_runtime::{RecoveryClass, TaskError, TaskFailure, TaskStatus, TaskTransition};
 
 use crate::{
     store::TestDb,
-    support::{claimed, create, kill_and_reap, runtime, within},
+    support::{claimed, kill_and_reap, runtime, within},
 };
 
 fn running() -> TaskTransition {
@@ -158,32 +157,6 @@ async fn the_work_stream_claims_work_a_dead_instance_released() {
             .unwrap();
         assert_eq!(reclaimed.task_id, task.task_id);
         assert_eq!(reclaimed.owner_instance, Some(survivor.instance().id()));
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn an_instance_that_lost_its_lock_stops_claiming() {
-    within(async {
-        let db = TestDb::new().await;
-        let doomed = runtime(&db).await;
-        let mut work = doomed.work().await.unwrap();
-
-        kill_and_reap(&db, &doomed).await;
-        doomed.instance().lost().await;
-
-        let queued = create(&doomed, RecoveryClass::Resume).await;
-        assert!(matches!(
-            doomed.claim(queued.task_id).await,
-            Err(TaskError::Store(StoreError::InstanceLost))
-        ));
-        assert!(matches!(
-            work.next().await,
-            Some(Err(TaskError::Store(StoreError::InstanceLost)))
-        ));
-        assert!(work.next().await.is_none());
-        let unclaimed = doomed.get(queued.task_id).await.unwrap().unwrap();
-        assert_eq!(unclaimed.status, TaskStatus::Queued);
     })
     .await;
 }

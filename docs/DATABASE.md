@@ -122,14 +122,30 @@ releases the lock at once; a host that disappears releases it when TCP keepalive
 the connection. A clean shutdown deletes the row and releases the lock before it closes
 the connection, so the instance reads as dead once shutdown returns.
 
-The `Instance` type checks its connection every 5 seconds and reports itself lost when
-a check fails or takes longer than 5 seconds; the process then stops acting on the work
-it owned. Work that a process owns references its instance through `ON DELETE SET NULL`.
-Each live process calls `kernel.reap_instances()` when it starts and every 15 seconds; the
+Work that a process owns references its instance through `ON DELETE SET NULL`. Each
+live process calls `kernel.reap_instances()` when it starts and every 15 seconds; the
 function deletes the rows of instances whose locks are free. The cascade clears
 ownership in the same transaction, and a trigger moves the released work to its recovery
 state. Settlement writes compare the owner instance, so a process whose instance was
 reaped cannot settle work it no longer owns.
+
+The `Instance` type checks its connection and its row every 5 seconds. When a check
+fails, takes longer than 5 seconds or finds the row gone, the instance reconnects with a
+new dedicated connection, waiting 100 milliseconds after the first failed attempt and
+doubling to at most 5 seconds. On the new connection it calls
+`kernel.resume_instance(id)`:
+
+| Result | Meaning | Next |
+|---|---|---|
+| `resumed` | This session holds the lock again and the row is there | The instance keeps its id and the work it owns |
+| `held` | Another session of the same login still holds the lock | The function terminated that session, which only the process's abandoned connection can be, and the instance tries again at once |
+| `gone` | A reaper deleted the row, or another login started it | The instance starts again under a new id as its next generation; the reaper already moved its earlier work to recovery |
+
+The instance ends only on shutdown or when the database refuses its login (SQLSTATE
+`28000` or `28P01`), as it does once the Gateway removed the server's registration and
+dropped the login. The process then stops acting on the work it owned. A server that
+loses its database connection for a moment therefore keeps its registration and its
+work, and one that stays away past a reap keeps running under a new instance.
 
 Connection poolers that multiplex sessions, such as PgBouncer in transaction mode, break
 session advisory locks. Installations connect components to Postgres directly.

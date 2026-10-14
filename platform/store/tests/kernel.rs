@@ -10,8 +10,9 @@ use futures::StreamExt;
 use sqlx::migrate::Migrator;
 use store::TestDb;
 use veoveo_platform_store::{
-    Change, ChangeOperation, ChangeSignal, ChangeStream, Instance, InstanceId, LoginName,
-    PlatformStore, ServerSchema, Singleton, SingletonName, StoreError, TenantId,
+    Change, ChangeOperation, ChangeSignal, ChangeStream, Instance, InstanceId, InstancePhase,
+    InstanceState, LoginName, PlatformStore, ServerSchema, Singleton, SingletonName, StoreError,
+    TenantId,
 };
 use veoveo_types::ServerSlug;
 
@@ -118,20 +119,138 @@ async fn a_shared_instance_shuts_down_while_other_holders_keep_it() {
     holder.shutdown().await.unwrap();
 }
 
+/// The session that holds an instance's lock, if any.
+async fn lock_backend(store: &PlatformStore, id: InstanceId) -> Option<i32> {
+    sqlx::query_file_scalar!(
+        "tests/queries/kernel/instance_backend.sql",
+        id as InstanceId
+    )
+    .fetch_optional(store.pool())
+    .await
+    .unwrap()
+}
+
+/// Wait until the instance is live on a session other than `previous`.
+async fn live_again(instance: &Instance, observer: &PlatformStore, previous: i32) -> InstanceState {
+    within(Duration::from_secs(30), async {
+        loop {
+            let state = instance.state();
+            if state.phase == InstancePhase::Live
+                && lock_backend(observer, state.id)
+                    .await
+                    .is_some_and(|pid| pid != previous)
+            {
+                return state;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+}
+
 #[tokio::test]
-async fn an_instance_whose_connection_ends_reports_itself_lost() {
+async fn an_instance_whose_connection_ends_takes_its_lock_back() {
     let db = TestDb::new().await;
     let instance = Instance::start(&db.a, &slug("gateway")).await.unwrap();
-    let pid = sqlx::query_file_scalar!(
-        "tests/queries/kernel/instance_backend.sql",
-        instance.id() as InstanceId
+    let id = instance.id();
+    let pid = lock_backend(&db.b, id)
+        .await
+        .expect("the instance holds its lock");
+    terminate(&db.b, pid).await;
+
+    // The instance notices within a check and holds the same id again, so the work it
+    // owns stays its own.
+    let state = live_again(&instance, &db.b, pid).await;
+    assert_eq!(state.id, id);
+    assert_eq!(state.generation, 0);
+    assert!(!instance.is_lost());
+    assert!(db.b.instance_alive(id).await.unwrap());
+    assert_eq!(db.b.reap_instances().await.unwrap(), 0);
+    assert_eq!(visible_instances(&db.b).await.len(), 1);
+    instance.shutdown().await.unwrap();
+    assert!(visible_instances(&db.b).await.is_empty());
+}
+
+#[tokio::test]
+async fn an_instance_whose_row_was_reaped_continues_as_a_new_one() {
+    let db = TestDb::new().await;
+    let clock = db.server_store(&slug("clock")).await;
+    let instance = Instance::start(&clock, &slug("clock")).await.unwrap();
+    let first = instance.id();
+    let pid = lock_backend(&db.b, first)
+        .await
+        .expect("the instance holds its lock");
+    // A reaper that found the lock free while the connection was down deleted the row.
+    sqlx::query_file!(
+        "tests/queries/kernel/delete_instance.sql",
+        first as InstanceId
     )
-    .fetch_one(db.b.pool())
+    .execute(db.b.pool())
     .await
     .unwrap();
-    terminate(&db.b, pid).await;
-    within(Duration::from_secs(20), instance.lost()).await;
+
+    let state = live_again(&instance, &db.b, pid).await;
+    assert_ne!(state.id, first);
+    assert_eq!(state.generation, 1);
+    assert!(!instance.is_lost());
+    assert!(!db.b.instance_alive(first).await.unwrap());
+    assert!(clock.instance_alive(state.id).await.unwrap());
+    let seen = visible_instances(&clock).await;
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].0, state.id);
+    instance.shutdown().await.unwrap();
+    assert!(visible_instances(&clock).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_resume_ends_the_earlier_session_of_its_login_and_refuses_other_logins() {
+    let db = TestDb::new().await;
+    let clock = db.server_store(&slug("clock")).await;
+    let instance = Instance::start(&clock, &slug("clock")).await.unwrap();
+    let id = instance.id();
+    let pid = lock_backend(&db.b, id)
+        .await
+        .expect("the instance holds its lock");
+
+    // Another login cannot take the instance.
+    let resume = |store: PlatformStore| async move {
+        sqlx::query_file_scalar!("tests/queries/kernel/resume_instance.sql", id as InstanceId)
+            .fetch_one(store.pool())
+            .await
+            .unwrap()
+    };
+    assert_eq!(resume(db.b.clone()).await, "gone");
+    assert_eq!(lock_backend(&db.b, id).await, Some(pid));
+
+    // The same login finds the lock held, ends the session that holds it and leaves the
+    // lock to the instance, which takes it back.
+    assert_eq!(resume(clock.clone()).await, "held");
+    let state = live_again(&instance, &db.b, pid).await;
+    assert_eq!(state.id, id);
+    assert_eq!(state.generation, 0);
+    instance.shutdown().await.unwrap();
+    assert_eq!(resume(clock.clone()).await, "gone");
+}
+
+#[tokio::test]
+async fn an_instance_whose_login_was_dropped_ends() {
+    let db = TestDb::new().await;
+    let clock = db.server_store(&slug("clock")).await;
+    let instance = Instance::start(&clock, &slug("clock")).await.unwrap();
+    let pid = lock_backend(&db.b, instance.id())
+        .await
+        .expect("the instance holds its lock");
+    let login = LoginName::parse(clock.config().username()).unwrap();
+    // The server's pool keeps a session open, from which the login may end its own
+    // sessions after the role is gone.
+    assert_eq!(visible_instances(&clock).await.len(), 1);
+    // The Gateway removed the registration and dropped its login.
+    db.b.drop_server_login(&login).await.unwrap();
+    terminate(&clock, pid).await;
+
+    within(Duration::from_secs(30), instance.lost()).await;
     assert!(instance.is_lost());
+    assert_eq!(instance.state().phase, InstancePhase::Ended);
     assert!(matches!(
         instance.shutdown().await,
         Err(StoreError::InstanceLost)

@@ -41,7 +41,7 @@ pub enum StoreError {
         name: String,
         reason: &'static str,
     },
-    #[error("the process instance lost its database connection")]
+    #[error("the process instance ended: it shut down, or the database refused its login")]
     InstanceLost,
     #[error("invalid platform identity field {field}: {reason}")]
     InvalidIdentityField {
@@ -65,6 +65,24 @@ pub enum StoreError {
 }
 
 impl StoreError {
+    /// The error reports a connection that ended or could not be had, which a later
+    /// attempt on a new connection may get past: see [`is_connection_error`]. A deadline
+    /// on opening a connection counts too.
+    pub fn is_connection(&self) -> bool {
+        match self {
+            Self::Database(error) => is_connection_error(error),
+            Self::Timeout { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// The database refused the login: its password no longer matches, or the role is
+    /// gone or may not log in. A registered server's login ends this way once the
+    /// Gateway removed the server's registration.
+    pub fn is_login_refused(&self) -> bool {
+        matches!(self, Self::Database(error) if is_login_refused(error))
+    }
+
     pub(crate) fn invalid_name(
         kind: &'static str,
         name: impl Into<String>,
@@ -76,4 +94,27 @@ impl StoreError {
             reason,
         }
     }
+}
+
+/// The error reports a connection that ended or could not be had, which a later attempt
+/// on a new connection may get past: an I/O failure, a session the server terminated or
+/// is shutting down (SQLSTATE class 08, `57P01` to `57P03`), a server out of connections
+/// (`53300`), or a pool that could not hand out a connection in time.
+pub fn is_connection_error(error: &sqlx::Error) -> bool {
+    match error {
+        sqlx::Error::Io(_) | sqlx::Error::Tls(_) | sqlx::Error::PoolTimedOut => true,
+        sqlx::Error::Database(error) => error.code().is_some_and(|code| {
+            code.starts_with("08") || matches!(code.as_ref(), "57P01" | "57P02" | "57P03" | "53300")
+        }),
+        _ => false,
+    }
+}
+
+/// The database refused the login (SQLSTATE `28000` or `28P01`).
+fn is_login_refused(error: &sqlx::Error) -> bool {
+    matches!(
+        error,
+        sqlx::Error::Database(error)
+            if error.code().is_some_and(|code| matches!(code.as_ref(), "28000" | "28P01"))
+    )
 }

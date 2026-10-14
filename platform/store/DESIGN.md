@@ -23,7 +23,7 @@ the crate implements.
 | `PlatformStore::migrate`, `MIGRATOR` | Kernel migrations from `migrations/`, history in `kernel._sqlx_migrations` |
 | `ensure_server`, `create_server_login`, `drop_server_login` | A registered server's group role, schema and logins, for the Gateway |
 | `migrate_server` | A server's own migrations in its schema, as its group role |
-| `Instance`, `reap_instances`, `instance_alive` | Process liveness through `kernel.instance` and its advisory lock |
+| `Instance`, `reap_instances`, `instance_alive` | Process liveness through `kernel.instance` and its advisory lock, reconnected after a lost connection |
 | `Singleton` | One replica per role, on the connection that holds the lock |
 | `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
 | `ensure_identity`, `work_context_by_key` | Identity records for the Gateway and registered servers |
@@ -55,7 +55,10 @@ Task runtime's retention run this way.
 
 The integration tests use the [PostgreSQL fixture](../../testing/fixtures/DESIGN.md).
 They cover kernel migrations, server roles and row-level security, instance liveness and
-reaping, singletons, notifications across a reconnect, identity conflicts, Work Context
+reaping, an instance that takes its lock back after its session ends, continues under a
+new id after its row was reaped, ends the earlier session of its own login, refuses
+another login's resumption and ends once its login is dropped, singletons,
+notifications across a reconnect, identity conflicts, Work Context
 reads and the `postgres` macro bindings.
 `tests/database_conformance.rs` holds every query under `src` and the `kernel` and
 `identity` schemas to the

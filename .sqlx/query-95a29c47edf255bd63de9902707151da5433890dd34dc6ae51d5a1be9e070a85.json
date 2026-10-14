@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Delete an instance's row as a reaper does once it finds the lock free.\nDELETE FROM kernel.instance WHERE id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "95a29c47edf255bd63de9902707151da5433890dd34dc6ae51d5a1be9e070a85"
+}
