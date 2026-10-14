@@ -91,9 +91,14 @@ reaper deleted its row, which no reaper does before the lock has stayed free for
 instance grace. `TaskRuntimeConfig::instance_grace` sets the grace, 30 seconds by
 default. Once a reaper deleted the row, the instance continues as a new generation
 under a new id. Before its next claim the runtime aborts the local workers of earlier
-generations and waits for them, so a Task the reaper returned to the
+generations that still run and waits for them, so a Task the reaper returned to the
 queue never runs twice in one process; their writes, made under the new id, match no
 row in any case.
+
+`register_worker` tracks a worker until its task ends, whether it returns, panics or is
+aborted, so the runtime holds only workers that still run and `local_workers` counts
+them. A Task that settles while its worker still runs keeps the entry until the worker
+returns, so a stop still reaches it.
 An instance that ended, because it shut down or the database refused its login, stops
 claiming.
 
@@ -347,7 +352,8 @@ terminated, an instance whose lock stayed free for less than the grace keeping i
 Tasks, one that stayed away longer losing them to recovery and taking them back as a new
 generation, a crashed process's Tasks taken by another process only after the grace,
 the workers of an earlier instance generation stopped before the new
-generation claims their Task again, a work stream that ends once the server's login is
+generation claims their Task again, worker entries that leave once the worker returns,
+panics or is aborted, a work stream that ends once the server's login is
 dropped, releases into each recovery class,
 cancellation of owned and unowned Tasks, resumable settlement, input exchanges with
 concurrent answers and concurrent requests past the input limit, steps recorded,

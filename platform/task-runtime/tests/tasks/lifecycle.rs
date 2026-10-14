@@ -580,3 +580,81 @@ async fn pruning_removes_expired_unpinned_finished_tasks() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn a_worker_leaves_the_registry_once_its_task_ends_however_it_ends() {
+    within(async {
+        let db = TestDb::new().await;
+        let worker = runtime(&db).await;
+        let gone = |expected: usize| {
+            let worker = worker.clone();
+            async move {
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    while worker.local_workers().await != expected {
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .unwrap_or_else(|_| panic!("the registry holds {expected} workers"));
+            }
+        };
+
+        // A worker that returns, one that panics and one that is aborted each leave the
+        // registry without a sweep.
+        let returned = claimed(&worker, RecoveryClass::Resume).await;
+        worker
+            .register_worker(
+                returned.task_id,
+                CancellationToken::new(),
+                tokio::spawn(async {}),
+            )
+            .await
+            .unwrap();
+        gone(0).await;
+
+        let panicked = claimed(&worker, RecoveryClass::Resume).await;
+        worker
+            .register_worker(
+                panicked.task_id,
+                CancellationToken::new(),
+                tokio::spawn(async { panic!("the worker failed") }),
+            )
+            .await
+            .unwrap();
+        gone(0).await;
+
+        let aborted = claimed(&worker, RecoveryClass::Resume).await;
+        let join = tokio::spawn(std::future::pending::<()>());
+        let abort = join.abort_handle();
+        worker
+            .register_worker(aborted.task_id, CancellationToken::new(), join)
+            .await
+            .unwrap();
+        assert_eq!(worker.local_workers().await, 1);
+        abort.abort();
+        gone(0).await;
+
+        // A Task that settles while its worker still runs keeps the entry until the worker
+        // returns, so a cancellation can still reach the worker.
+        let settled = claimed(&worker, RecoveryClass::Resume).await;
+        let (finish, finished) = tokio::sync::oneshot::channel::<()>();
+        worker
+            .register_worker(
+                settled.task_id,
+                CancellationToken::new(),
+                tokio::spawn(async move {
+                    let _ = finished.await;
+                }),
+            )
+            .await
+            .unwrap();
+        worker
+            .transition(settled.task_id, success(json!({"ok": true})))
+            .await
+            .unwrap();
+        assert_eq!(worker.local_workers().await, 1);
+        finish.send(()).unwrap();
+        gone(0).await;
+    })
+    .await;
+}

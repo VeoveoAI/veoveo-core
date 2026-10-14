@@ -1,12 +1,18 @@
 //! The Task runtime of one server process.
 use std::{
     collections::{BTreeSet, HashMap},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
 use sqlx::PgPool;
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, watch},
+    task::{AbortHandle, JoinHandle},
+};
 use tokio_util::sync::CancellationToken;
 use veoveo_platform_store::{Channel, Instance, InstanceId, PlatformStore, StoreError};
 use veoveo_types::{ServerSlug, TaskId};
@@ -27,11 +33,17 @@ pub(crate) const MAX_ATTEMPTS: usize = 8;
 /// largest owner page.
 pub const MAX_GET_MANY: usize = 1000;
 
+/// A registered local worker. Its entry leaves the registry when the worker's task ends,
+/// however it ends, so the registry holds only workers that still run.
 struct Worker {
     cancellation: CancellationToken,
-    join: JoinHandle<()>,
+    abort: AbortHandle,
+    /// Turns true once the worker's task ended.
+    ended: watch::Receiver<bool>,
     /// The instance generation whose claim the worker runs.
     generation: u64,
+    /// Tells this registration from a later one of the same Task.
+    registration: u64,
 }
 
 /// Durable Tasks of one server, executed by one process instance.
@@ -48,6 +60,7 @@ pub struct TaskRuntime {
     server: ServerSlug,
     instance: Arc<Instance>,
     workers: Arc<Mutex<HashMap<TaskId, Worker>>>,
+    registrations: Arc<AtomicU64>,
     /// The instance generation of each claim whose worker is not registered yet.
     claimed: Arc<std::sync::Mutex<HashMap<TaskId, u64>>>,
     signals: Arc<SignalHub>,
@@ -90,6 +103,7 @@ impl TaskRuntime {
             server,
             instance,
             workers: Arc::default(),
+            registrations: Arc::default(),
             claimed: Arc::default(),
             signals: Arc::default(),
             _retention: Arc::new(retention),
@@ -129,22 +143,29 @@ impl TaskRuntime {
     pub(crate) async fn claim_instance(&self) -> Result<(InstanceId, u64), TaskError> {
         self.check_instance()?;
         let state = self.instance.state();
-        let mut workers = self.workers.lock().await;
-        let earlier: Vec<TaskId> = workers
-            .iter()
-            .filter(|(_, worker)| worker.generation < state.generation)
-            .map(|(task_id, _)| *task_id)
-            .collect();
-        for task_id in earlier {
-            if let Some(worker) = workers.remove(&task_id) {
-                tracing::warn!(
-                    task = %task_id,
-                    instance = %state.id,
-                    "stopping the worker of a Task an earlier instance generation owned"
-                );
-                worker.join.abort();
-                let _ = worker.join.await;
+        let earlier: Vec<(TaskId, Worker)> = {
+            let mut workers = self.workers.lock().await;
+            let task_ids: Vec<TaskId> = workers
+                .iter()
+                .filter(|(_, worker)| worker.generation < state.generation)
+                .map(|(task_id, _)| *task_id)
+                .collect();
+            task_ids
+                .into_iter()
+                .filter_map(|task_id| workers.remove(&task_id).map(|worker| (task_id, worker)))
+                .collect()
+        };
+        for (task_id, mut worker) in earlier {
+            if *worker.ended.borrow() {
+                continue;
             }
+            tracing::warn!(
+                task = %task_id,
+                instance = %state.id,
+                "stopping the worker of a Task an earlier instance generation owned"
+            );
+            worker.abort.abort();
+            let _ = worker.ended.wait_for(|ended| *ended).await;
         }
         Ok((state.id, state.generation))
     }
@@ -269,7 +290,8 @@ impl TaskRuntime {
         Ok(self.get(task_id).await?.into())
     }
 
-    /// Track a local worker, so a cancellation through this runtime stops it at once.
+    /// Track a local worker, so a cancellation through this runtime stops it at once. The
+    /// worker's entry leaves when its task ends, by returning, panicking or being aborted.
     pub async fn register_worker(
         &self,
         task_id: TaskId,
@@ -283,23 +305,45 @@ impl TaskRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&task_id)
             .unwrap_or_else(|| self.instance.state().generation);
+        let registration = self.registrations.fetch_add(1, Ordering::Relaxed);
+        let (ended_sender, ended) = watch::channel(false);
         self.workers.lock().await.insert(
             task_id,
             Worker {
                 cancellation,
-                join,
+                abort: join.abort_handle(),
+                ended,
                 generation,
+                registration,
             },
         );
+        let workers = Arc::clone(&self.workers);
+        tokio::spawn(async move {
+            let _ = join.await;
+            let _ = ended_sender.send(true);
+            let mut workers = workers.lock().await;
+            if workers
+                .get(&task_id)
+                .is_some_and(|worker| worker.registration == registration)
+            {
+                workers.remove(&task_id);
+            }
+        });
         Ok(())
     }
 
-    /// Forget local workers that finished.
+    /// Forget local workers whose tasks ended. Each entry also leaves on its own once its
+    /// worker ends, so this only settles the registry at once.
     pub async fn reap_workers(&self) {
         self.workers
             .lock()
             .await
-            .retain(|_, worker| !worker.join.is_finished());
+            .retain(|_, worker| !worker.abort.is_finished());
+    }
+
+    /// How many local workers this runtime tracks, which are the workers still running.
+    pub async fn local_workers(&self) -> usize {
+        self.workers.lock().await.len()
     }
 
     pub(crate) async fn stop_local_worker(&self, snapshot: &TaskSnapshot) {
