@@ -60,7 +60,7 @@ Compliance mode adds retention headers and verifies the returned mode, retention
 date and non-null version ID on GET. Its date is the block's sealing time plus the
 configured days, making retries stable. An already expired export window requires
 a longer configured period. A provider that ignores Object Lock cannot satisfy
-this profile. The bundled RustFS destination uses `disabled`; it establishes no
+this profile. The bundled SeaweedFS destination uses `disabled`; it establishes no
 write-once storage guarantee.
 
 OTLP sends one request per block with events named `veoveo.audit.<class>`. Its body
@@ -129,7 +129,7 @@ records and signed blocks, checks receipts from a second pool, and restarts the 
 service. It
 allows 180 seconds for acceptance and 30 seconds for prefix cleanup, including after
 a failed assertion. The configured S3 provider is externally managed. This test can
-use the bundled RustFS endpoint; it does not qualify a deployment or Object Lock. Default test runs leave this provider test ignored.
+use the bundled SeaweedFS endpoint; it does not qualify a deployment or Object Lock. Default test runs leave this provider test ignored.
 
 The fixture also accepts an OTLP destination in that configuration. It waits for both
 destinations' receipts before restarting the worker and checks both delivery cursors
