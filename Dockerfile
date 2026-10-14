@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-# Stages: dev is the OpenShell environment and check is the single gate. This repository
+# Stages: dev is the development environment and check is the single gate. This repository
 # ships crates, not a service, so it has no build or runtime stage.
 
 FROM rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS dev

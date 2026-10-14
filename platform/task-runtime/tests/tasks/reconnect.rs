@@ -308,7 +308,7 @@ async fn a_lock_free_for_less_than_the_grace_keeps_the_instance_and_its_tasks() 
 
         cut_off(&db, &store, id).await;
         // A reaper runs while the lock is free, as another server's periodic reap does
-        // during an OpenShell policy reload, and moves nothing.
+        // during a brief network interruption, and moves nothing.
         assert_eq!(reaper.reap_instances().await.unwrap(), 0);
         admit_login(&db, &store, true).await;
         tokio::time::timeout(Duration::from_secs(30), async {

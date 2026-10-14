@@ -113,7 +113,7 @@ fn names_follow_the_repository_naming_rule() {
         "veoveo-docs".to_owned(),
         "veoveo-template-mcp-rust".to_owned(),
         "veoveo-sdk-python".to_owned(),
-        "veoveo-qualify-openshell".to_owned(),
+        "veoveo-qualify-runtime".to_owned(),
         "veoveo-mcp".to_owned(),
         "veoveo-mcp-".to_owned(),
         "veoveo-mcp-time-".to_owned(),

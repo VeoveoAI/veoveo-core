@@ -166,8 +166,8 @@ A repository's kind says what it holds, and its code shortens runtime names.
 | Thing | Form |
 |---|---|
 | Repository, crate, binary, image name | `veoveo-<kind>-<name>` |
-| OpenShell sandbox and provider, Compose project, service and container | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-postgres`; at most 19 characters |
-| Throwaway test sandbox | `vv-qual-<run>-<role>` |
+| Compose project, service and container | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-postgres`; on a local installation's network, the same name under `.internal`, such as `vv-postgres.internal` |
+| Throwaway test container | `vv-qual-<run>-<role>` |
 | Environment image tag | `:dev` |
 | OpenTelemetry `service.name` | the repository name |
 | Image labels | `org.opencontainers.image.title`, `source`, `revision`, `version` and `licenses` |

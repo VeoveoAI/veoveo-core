@@ -66,9 +66,11 @@ the ring provider and trusts the platform's root certificates.
 
 ```sh
 docker build --target dev -t veoveo-core:dev .
-openshell sandbox create --name vv-core --from veoveo-core:dev \
-  --policy openshell/policy.yaml --detach -- sleep infinity
+docker run -d --name vv-core --cap-drop ALL veoveo-core:dev sleep infinity
 ```
+
+The environment runs as its non-root user with every capability dropped, clones core
+into `/home/sandbox/src` and holds no GitHub credential.
 
 ## License
 

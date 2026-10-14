@@ -2,7 +2,7 @@
 
 These rules apply to veoveo-core.
 
-- Use upstream runtimes such as OpenShell and PostgreSQL unmodified. Adapt through
+- Use upstream runtimes such as PostgreSQL unmodified. Adapt through
   supported configuration.
 - Every name, identifier, format, wire field and protocol element follows a published
   standard or [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md). A name that fits neither is a
