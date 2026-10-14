@@ -12,7 +12,7 @@ use std::{
 use futures::StreamExt;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
-use veoveo_platform_store::{InstanceId, InstancePhase, LoginName, PlatformStore, StoreError};
+use veoveo_platform_store::{InstanceId, InstancePhase, PlatformStore, StoreError};
 use veoveo_task_runtime::{
     CheckSchedule, ExternalJobId, Operation, OperationCalls, OperationKey, OperationSpec,
     ProviderName, RecoveryClass, Submission, TaskError, TaskRuntime, TaskStatus,
@@ -23,23 +23,10 @@ use crate::{
     support::{SERVER, claimed, create, runtime_for, slug, within},
 };
 
-/// A runtime of the default server on a login of its own, with a second pool of the
-/// same login that ends the runtime's sessions.
+/// A runtime of the default server on a login of its own, and the store of that login.
 async fn server_runtime(db: &TestDb) -> (TaskRuntime, PlatformStore) {
     let store = db.server_store(&slug(SERVER)).await;
-    let ender = PlatformStore::connect(store.config().clone())
-        .await
-        .unwrap();
-    (runtime_for(&store, SERVER).await, ender)
-}
-
-/// End every session of the login except the ender's, as a network failure would.
-async fn end_sessions(ender: &PlatformStore) {
-    let ended = sqlx::query_file_scalar!("tests/queries/end_login_sessions.sql")
-        .fetch_one(ender.pool())
-        .await
-        .unwrap();
-    assert!(ended > 0, "the runtime holds sessions");
+    (runtime_for(&store, SERVER).await, store)
 }
 
 async fn until_live(runtime: &TaskRuntime) {
@@ -57,14 +44,14 @@ async fn until_live(runtime: &TaskRuntime) {
 async fn a_runtime_keeps_claiming_after_its_sessions_end() {
     within(async {
         let db = TestDb::new().await;
-        let (runtime, ender) = server_runtime(&db).await;
+        let (runtime, store) = server_runtime(&db).await;
         let id = runtime.instance().id();
         let mut work = runtime.work().await.unwrap();
         let first = create(&runtime, RecoveryClass::Resume).await;
         let claimed = work.next().await.unwrap().unwrap();
         assert_eq!(claimed.task_id, first.task_id);
 
-        end_sessions(&ender).await;
+        assert!(db.end_sessions(&store).await > 0);
         let second = create(&runtime, RecoveryClass::Resume).await;
         let next = tokio::time::timeout(Duration::from_secs(30), work.next())
             .await
@@ -111,7 +98,7 @@ impl OperationCalls for Pending {
 async fn the_due_pass_queues_a_check_after_its_sessions_end() {
     within(async {
         let db = TestDb::new().await;
-        let (runtime, ender) = server_runtime(&db).await;
+        let (runtime, store) = server_runtime(&db).await;
         let task = claimed(&runtime, RecoveryClass::Resume).await;
         let schedule =
             CheckSchedule::new(Duration::from_secs(2), Duration::from_secs(1), 1.0, 3).unwrap();
@@ -133,7 +120,7 @@ async fn the_due_pass_queues_a_check_after_its_sessions_end() {
             .unwrap_err();
         assert!(parked.is_parked());
 
-        end_sessions(&ender).await;
+        assert!(db.end_sessions(&store).await > 0);
         // The runtime's own due pass, on a new connection, queues the Task once its
         // check falls due.
         tokio::time::timeout(Duration::from_secs(30), async {
@@ -160,7 +147,7 @@ impl Drop for Dropped {
 async fn a_new_generation_stops_the_workers_of_the_old_one_before_it_claims() {
     within(async {
         let db = TestDb::new().await;
-        let (runtime, _ender) = server_runtime(&db).await;
+        let (runtime, _store) = server_runtime(&db).await;
         let first = runtime.instance().id();
         create(&runtime, RecoveryClass::Resume).await;
         let task = runtime.claim_next().await.unwrap().unwrap();
@@ -207,24 +194,10 @@ async fn a_new_generation_stops_the_workers_of_the_old_one_before_it_claims() {
 async fn a_runtime_whose_login_was_dropped_stops_claiming() {
     within(async {
         let db = TestDb::new().await;
-        let (runtime, ender) = server_runtime(&db).await;
+        let (runtime, store) = server_runtime(&db).await;
         let mut work = runtime.work().await.unwrap();
-        let login = LoginName::parse(ender.config().username()).unwrap();
-        // One session lists the others and later ends them.
-        let mut session = ender.pool().acquire().await.unwrap();
-        let sessions = sqlx::query_file_scalar!("tests/queries/login_sessions.sql")
-            .fetch_all(&mut *session)
-            .await
-            .unwrap();
-        // The Gateway removed the registration and dropped its login. A session of the
-        // dropped role may still end the other sessions of that role.
-        db.b.drop_server_login(&login).await.unwrap();
-        for pid in sessions {
-            sqlx::query_file_scalar!("tests/queries/terminate_backend.sql", pid)
-                .fetch_one(&mut *session)
-                .await
-                .unwrap();
-        }
+        // The Gateway removed the registration and dropped its login.
+        db.remove_login(&store).await;
 
         let ended = tokio::time::timeout(Duration::from_secs(30), work.next())
             .await
@@ -242,7 +215,7 @@ async fn a_runtime_whose_login_was_dropped_stops_claiming() {
 async fn releasing_a_claim_hands_the_task_to_its_recovery() {
     within(async {
         let db = TestDb::new().await;
-        let (runtime, _ender) = server_runtime(&db).await;
+        let (runtime, _store) = server_runtime(&db).await;
 
         let resumable = claimed(&runtime, RecoveryClass::Resume).await;
         let released = runtime.release(resumable.task_id).await.unwrap();

@@ -25,6 +25,8 @@ as in an installation.
 | `connect()` | Another owner pool |
 | `server_store(&slug)` | Calls `ensure_server` and `create_server_login` and returns a pool connected as the new login |
 | `migrate_server(&slug, migrator)` | Applies a server's migrations in its schema as one of its logins |
+| `end_sessions(&store)` | Ends every session of the store's login, as a network failure between a server and the database does |
+| `remove_login(&store)` | Drops the store's login as the Gateway does when it removes a registration, then ends the login's sessions |
 
 The first fixture on a machine runs `initdb`, starts a server, creates the owner and
 the `veoveo_template` database, applies the kernel migrations and stops the server.

@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 use secrecy::SecretString;
 use sqlx::migrate::Migrator;
 use uuid::Uuid;
-use veoveo_platform_store::{PlatformStore, ServerSchema, StoreConfig};
+use veoveo_platform_store::{LoginName, PlatformStore, ServerSchema, StoreConfig};
 use veoveo_types::ServerSlug;
 
 #[path = "store/cluster.rs"]
@@ -120,6 +120,55 @@ impl TestDb {
         migrated
             .unwrap_or_else(|_| panic!("Store fixture server migration exceeded {SETUP:?}"))
             .unwrap_or_else(|error| panic!("Store fixture server migration: {error}"));
+    }
+
+    /// End every session of `store`'s login, as a network failure between a server and
+    /// the database does. One more session of the same login ends them, because a login
+    /// may end its own sessions, and closes afterwards. Returns how many sessions ended.
+    pub async fn end_sessions(&self, store: &PlatformStore) -> i64 {
+        let ender = connect(store.config().clone(), "session ender")
+            .await
+            .unwrap_or_else(|failure| panic!("{failure}"));
+        let ended = sqlx::query_scalar(include_str!("store/end_login_sessions.sql"))
+            .fetch_one(ender.pool())
+            .await
+            .unwrap_or_else(|error| panic!("Store fixture ending sessions: {error}"));
+        ender.close().await;
+        ended
+    }
+
+    /// Drop `store`'s login as the Gateway does when it removes a server's registration,
+    /// then end the login's sessions. The database refuses the login from then on.
+    pub async fn remove_login(&self, store: &PlatformStore) {
+        let ender = connect(store.config().clone(), "session ender")
+            .await
+            .unwrap_or_else(|failure| panic!("{failure}"));
+        // One session lists the others and ends them after the role is gone, which only a
+        // session of the same role may do.
+        let mut session = ender
+            .pool()
+            .acquire()
+            .await
+            .unwrap_or_else(|error| panic!("Store fixture session ender: {error}"));
+        let sessions: Vec<i32> = sqlx::query_scalar(include_str!("store/login_sessions.sql"))
+            .fetch_all(&mut *session)
+            .await
+            .unwrap_or_else(|error| panic!("Store fixture listing sessions: {error}"));
+        let login = LoginName::parse(store.config().username())
+            .unwrap_or_else(|error| panic!("Store fixture login: {error}"));
+        self.a
+            .drop_server_login(&login)
+            .await
+            .unwrap_or_else(|error| panic!("Store fixture dropping a login: {error}"));
+        for pid in sessions {
+            sqlx::query(include_str!("store/terminate_backend.sql"))
+                .bind(pid)
+                .execute(&mut *session)
+                .await
+                .unwrap_or_else(|error| panic!("Store fixture ending a session: {error}"));
+        }
+        drop(session);
+        ender.close().await;
     }
 }
 
