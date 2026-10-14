@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- Move an instance's free-lock mark back by $2, as if a reaper had marked it that long ago.\nUPDATE kernel.instance SET lock_free_since = now() - $2::interval WHERE id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Interval"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "35b704f8e2ffd1e7f276a73dd91d24bb9662c3896d16d95e8aa9eb0bf748a49b"
+}

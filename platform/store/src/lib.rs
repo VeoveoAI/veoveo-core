@@ -24,8 +24,9 @@ pub use identity::{
     deterministic_work_context_id,
 };
 pub use instance::{
-    Instance, InstanceId, InstancePhase, InstanceState, PING_INTERVAL, PING_TIMEOUT, REAP_INTERVAL,
-    RECONNECT_FIRST_DELAY, RECONNECT_MAX_DELAY, ReapRound,
+    INSTANCE_GRACE, Instance, InstanceGrace, InstanceId, InstancePhase, InstanceState,
+    PING_INTERVAL, PING_TIMEOUT, REAP_INTERVAL, RECONNECT_FIRST_DELAY, RECONNECT_MAX_DELAY,
+    ReapRound,
 };
 pub use maintenance::{MaintenanceBatch, Pruned};
 pub use names::{Channel, KERNEL_SCHEMAS, LoginName, MAX_SERVER_NAME, ServerSchema, SingletonName};

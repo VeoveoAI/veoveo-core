@@ -1,6 +1,6 @@
 //! Connection settings for a Task runtime process.
 use secrecy::SecretString;
-use veoveo_platform_store::{StoreConfig, StoreError};
+use veoveo_platform_store::{InstanceGrace, StoreConfig, StoreError};
 
 use crate::TaskError;
 
@@ -24,6 +24,15 @@ impl TaskRuntimeConfig {
             .build()
             .map_err(StoreError::from)?;
         Ok(Self { store })
+    }
+
+    /// How long this process's reaper lets an instance's lock stay free before it moves
+    /// the instance's Tasks to recovery, [`INSTANCE_GRACE`](crate::INSTANCE_GRACE) by
+    /// default. Every process of an installation should use the same grace.
+    pub fn instance_grace(self, grace: InstanceGrace) -> Self {
+        Self {
+            store: self.store.with_instance_grace(grace),
+        }
     }
 
     pub fn store_config(&self) -> &StoreConfig {

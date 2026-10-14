@@ -43,6 +43,10 @@ and removes the cluster directory. A process holds a file lock in its cluster di
 for the cluster's lifetime, and the next fixture to start stops and removes clusters
 whose lock is free, such as those of a test process that was killed.
 
+The owner configuration that `TestDb::config` returns, and every login configuration
+derived from it, has an instance grace of zero, so a test that reaps finds a dead
+instance gone at once. Tests of the grace set their own.
+
 Server start tries up to five free ports and waits up to 30 seconds per attempt; other
 programs and the template build each have 60 seconds, and a whole fixture setup 120.
 Failures name the step and the cause, include the tail of the server log for startup

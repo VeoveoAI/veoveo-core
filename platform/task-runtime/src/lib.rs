@@ -57,7 +57,8 @@ pub use steps::{MAX_STEP_KEY_BYTES, StepAttempt, StepDispatch, StepKey, StepOper
 pub use subscriptions::{OwnerTaskSubscription, TaskUpdateStream};
 pub use transition::TaskTransition;
 pub use veoveo_platform_store::{
-    Instance, InstanceId, InstancePhase, InstanceState, MaintenanceBatch, PrincipalKind, Pruned,
+    INSTANCE_GRACE, Instance, InstanceGrace, InstanceId, InstancePhase, InstanceState,
+    MaintenanceBatch, PrincipalKind, Pruned,
 };
 pub use veoveo_task_contract::{RecoveryClass, TaskStatus};
 pub use work::{CLAIM_RETRY_FIRST_DELAY, CLAIM_RETRY_MAX_DELAY, TaskWork};

@@ -123,11 +123,23 @@ the connection. A clean shutdown deletes the row and releases the lock before it
 the connection, so the instance reads as dead once shutdown returns.
 
 Work that a process owns references its instance through `ON DELETE SET NULL`. Each
-live process calls `kernel.reap_instances()` when it starts and every 15 seconds; the
-function deletes the rows of instances whose locks are free. The cascade clears
-ownership in the same transaction, and a trigger moves the released work to its recovery
-state. Settlement writes compare the owner instance, so a process whose instance was
-reaped cannot settle work it no longer owns.
+live process calls `kernel.reap_instances(grace)` when it starts and every 15 seconds.
+The first call that finds an instance's lock free records the time in
+`lock_free_since`; a later call deletes the row once the lock has stayed free for the
+grace, 30 seconds by default. A call that finds the lock held again clears the mark, and
+so does `kernel.resume_instance`, so a process whose connection dropped for a moment
+keeps its instance. The cascade clears ownership in the same transaction as the delete,
+and a trigger moves the released work to its recovery state. While any process runs,
+a crashed process's work reaches recovery within the grace and two reap intervals.
+Settlement writes compare the owner instance, so a process whose instance was reaped
+cannot settle work it no longer owns.
+
+The grace belongs to each process's store configuration, so the shortest grace any
+process of an installation uses decides; installations give every process the same one.
+It stays shorter than the Gateway's 60-second registration grace. `kernel.reap_instances()`
+without an argument applies the 30-second default for processes on an earlier core
+during a rolling update, and retires once every component pins a core that passes the
+grace.
 
 The `Instance` type checks its connection and its row every 5 seconds. When a check
 fails, takes longer than 5 seconds or finds the row gone, the instance reconnects with a
@@ -144,8 +156,8 @@ doubling to at most 5 seconds. On the new connection it calls
 The instance ends only on shutdown or when the database refuses its login (SQLSTATE
 `28000` or `28P01`), as it does once the Gateway removed the server's registration and
 dropped the login. The process then stops acting on the work it owned. A server that
-loses its database connection for a moment therefore keeps its registration and its
-work, and one that stays away past a reap keeps running under a new instance.
+loses its database connection for less than the grace therefore keeps its registration
+and its work, and one that stays away longer keeps running under a new instance.
 
 Connection poolers that multiplex sessions, such as PgBouncer in transaction mode, break
 session advisory locks. Installations connect components to Postgres directly.

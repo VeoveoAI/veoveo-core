@@ -23,7 +23,7 @@ use sqlx::{
     postgres::{PgConnectOptions, PgSslMode},
 };
 use uuid::Uuid;
-use veoveo_platform_store::{MIGRATOR, PlatformStore, StoreConfig};
+use veoveo_platform_store::{InstanceGrace, MIGRATOR, PlatformStore, StoreConfig};
 
 /// Changes when the template's layout changes, so older templates are not reused.
 const TEMPLATE_FORMAT: &str = "veoveo-test-fixtures/postgres/1";
@@ -250,6 +250,9 @@ impl Cluster {
         )
         .max_connections(4)
         .acquire_timeout(Duration::from_secs(10))
+        // A test reaps a dead instance at once and expects it gone; tests of the grace
+        // set their own.
+        .instance_grace(InstanceGrace::ZERO)
         .build()
         .expect("fixture owner configuration")
     }

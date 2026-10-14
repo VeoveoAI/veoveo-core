@@ -4,15 +4,20 @@
 #[path = "../../../testing/fixtures/store.rs"]
 mod store;
 
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 
 use futures::StreamExt;
-use sqlx::migrate::Migrator;
+use secrecy::ExposeSecret;
+use sqlx::{
+    AssertSqlSafe, Connection, PgConnection,
+    migrate::Migrator,
+    postgres::{PgConnectOptions, types::PgInterval},
+};
 use store::TestDb;
 use veoveo_platform_store::{
-    Change, ChangeOperation, ChangeSignal, ChangeStream, Instance, InstanceId, InstancePhase,
-    InstanceState, LoginName, PlatformStore, ServerSchema, Singleton, SingletonName, StoreError,
-    TenantId,
+    Change, ChangeOperation, ChangeSignal, ChangeStream, INSTANCE_GRACE, Instance, InstanceGrace,
+    InstanceId, InstancePhase, InstanceState, LoginName, PlatformStore, ServerSchema, Singleton,
+    SingletonName, StoreError, TenantId,
 };
 use veoveo_types::ServerSlug;
 
@@ -249,6 +254,206 @@ async fn an_instance_whose_login_was_dropped_ends() {
         Err(StoreError::InstanceLost)
     ));
     assert_eq!(db.b.reap_instances().await.unwrap(), 1);
+}
+
+/// A session of the installation owner outside every pool, which closes when dropped.
+async fn session(db: &TestDb) -> PgConnection {
+    let options = PgConnectOptions::from_str(&db.url())
+        .unwrap()
+        .password(db.password().expose_secret());
+    PgConnection::connect_with(&options).await.unwrap()
+}
+
+/// A store of the installation owner whose reaper waits `grace`.
+async fn graced(db: &TestDb, grace: InstanceGrace) -> PlatformStore {
+    PlatformStore::connect(db.config().with_instance_grace(grace))
+        .await
+        .unwrap()
+}
+
+fn interval(duration: Duration) -> PgInterval {
+    PgInterval::try_from(duration).unwrap()
+}
+
+/// Whether a reaper marked the instance's lock free; None once its row is gone.
+async fn marked(store: &PlatformStore, id: InstanceId) -> Option<bool> {
+    sqlx::query_file_scalar!("tests/queries/kernel/instance_marked.sql", id as InstanceId)
+        .fetch_optional(store.pool())
+        .await
+        .unwrap()
+}
+
+/// Start an instance on a session of its own, then close the session as a crashed
+/// process does, and wait until the lock is free.
+async fn abandoned_instance(db: &TestDb) -> InstanceId {
+    let mut holder = session(db).await;
+    let id = sqlx::query_file_scalar!("tests/queries/kernel/start_instance.sql", "gateway")
+        .fetch_one(&mut holder)
+        .await
+        .unwrap();
+    holder.close().await.unwrap();
+    freed(&db.b, id).await;
+    id
+}
+
+async fn freed(store: &PlatformStore, id: InstanceId) {
+    within(Duration::from_secs(10), async {
+        while store.instance_alive(id).await.unwrap() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+}
+
+/// Refuse or admit new sessions of a server's login, as the installation owner, so a test
+/// decides when an instance may reconnect.
+async fn admit_login(db: &TestDb, store: &PlatformStore, admit: bool) {
+    let login = store.config().username();
+    assert!(
+        login
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    );
+    let limit = if admit { -1 } else { 0 };
+    sqlx::query(AssertSqlSafe(format!(
+        "ALTER ROLE \"{login}\" CONNECTION LIMIT {limit}"
+    )))
+    .execute(db.b.pool())
+    .await
+    .unwrap();
+}
+
+async fn backdate_mark(store: &PlatformStore, id: InstanceId, by: Duration) {
+    sqlx::query_file!(
+        "tests/queries/kernel/backdate_mark.sql",
+        id as InstanceId,
+        interval(by)
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_reap_deletes_an_instance_only_after_its_lock_stayed_free_for_the_grace() {
+    let db = TestDb::new().await;
+    let reaper = graced(&db, InstanceGrace::from_millis(1500)).await;
+    let id = abandoned_instance(&db).await;
+
+    // The first reap that finds the lock free marks the row and keeps it.
+    assert_eq!(reaper.reap_instances().await.unwrap(), 0);
+    assert_eq!(marked(&db.b, id).await, Some(true));
+    assert_eq!(reaper.reap_instances().await.unwrap(), 0);
+
+    tokio::time::sleep(Duration::from_millis(1600)).await;
+    assert_eq!(reaper.reap_instances().await.unwrap(), 1);
+    assert_eq!(marked(&db.b, id).await, None);
+}
+
+#[tokio::test]
+async fn an_instance_that_takes_its_lock_back_starts_a_fresh_grace() {
+    let db = TestDb::new().await;
+    let reaper = graced(&db, InstanceGrace::from_secs(30)).await;
+    let id = abandoned_instance(&db).await;
+    assert_eq!(reaper.reap_instances().await.unwrap(), 0);
+    // The mark is older than the grace, but the instance takes its lock back first.
+    backdate_mark(&db.b, id, Duration::from_secs(3600)).await;
+
+    let mut resumed = session(&db).await;
+    let outcome =
+        sqlx::query_file_scalar!("tests/queries/kernel/resume_instance.sql", id as InstanceId)
+            .fetch_one(&mut resumed)
+            .await
+            .unwrap();
+    assert_eq!(outcome, "resumed");
+    assert_eq!(marked(&db.b, id).await, Some(false));
+    // A reap that finds the lock held clears a mark left from before.
+    backdate_mark(&db.b, id, Duration::from_secs(3600)).await;
+    assert_eq!(reaper.reap_instances().await.unwrap(), 0);
+    assert_eq!(marked(&db.b, id).await, Some(false));
+
+    // A later drop of the lock starts a fresh grace instead of deleting at once.
+    resumed.close().await.unwrap();
+    freed(&db.b, id).await;
+    assert_eq!(reaper.reap_instances().await.unwrap(), 0);
+    assert_eq!(marked(&db.b, id).await, Some(true));
+}
+
+#[tokio::test]
+async fn the_reaper_an_earlier_core_calls_waits_the_default_grace() {
+    let db = TestDb::new().await;
+    assert_eq!(INSTANCE_GRACE.as_duration(), Duration::from_secs(30));
+    let reap = || async {
+        sqlx::query_file_scalar!("tests/queries/kernel/reap_with_default_grace.sql")
+            .fetch_one(db.b.pool())
+            .await
+            .unwrap()
+    };
+    let id = abandoned_instance(&db).await;
+    assert_eq!(reap().await, 0);
+    backdate_mark(&db.b, id, Duration::from_secs(29)).await;
+    assert_eq!(reap().await, 0);
+    backdate_mark(&db.b, id, Duration::from_secs(31)).await;
+    assert_eq!(reap().await, 1);
+}
+
+#[tokio::test]
+async fn a_negative_grace_is_refused() {
+    let db = TestDb::new().await;
+    let refused = sqlx::query_file_scalar!(
+        "tests/queries/kernel/reap_with_grace.sql",
+        PgInterval {
+            months: 0,
+            days: 0,
+            microseconds: -1_000_000,
+        }
+    )
+    .fetch_one(db.b.pool())
+    .await
+    .unwrap_err();
+    let refused = refused.as_database_error().unwrap();
+    assert_eq!(refused.code().as_deref(), Some("22023"));
+}
+
+#[tokio::test]
+async fn an_instance_whose_lock_session_ends_inside_the_grace_keeps_its_row() {
+    let db = TestDb::new().await;
+    let grace = InstanceGrace::from_secs(30);
+    let clock = PlatformStore::connect(
+        db.server_store(&slug("clock"))
+            .await
+            .config()
+            .with_instance_grace(grace),
+    )
+    .await
+    .unwrap();
+    let reaper = graced(&db, grace).await;
+    let instance = Instance::start(&clock, &slug("clock")).await.unwrap();
+    let id = instance.id();
+    let pid = lock_backend(&db.b, id)
+        .await
+        .expect("the instance holds its lock");
+    // The login may not reconnect until the reaper ran. It may end its own sessions.
+    let mut ender = clock.pool().acquire().await.unwrap();
+    admit_login(&db, &clock, false).await;
+    let terminated = sqlx::query_file_scalar!("tests/queries/kernel/terminate_backend.sql", pid)
+        .fetch_one(&mut *ender)
+        .await
+        .unwrap();
+    assert!(terminated);
+    drop(ender);
+    freed(&db.b, id).await;
+
+    // A reaper runs while the lock is free and only marks the row.
+    assert_eq!(reaper.reap_instances().await.unwrap(), 0);
+    assert_eq!(marked(&db.b, id).await, Some(true));
+    admit_login(&db, &clock, true).await;
+    let state = live_again(&instance, &db.b, pid).await;
+    assert_eq!(state.id, id);
+    assert_eq!(state.generation, 0);
+    assert_eq!(marked(&db.b, id).await, Some(false));
+    assert_eq!(reaper.reap_instances().await.unwrap(), 0);
+    instance.shutdown().await.unwrap();
 }
 
 #[tokio::test]

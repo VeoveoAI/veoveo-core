@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- The form a process on an earlier core calls.\nSELECT kernel.reap_instances() AS \"reaped!\"\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "reaped!",
+        "type_info": "Int4",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "6982606ff66d3dc87d8163dcae7a3d64020d9af2deef6e53371fa378f1c37776"
+}

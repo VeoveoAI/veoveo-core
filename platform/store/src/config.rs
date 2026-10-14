@@ -6,7 +6,7 @@ use secrecy::{ExposeSecret, SecretString};
 use sqlx::postgres::PgConnectOptions;
 use url::Url;
 
-use crate::StoreConfigError;
+use crate::{INSTANCE_GRACE, InstanceGrace, StoreConfigError};
 
 const DEFAULT_MAX_CONNECTIONS: u32 = 10;
 const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -25,6 +25,7 @@ pub struct StoreConfig {
     idle_timeout: Option<Duration>,
     max_lifetime: Option<Duration>,
     application_name: Option<String>,
+    instance_grace: InstanceGrace,
 }
 
 impl StoreConfig {
@@ -40,6 +41,7 @@ impl StoreConfig {
             idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
             max_lifetime: Some(DEFAULT_MAX_LIFETIME),
             application_name: None,
+            instance_grace: INSTANCE_GRACE,
         }
     }
 
@@ -76,6 +78,21 @@ impl StoreConfig {
         self.max_lifetime
     }
 
+    /// How long an instance's lock stays free before this process's reaper deletes the
+    /// instance and moves its work to recovery. Every process of an installation should
+    /// use the same grace; the shortest one any process uses decides.
+    pub fn instance_grace(&self) -> InstanceGrace {
+        self.instance_grace
+    }
+
+    /// The same settings with another instance grace.
+    pub fn with_instance_grace(&self, grace: InstanceGrace) -> Self {
+        Self {
+            instance_grace: grace,
+            ..self.clone()
+        }
+    }
+
     /// The same database and pool settings for another login.
     pub fn with_login(&self, username: &str, password: SecretString) -> Self {
         Self {
@@ -109,6 +126,7 @@ impl fmt::Debug for StoreConfig {
             .field("idle_timeout", &self.idle_timeout)
             .field("max_lifetime", &self.max_lifetime)
             .field("application_name", &self.application_name)
+            .field("instance_grace", &self.instance_grace)
             .finish()
     }
 }
@@ -122,6 +140,7 @@ pub struct StoreConfigBuilder {
     idle_timeout: Option<Duration>,
     max_lifetime: Option<Duration>,
     application_name: Option<String>,
+    instance_grace: InstanceGrace,
 }
 
 impl StoreConfigBuilder {
@@ -155,6 +174,14 @@ impl StoreConfigBuilder {
     /// The `application_name` PostgreSQL shows for this process's sessions.
     pub fn application_name(mut self, value: impl Into<String>) -> Self {
         self.application_name = Some(value.into());
+        self
+    }
+
+    /// How long an instance's lock stays free before this process's reaper deletes the
+    /// instance, [`INSTANCE_GRACE`] by default. [`InstanceGrace::ZERO`] deletes an
+    /// instance as soon as its lock is free.
+    pub fn instance_grace(mut self, value: InstanceGrace) -> Self {
+        self.instance_grace = value;
         self
     }
 
@@ -214,6 +241,7 @@ impl StoreConfigBuilder {
             idle_timeout: self.idle_timeout,
             max_lifetime: self.max_lifetime,
             application_name: self.application_name,
+            instance_grace: self.instance_grace,
         })
     }
 }

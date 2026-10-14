@@ -68,8 +68,9 @@ on no other channel.
 `TaskRuntime::connect` opens the store and starts the process's `Instance`;
 `TaskRuntime::new` takes a store, a server and an instance the caller started. A claim
 records the instance in `owner_instance`, which references `kernel.instance` with
-`ON DELETE SET NULL`. When the process ends, its instance lock is released, the next
-reap deletes the instance row, and the cascade clears `owner_instance` on its Tasks.
+`ON DELETE SET NULL`. When the process ends, its instance lock is released; once the
+lock has stayed free for the instance grace, a reap deletes the instance row, and the
+cascade clears `owner_instance` on its Tasks.
 `task_recovery` then moves each unfinished Task to the state its recovery class
 declares:
 
@@ -86,10 +87,13 @@ would.
 
 A process whose instance connection fails keeps running: the instance
 [reconnects](../../docs/DATABASE.md#process-instances) and keeps its Tasks while no
-reaper deleted its row. Once a reaper did, the instance continues as a new generation
+reaper deleted its row, which no reaper does before the lock has stayed free for the
+instance grace. `TaskRuntimeConfig::instance_grace` sets the grace, 30 seconds by
+default. Once a reaper deleted the row, the instance continues as a new generation
 under a new id. Before its next claim the runtime aborts the local workers of earlier
-generations and waits for them, so a Task the reaper returned to the queue never runs
-twice in one process; their writes, made under the new id, match no row in any case.
+generations and waits for them, so a Task the reaper returned to the
+queue never runs twice in one process; their writes, made under the new id, match no
+row in any case.
 An instance that ended, because it shut down or the database refused its login, stops
 claiming.
 
@@ -339,7 +343,10 @@ and the next one runs on schedule.
 work stream, notifications that reach only the channel of the Task's server, recovery of
 each class and fencing after an instance's session is terminated and reaped, claims,
 wakeups and due checks that continue after every session of a server's login was
-terminated, the workers of an earlier instance generation stopped before the new
+terminated, an instance whose lock stayed free for less than the grace keeping its
+Tasks, one that stayed away longer losing them to recovery and taking them back as a new
+generation, a crashed process's Tasks taken by another process only after the grace,
+the workers of an earlier instance generation stopped before the new
 generation claims their Task again, a work stream that ends once the server's login is
 dropped, releases into each recovery class,
 cancellation of owned and unowned Tasks, resumable settlement, input exchanges with

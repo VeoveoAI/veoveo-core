@@ -1,15 +1,16 @@
 //! Process instances: a row in `kernel.instance` and a session advisory lock that proves
 //! the process alive, both held on one dedicated connection. When that connection fails,
 //! the instance reconnects. It takes its lock back while its row is there and keeps the
-//! work it owns; once a reaper deleted the row and moved that work to recovery, it starts
-//! again under a new id.
+//! work it owns. A reaper deletes the row only once the lock has stayed free for the
+//! instance grace, and moves that work to recovery; an instance that comes back after
+//! that starts again under a new id.
 use std::{
     fmt,
     sync::{Mutex, PoisonError},
     time::Duration,
 };
 
-use sqlx::{Connection, PgConnection};
+use sqlx::{Connection, PgConnection, postgres::types::PgInterval};
 use tokio::{
     sync::{Mutex as AsyncMutex, oneshot, watch},
     task::JoinHandle,
@@ -24,8 +25,55 @@ use crate::{PlatformStore, StoreError, names::check_server_name};
 pub const PING_INTERVAL: Duration = Duration::from_secs(5);
 /// How long one check may take before the instance counts its connection as lost.
 pub const PING_TIMEOUT: Duration = Duration::from_secs(5);
-/// How often an instance reaps instances whose locks are free; it also reaps at start.
+/// How often an instance reaps instances whose locks have stayed free for the grace; it
+/// also reaps at start.
 pub const REAP_INTERVAL: Duration = Duration::from_secs(15);
+/// How long an instance's lock stays free before a reaper deletes the instance and moves
+/// its work to recovery, unless the store configuration sets another grace. It covers an
+/// instance noticing a lost connection, which takes up to [`PING_INTERVAL`] plus
+/// [`PING_TIMEOUT`], and several reconnection attempts. It stays shorter than the
+/// Gateway's 60-second registration grace, so a crashed server's Tasks reach recovery
+/// before its registration goes, within this grace and two [`REAP_INTERVAL`]s of the
+/// crash while any instance runs. `kernel.reap_instances()`, which processes on an
+/// earlier core call, applies the same 30 seconds.
+pub const INSTANCE_GRACE: InstanceGrace = InstanceGrace::from_secs(30);
+
+/// How long an instance's lock stays free before a reaper deletes the instance, in whole
+/// milliseconds, so every value is an interval PostgreSQL holds exactly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InstanceGrace {
+    millis: u64,
+}
+
+impl InstanceGrace {
+    /// Delete an instance as soon as its lock is free.
+    pub const ZERO: Self = Self { millis: 0 };
+
+    pub const fn from_secs(secs: u32) -> Self {
+        Self {
+            millis: secs as u64 * 1000,
+        }
+    }
+
+    pub const fn from_millis(millis: u32) -> Self {
+        Self {
+            millis: millis as u64,
+        }
+    }
+
+    pub const fn as_duration(self) -> Duration {
+        Duration::from_millis(self.millis)
+    }
+
+    fn interval(self) -> PgInterval {
+        PgInterval {
+            months: 0,
+            days: 0,
+            // At most u32::MAX seconds, which is far inside i64 microseconds.
+            microseconds: (self.millis * 1000) as i64,
+        }
+    }
+}
 /// The wait after the first failed attempt to reconnect a lost lock connection. Each
 /// further failure doubles it, up to [`RECONNECT_MAX_DELAY`].
 pub const RECONNECT_FIRST_DELAY: Duration = Duration::from_millis(100);
@@ -64,7 +112,8 @@ pub enum InstancePhase {
     /// The process holds the lock of the state's id.
     Live,
     /// The lock connection failed and the instance is reconnecting. Its work stays its
-    /// own until a reaper finds the lock free and deletes the row.
+    /// own until its lock has stayed free for the instance grace and a reaper deletes
+    /// the row.
     Reconnecting,
     /// The instance ended: it shut down, or the database refused its login, as it does
     /// once the Gateway removed the server's registration.
@@ -84,8 +133,9 @@ pub struct InstanceState {
 }
 
 /// A running process that owns work. Its lock connection lives in a background task
-/// that checks the connection and the instance's row every [`PING_INTERVAL`] and reaps
-/// dead instances every [`REAP_INTERVAL`]. A failed connection is reconnected with
+/// that checks the connection and the instance's row every [`PING_INTERVAL`] and, every
+/// [`REAP_INTERVAL`], reaps instances whose locks have stayed free for the store's
+/// instance grace. A failed connection is reconnected with
 /// backoff from [`RECONNECT_FIRST_DELAY`] to [`RECONNECT_MAX_DELAY`]: the instance takes
 /// its lock back while its row is there, and starts a new generation under a new id
 /// once a reaper deleted the row. The instance ends only on shutdown or when the
@@ -252,8 +302,9 @@ impl Holder {
                     let reap = tick.is_multiple_of(reap_every);
                     tick += 1;
                     let id = self.id();
+                    let grace = reap.then(|| self.store.config().instance_grace());
                     let checked =
-                        tokio::time::timeout(PING_TIMEOUT, check(&mut connection, id, reap)).await;
+                        tokio::time::timeout(PING_TIMEOUT, check(&mut connection, id, grace)).await;
                     match checked {
                         Ok(Ok(Check { reaped, present: true })) => {
                             if let Some(reaped) = reaped {
@@ -390,15 +441,15 @@ struct Check {
     present: bool,
 }
 
+/// Check the lock connection and the instance's row, and reap with `grace` when given.
 async fn check(
     connection: &mut PgConnection,
     id: InstanceId,
-    reap: bool,
+    grace: Option<InstanceGrace>,
 ) -> Result<Check, StoreError> {
-    let reaped = if reap {
-        Some(reap_instances(connection).await?)
-    } else {
-        None
+    let reaped = match grace {
+        Some(grace) => Some(reap_instances(connection, grace).await?),
+        None => None,
     };
     let present = sqlx::query_file_scalar!("src/instance/instance_present.sql", id as InstanceId)
         .fetch_one(connection)
@@ -431,8 +482,11 @@ async fn within<T, E: Into<StoreError>>(
     }
 }
 
-async fn reap_instances(connection: &mut PgConnection) -> Result<u32, StoreError> {
-    let reaped = sqlx::query_file_scalar!("src/instance/reap_instances.sql")
+async fn reap_instances(
+    connection: &mut PgConnection,
+    grace: InstanceGrace,
+) -> Result<u32, StoreError> {
+    let reaped = sqlx::query_file_scalar!("src/instance/reap_instances.sql", grace.interval())
         .fetch_one(connection)
         .await?;
     Ok(u32::try_from(reaped).unwrap_or_default())
@@ -448,9 +502,11 @@ impl PlatformStore {
         )
     }
 
-    /// Delete the rows of instances whose locks are free; returns how many it deleted.
+    /// Mark the instances whose locks are free and delete those whose locks have stayed
+    /// free for the configured instance grace; returns how many it deleted. With a grace
+    /// of zero it deletes every instance whose lock is free now.
     pub async fn reap_instances(&self) -> Result<u32, StoreError> {
         let mut connection = self.pool().acquire().await?;
-        reap_instances(&mut connection).await
+        reap_instances(&mut connection, self.config().instance_grace()).await
     }
 }

@@ -23,7 +23,8 @@ the crate implements.
 | `PlatformStore::migrate`, `MIGRATOR` | Kernel migrations from `migrations/`, history in `kernel._sqlx_migrations` |
 | `ensure_server`, `create_server_login`, `drop_server_login` | A registered server's group role, schema and logins, for the Gateway |
 | `migrate_server` | A server's own migrations in its schema, as its group role |
-| `Instance`, `reap_instances`, `instance_alive` | Process liveness through `kernel.instance` and its advisory lock, reconnected after a lost connection |
+| `Instance`, `reap_instances`, `instance_alive` | Process liveness through `kernel.instance` and its advisory lock, reconnected after a lost connection, and reaped once the lock stayed free for the instance grace |
+| `InstanceGrace`, `INSTANCE_GRACE`, `StoreConfig::instance_grace` | How long a lock stays free before a reap, in whole milliseconds, 30 seconds by default |
 | `Singleton` | One replica per role, on the connection that holds the lock |
 | `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
 | `ensure_identity`, `work_context_by_key` | Identity records for the Gateway and registered servers |
@@ -55,7 +56,9 @@ Task runtime's retention run this way.
 
 The integration tests use the [PostgreSQL fixture](../../testing/fixtures/DESIGN.md).
 They cover kernel migrations, server roles and row-level security, instance liveness and
-reaping, an instance that takes its lock back after its session ends, continues under a
+reaping, a reap that marks a free lock and deletes the instance only after the grace, a
+mark that taking the lock back clears, the 30-second grace of the reaper an earlier core
+calls, an instance that takes its lock back after its session ends, continues under a
 new id after its row was reaped, ends the earlier session of its own login, refuses
 another login's resumption and ends once its login is dropped, singletons,
 notifications across a reconnect, identity conflicts, Work Context
