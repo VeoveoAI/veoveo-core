@@ -27,6 +27,9 @@ CREATE TABLE identity.enterprise (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+COMMENT ON TABLE identity.enterprise IS
+    'Retention: for the life of the installation.';
+
 CREATE TABLE identity.tenant (
     id uuid PRIMARY KEY,
     enterprise uuid NOT NULL REFERENCES identity.enterprise (id),
@@ -37,6 +40,9 @@ CREATE TABLE identity.tenant (
     updated_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (enterprise, slug)
 );
+
+COMMENT ON TABLE identity.tenant IS
+    'Retention: for the life of the installation.';
 
 CREATE TABLE identity.principal (
     id uuid PRIMARY KEY,
@@ -52,6 +58,9 @@ CREATE TABLE identity.principal (
     UNIQUE (tenant, principal_key),
     UNIQUE (tenant, issuer, subject)
 );
+
+COMMENT ON TABLE identity.principal IS
+    'Retention: for the life of the installation.';
 
 -- A Work Context and its output policy, as the active control-plane revision defines it.
 CREATE TABLE identity.work_context (
@@ -69,6 +78,10 @@ CREATE TABLE identity.work_context (
     UNIQUE (tenant, context_key)
 );
 
+COMMENT ON TABLE identity.work_context IS
+    'Retention: while the active control-plane revision defines it; a publication '
+    'deletes every Work Context the new revision omits.';
+
 -- The grants a Work Context gives on its outputs, in declaration order.
 CREATE TABLE identity.work_context_grant (
     work_context uuid NOT NULL REFERENCES identity.work_context (id) ON DELETE CASCADE,
@@ -78,6 +91,10 @@ CREATE TABLE identity.work_context_grant (
     permission text NOT NULL CHECK (permission IN ('read', 'write', 'admin')),
     PRIMARY KEY (work_context, ordinal)
 );
+
+COMMENT ON TABLE identity.work_context_grant IS
+    'Retention: until a publication replaces its Work Context''s grants, or deletes '
+    'the Work Context.';
 
 -- The membership rules of a Work Context, in declaration order.
 CREATE TABLE identity.work_context_membership (
@@ -90,6 +107,10 @@ CREATE TABLE identity.work_context_membership (
     oauth_clients text[] NOT NULL DEFAULT '{}',
     PRIMARY KEY (work_context, ordinal)
 );
+
+COMMENT ON TABLE identity.work_context_membership IS
+    'Retention: until a publication replaces its Work Context''s membership rules, or '
+    'deletes the Work Context.';
 
 -- Records the installation enterprise, a tenant and a principal, each keyed by its
 -- deterministic identifier. Existing rows keep their security fields: a stored tenant or

@@ -154,8 +154,19 @@ CREATE TABLE kernel.instance (
     id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     server text NOT NULL CHECK (server ~ '^[a-z][a-z0-9-]{0,47}$'),
     login name NOT NULL DEFAULT session_user,
-    started_at timestamptz NOT NULL DEFAULT now()
+    started_at timestamptz NOT NULL DEFAULT now(),
+    -- A reaper deletes an instance only after its lock has stayed free for a grace
+    -- period, so a process whose lock connection dropped for a moment takes its lock back
+    -- and keeps the work it owns. The first reap that finds the lock free marks the row
+    -- with the time; a later reap deletes the row once that mark is older than the grace.
+    -- An instance that takes its lock back clears the mark, and so does any reap that
+    -- finds the lock held.
+    lock_free_since timestamptz
 );
+
+COMMENT ON TABLE kernel.instance IS
+    'Retention: while its process runs; a clean shutdown deletes the row, and '
+    'kernel.reap_instances(grace) deletes it once its lock has been free for the grace.';
 
 ALTER TABLE kernel.instance ENABLE ROW LEVEL SECURITY;
 
@@ -202,19 +213,113 @@ AS $$
     )
 $$;
 
--- Deletes the rows of instances whose locks are free and returns how many it deleted.
--- Work that references an instance through ON DELETE SET NULL loses its owner in the
--- same transaction.
-CREATE FUNCTION kernel.reap_instances() RETURNS integer
+-- Marks the instances whose locks are free, deletes those whose locks have been free for
+-- at least `grace`, and returns how many it deleted. A grace of zero deletes every
+-- instance whose lock is free now. Work that references a deleted instance through
+-- ON DELETE SET NULL loses its owner in the same transaction.
+CREATE FUNCTION kernel.reap_instances(grace interval) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+    reaped integer;
+BEGIN
+    IF reap_instances.grace IS NULL OR reap_instances.grace < interval '0' THEN
+        RAISE EXCEPTION 'an instance grace is a duration of zero or more'
+            USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    UPDATE kernel.instance AS i
+    SET lock_free_since = NULL
+    WHERE i.lock_free_since IS NOT NULL AND kernel.instance_alive(i.id);
+    UPDATE kernel.instance AS i
+    SET lock_free_since = now()
+    WHERE i.lock_free_since IS NULL AND NOT kernel.instance_alive(i.id);
+    WITH reaped_rows AS (
+        DELETE FROM kernel.instance AS i
+        WHERE i.lock_free_since <= now() - reap_instances.grace
+            AND NOT kernel.instance_alive(i.id)
+        RETURNING 1
+    )
+    SELECT count(*)::integer INTO reaped FROM reaped_rows;
+    RETURN reaped;
+END
+$$;
+
+-- Clears the free-lock mark of an instance whose lock the calling session holds.
+CREATE FUNCTION kernel.instance_held(instance integer) RETURNS void
 LANGUAGE sql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
-    WITH reaped AS (
-        DELETE FROM kernel.instance AS i
-        WHERE NOT kernel.instance_alive(i.id)
-        RETURNING 1
-    )
-    SELECT count(*)::integer FROM reaped
+    UPDATE kernel.instance AS i
+    SET lock_free_since = NULL
+    WHERE i.id = instance_held.instance
+        AND i.lock_free_since IS NOT NULL
+        AND EXISTS (
+            SELECT FROM pg_catalog.pg_locks AS l
+            WHERE l.locktype = 'advisory'
+                AND l.database = (
+                    SELECT d.oid FROM pg_catalog.pg_database AS d
+                    WHERE d.datname = pg_catalog.current_database()
+                )
+                AND l.classid = 1987471726::oid
+                AND l.objid = instance_held.instance::oid
+                AND l.objsubid = 2
+                AND l.granted
+                AND l.pid = pg_catalog.pg_backend_pid()
+        )
+$$;
+
+-- An instance whose lock connection failed takes its lock back on a new connection, so
+-- its process keeps the work it owns when no reaper deleted the row in the meantime.
+--
+-- 'resumed': this session holds the lock again and the row is still there.
+-- 'held': another session of the same login still holds the lock. Only the process's own
+-- earlier connection takes it, and the process has left that connection, so the call
+-- terminates that session and the caller tries again.
+-- 'gone': the row was reaped, or another login started it, so the work it owned is in
+-- recovery and the process needs a new instance.
+--
+-- Taking the lock back clears the instance's free-lock mark, so a later drop of its
+-- connection starts a fresh grace.
+CREATE FUNCTION kernel.resume_instance(instance integer) RETURNS text
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM kernel.instance AS i
+        WHERE i.id = resume_instance.instance
+            AND i.login = session_user
+    ) THEN
+        RETURN 'gone';
+    END IF;
+    IF NOT pg_catalog.pg_try_advisory_lock(1987471726, resume_instance.instance) THEN
+        PERFORM pg_catalog.pg_terminate_backend(l.pid)
+        FROM pg_catalog.pg_locks AS l
+        JOIN pg_catalog.pg_stat_activity AS a ON a.pid = l.pid
+        WHERE l.locktype = 'advisory'
+            AND l.database = (
+                SELECT d.oid FROM pg_catalog.pg_database AS d
+                WHERE d.datname = pg_catalog.current_database()
+            )
+            AND l.classid = 1987471726::oid
+            AND l.objid = resume_instance.instance::oid
+            AND l.objsubid = 2
+            AND l.granted
+            AND l.pid <> pg_catalog.pg_backend_pid()
+            AND a.usename = session_user;
+        RETURN 'held';
+    END IF;
+    -- A reaper may have deleted the row between the first check and the lock.
+    IF NOT EXISTS (
+        SELECT FROM kernel.instance AS i WHERE i.id = resume_instance.instance
+    ) THEN
+        PERFORM pg_catalog.pg_advisory_unlock(1987471726, resume_instance.instance);
+        RETURN 'gone';
+    END IF;
+    PERFORM kernel.instance_held(resume_instance.instance);
+    RETURN 'resumed';
+END
 $$;
 
 -- Blocks until this session holds the singleton lock keyed by (1987474279, hash of the
@@ -226,9 +331,13 @@ AS $$
     SELECT pg_catalog.pg_advisory_lock(1987474279, pg_catalog.hashtext(lock_singleton.singleton))
 $$;
 
--- Row trigger that wakes listeners of the table's schema channel. The first argument
--- names the key column and the optional second the tenant column. The payload carries
--- no row data beyond them.
+-- Row trigger that wakes listeners. The first argument names the key column, the
+-- optional second the tenant column, which an empty name omits, and the optional third
+-- a qualifier column. Without a qualifier the notification goes to the channel named
+-- after the table's schema. With one it goes only to `<schema>.<qualifier>`, such as
+-- `tasks.time` for a Task of server `time`; the qualifier column is NOT NULL and keeps
+-- its value for the row's life. The payload carries no row data beyond the key and
+-- tenant.
 CREATE FUNCTION kernel.notify_change() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp
@@ -236,8 +345,19 @@ AS $$
 DECLARE
     changed jsonb := to_jsonb(CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END);
     row_key text := changed ->> TG_ARGV[0];
+    channel_name text := TG_TABLE_SCHEMA;
+    qualifier text;
 BEGIN
-    PERFORM pg_catalog.pg_notify(TG_TABLE_SCHEMA, json_build_object(
+    IF TG_NARGS > 2 THEN
+        qualifier := changed ->> TG_ARGV[2];
+        IF qualifier IS NULL OR qualifier = '' THEN
+            RAISE EXCEPTION 'column % of %.% names no notification channel',
+                quote_ident(TG_ARGV[2]), TG_TABLE_SCHEMA, TG_TABLE_NAME
+                USING ERRCODE = 'null_value_not_allowed';
+        END IF;
+        channel_name := channel_name || '.' || qualifier;
+    END IF;
+    PERFORM pg_catalog.pg_notify(channel_name, json_build_object(
         'table', TG_TABLE_NAME,
         'operation', lower(TG_OP),
         'key', CASE WHEN octet_length(row_key) <= 1024 THEN row_key END,
@@ -252,7 +372,9 @@ GRANT EXECUTE ON FUNCTION
     kernel.current_servers(),
     kernel.start_instance(text),
     kernel.instance_alive(integer),
-    kernel.reap_instances(),
+    kernel.reap_instances(interval),
+    kernel.instance_held(integer),
+    kernel.resume_instance(integer),
     kernel.lock_singleton(text),
     kernel.notify_change()
 TO veoveo_server;

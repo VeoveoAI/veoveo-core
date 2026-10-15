@@ -10,7 +10,7 @@ singletons and query style.
 
 | Standard or interface | Profile |
 |---|---|
-| PostgreSQL 18 | Schema `audit`, created by migration `0500_audit.sql` in `platform/store/migrations`, with the read indexes of `0501_audit_record_filters.sql` and the minimal record's columns, indexes and declaration function of `0503_audit_minimal_record.sql` |
+| PostgreSQL 18 | Schema `audit`, created by migration `0500_audit.sql` in `platform/store/migrations` |
 | NIST SP 800-53 Rev. 5 AU-3, AU-9(3), AU-10 and OCSF 1.9.0 | The record content and its OCSF mapping, defined in the [contract design](contract/DESIGN.md#standards-and-protocols) |
 | `xid8` and `pg_snapshot_xmin` | Records are sealed in transaction order below the snapshot horizon |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` on the `audit` channel; records carry their identity as the key, blocks their partition; the tenant member is always null |

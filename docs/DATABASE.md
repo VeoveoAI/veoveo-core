@@ -136,10 +136,7 @@ cannot settle work it no longer owns.
 
 The grace belongs to each process's store configuration, so the shortest grace any
 process of an installation uses decides; installations give every process the same one.
-It stays shorter than the Gateway's 60-second registration grace. `kernel.reap_instances()`
-without an argument applies the 30-second default for processes on an earlier core
-during a rolling update, and retires once every component pins a core that passes the
-grace.
+It stays shorter than the Gateway's 60-second registration grace.
 
 The `Instance` type checks its connection and its row every 5 seconds. When a check
 fails, takes longer than 5 seconds or finds the row gone, the instance reconnects with a

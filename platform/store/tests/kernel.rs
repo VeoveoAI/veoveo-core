@@ -15,9 +15,9 @@ use sqlx::{
 };
 use store::TestDb;
 use veoveo_store::{
-    Change, ChangeOperation, ChangeSignal, ChangeStream, INSTANCE_GRACE, Instance, InstanceGrace,
-    InstanceId, InstancePhase, InstanceState, LoginName, PlatformStore, ServerSchema, Singleton,
-    SingletonName, StoreError, TenantId,
+    Change, ChangeOperation, ChangeSignal, ChangeStream, Instance, InstanceGrace, InstanceId,
+    InstancePhase, InstanceState, LoginName, PlatformStore, ServerSchema, Singleton, SingletonName,
+    StoreError, TenantId,
 };
 use veoveo_types::ServerSlug;
 
@@ -377,24 +377,6 @@ async fn an_instance_that_takes_its_lock_back_starts_a_fresh_grace() {
     freed(&db.b, id).await;
     assert_eq!(reaper.reap_instances().await.unwrap(), 0);
     assert_eq!(marked(&db.b, id).await, Some(true));
-}
-
-#[tokio::test]
-async fn the_reaper_an_earlier_core_calls_waits_the_default_grace() {
-    let db = TestDb::new().await;
-    assert_eq!(INSTANCE_GRACE.as_duration(), Duration::from_secs(30));
-    let reap = || async {
-        sqlx::query_file_scalar!("tests/queries/kernel/reap_with_default_grace.sql")
-            .fetch_one(db.b.pool())
-            .await
-            .unwrap()
-    };
-    let id = abandoned_instance(&db).await;
-    assert_eq!(reap().await, 0);
-    backdate_mark(&db.b, id, Duration::from_secs(29)).await;
-    assert_eq!(reap().await, 0);
-    backdate_mark(&db.b, id, Duration::from_secs(31)).await;
-    assert_eq!(reap().await, 1);
 }
 
 #[tokio::test]

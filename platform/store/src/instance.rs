@@ -34,8 +34,7 @@ pub const REAP_INTERVAL: Duration = Duration::from_secs(15);
 /// [`PING_TIMEOUT`], and several reconnection attempts. It stays shorter than the
 /// Gateway's 60-second registration grace, so a crashed server's Tasks reach recovery
 /// before its registration goes, within this grace and two [`REAP_INTERVAL`]s of the
-/// crash while any instance runs. `kernel.reap_instances()`, which processes on an
-/// earlier core call, applies the same 30 seconds.
+/// crash while any instance runs.
 pub const INSTANCE_GRACE: InstanceGrace = InstanceGrace::from_secs(30);
 
 /// How long an instance's lock stays free before a reaper deletes the instance, in whole

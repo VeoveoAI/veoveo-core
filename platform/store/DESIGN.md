@@ -57,8 +57,7 @@ Task runtime's retention run this way.
 The integration tests use the [PostgreSQL fixture](../../testing/fixtures/DESIGN.md).
 They cover kernel migrations, server roles and row-level security, instance liveness and
 reaping, a reap that marks a free lock and deletes the instance only after the grace, a
-mark that taking the lock back clears, the 30-second grace of the reaper an earlier core
-calls, an instance that takes its lock back after its session ends, continues under a
+mark that taking the lock back clears, an instance that takes its lock back after its session ends, continues under a
 new id after its row was reaped, ends the earlier session of its own login, refuses
 another login's resumption and ends once its login is dropped, singletons,
 notifications across a reconnect, identity conflicts, Work Context
