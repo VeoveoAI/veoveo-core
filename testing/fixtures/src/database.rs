@@ -6,7 +6,7 @@
 //! violation and every exemption. Requires the PostgreSQL 18 server programs on `PATH`.
 //!
 //! ```ignore
-//! veoveo_test_fixtures::database::Conformance::new()
+//! veoveo_fixtures::database::Conformance::new()
 //!     .server(&ServerSlug::parse("time").unwrap(), persistence::migrator())
 //!     .queries_from(concat!(env!("CARGO_MANIFEST_DIR"), "/.sqlx"))
 //!     .check()

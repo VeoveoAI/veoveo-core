@@ -1,6 +1,6 @@
 //! The PostgreSQL test fixture: isolated databases, service credentials and cleanup.
 #[allow(dead_code, reason = "each test binary uses part of the shared fixture")]
-#[path = "../../../testing/fixtures/store.rs"]
+#[path = "../../../testing/fixtures/src/store.rs"]
 mod store;
 
 use store::TestDb;

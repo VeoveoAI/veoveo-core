@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use sqlx::migrate::Migrator;
-use veoveo_test_fixtures::database::{Conformance, Report, Rule};
+use veoveo_fixtures::database::{Conformance, Report, Rule};
 use veoveo_types::ServerSlug;
 
 fn slug(value: &str) -> ServerSlug {

@@ -1,7 +1,7 @@
 //! Task runtime behavior against a fresh PostgreSQL database per test.
 
 #[allow(dead_code, reason = "each test binary uses part of the shared fixture")]
-#[path = "../../../../testing/fixtures/store.rs"]
+#[path = "../../../../testing/fixtures/src/store.rs"]
 mod store;
 
 mod claims;

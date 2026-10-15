@@ -26,7 +26,7 @@ use uuid::Uuid;
 use veoveo_store::{InstanceGrace, MIGRATOR, PlatformStore, StoreConfig};
 
 /// Changes when the template's layout changes, so older templates are not reused.
-const TEMPLATE_FORMAT: &str = "veoveo-test-fixtures/postgres/1";
+const TEMPLATE_FORMAT: &str = "veoveo-fixtures/postgres/1";
 pub(super) const OWNER: &str = "veoveo_owner";
 pub(super) const TEMPLATE_DATABASE: &str = "veoveo_template";
 const SUPERUSER: &str = "postgres";

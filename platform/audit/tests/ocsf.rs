@@ -1,6 +1,6 @@
 //! Independent OCSF 1.9.0 qualification using the upstream validator.
 //! Sends only synthetic fixtures; no installation records or credentials are read.
-#[path = "../../../testing/fixtures/audit_owner.rs"]
+#[path = "../../../testing/fixtures/src/audit_owner.rs"]
 mod audit_owner;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};

@@ -1,5 +1,5 @@
 [package]
-name = "veoveo-test-fixtures"
+name = "veoveo-fixtures"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

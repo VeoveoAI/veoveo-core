@@ -27,7 +27,7 @@ mod steps;
 mod subscriptions;
 #[cfg(test)]
 #[allow(dead_code, reason = "the unit tests use part of the shared fixture")]
-#[path = "../../../testing/fixtures/store.rs"]
+#[path = "../../../testing/fixtures/src/store.rs"]
 mod test_store;
 #[cfg(test)]
 mod test_support;

@@ -249,7 +249,7 @@ verbatim copy of the statement in a test script and check the plan's index condi
 ## Server Schema Rules
 
 Every crate that owns queries, core's and each server's, holds them to four rules in one
-test. `veoveo_test_fixtures::database::Conformance` (feature `database-conformance`)
+test. `veoveo_fixtures::database::Conformance` (feature `database-conformance`)
 migrates a fixture database, reads every compile-checked query from the workspace's
 `.sqlx` directory, parses it with PostgreSQL's own parser through `pg_query`, plans it,
 and panics with one report that lists every violation and every exemption. The checks
@@ -339,7 +339,7 @@ record.
 
 ## Testing
 
-`veoveo-test-fixtures` starts one Postgres server per test process from the PostgreSQL 18
+`veoveo-fixtures` starts one Postgres server per test process from the PostgreSQL 18
 programs on `PATH`, listening on a loopback port with a private socket directory. The
 first fixture on a machine migrates a template database and keeps its data directory;
 each process copies it, and each `TestDb` clones a fresh database from the template and

@@ -13,7 +13,7 @@ fn forbidden(name: &str) -> bool {
 
 #[test]
 fn no_core_crate_depends_on_mcp_or_a_component() {
-    let lock = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../Cargo.lock"))
+    let lock = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.lock"))
         .expect("core's Cargo.lock is readable");
     let packages: Vec<&str> = lock
         .lines()

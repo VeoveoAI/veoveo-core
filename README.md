@@ -22,7 +22,7 @@ one revision of this repository.
 | `platform/usage` | `veoveo-usage` | The usage ledger in PostgreSQL: confined kind declarations and appends inside a caller's transaction, idempotent records in FOCUS 1.4 columns, Task costs and daily totals |
 | `platform/usage/contract` | `veoveo-usage-contract` | Usage kinds, FOCUS units and categories, exact quantities and amounts, and record drafts |
 | `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision |
-| `testing/fixtures/library` | `veoveo-test-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database and the database conformance checks |
+| `testing/fixtures` | `veoveo-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database and the database conformance checks |
 
 Core names no protocol method, server or domain. The Rust MCP layer, including hosting,
 the client servers use to call each other and the server registration protocol, lives

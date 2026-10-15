@@ -2,7 +2,7 @@
 //! cursor in a generic plan, and an actor or trace filter seeks its own index in the
 //! custom plan a page runs with.
 #[allow(dead_code, reason = "each test binary uses part of the shared fixture")]
-#[path = "../../../testing/fixtures/store.rs"]
+#[path = "../../../testing/fixtures/src/store.rs"]
 mod store;
 
 use serde_json::Value;

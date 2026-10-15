@@ -1,10 +1,10 @@
 //! Audit stores over the PostgreSQL test fixture, as two replicas see them.
 #![allow(dead_code, reason = "each test binary uses part of the shared support")]
 
-#[path = "../../../../testing/fixtures/store.rs"]
+#[path = "../../../../testing/fixtures/src/store.rs"]
 pub mod store;
 
-#[path = "../../../../testing/fixtures/audit_owner.rs"]
+#[path = "../../../../testing/fixtures/src/audit_owner.rs"]
 pub mod audit_owner;
 
 use std::{

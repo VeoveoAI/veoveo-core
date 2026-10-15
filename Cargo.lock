@@ -3325,6 +3325,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "veoveo-fixtures"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "pg_query",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "tokio",
+ "uuid",
+ "veoveo-store",
+ "veoveo-types",
+]
+
+[[package]]
 name = "veoveo-http"
 version = "0.1.0"
 dependencies = [
@@ -3435,23 +3452,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "veoveo-types",
-]
-
-[[package]]
-name = "veoveo-test-fixtures"
-version = "0.1.0"
-dependencies = [
- "hex",
- "pg_query",
- "secrecy",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "sqlx",
- "tokio",
- "uuid",
- "veoveo-store",
  "veoveo-types",
 ]
 

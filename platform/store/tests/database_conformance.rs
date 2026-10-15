@@ -1,14 +1,14 @@
 //! The store's queries and the kernel and identity schemas against the
 //! server schema rules in `docs/DATABASE.md`.
 #[allow(dead_code, reason = "each test binary uses part of the shared fixture")]
-#[path = "../../../testing/fixtures/store.rs"]
+#[path = "../../../testing/fixtures/src/store.rs"]
 mod store;
 
 #[allow(
     dead_code,
     reason = "each test binary uses part of the conformance API"
 )]
-#[path = "../../../testing/fixtures/database.rs"]
+#[path = "../../../testing/fixtures/src/database.rs"]
 mod database;
 
 use database::Conformance;

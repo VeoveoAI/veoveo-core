@@ -17,8 +17,8 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-# The PostgreSQL fixture in testing/fixtures/store.rs and the database conformance checks
-# in testing/fixtures/database.rs, included by path.
+# The PostgreSQL fixture in testing/fixtures/src/store.rs and the database conformance checks
+# in testing/fixtures/src/database.rs, included by path.
 hex.workspace = true
 pg_query.workspace = true
 secrecy.workspace = true

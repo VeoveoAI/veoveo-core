@@ -12,7 +12,7 @@
 
 ## PostgreSQL
 
-`store.rs` (feature `store` of `veoveo-test-fixtures`) gives each test its own database.
+`store.rs` (feature `store` of `veoveo-fixtures`) gives each test its own database.
 `TestDb::new()` clones it from a migrated template and connects two owner pools, `a`
 and `b`, as two replicas would. The owner is `veoveo_owner`, a non-superuser
 role with `CREATEROLE` that owns the database, so grants and row-level security apply
@@ -101,7 +101,7 @@ declaration and record bytes without depending on a real owner.
 
 ## Core Boundary
 
-`library/tests/core_boundary.rs` reads core's `Cargo.lock`, the closure of every core
+`tests/core_boundary.rs` reads core's `Cargo.lock`, the closure of every core
 crate over all features and targets, and fails when it holds `rmcp` or a
 `veoveo-mcp-*`, `veoveo-sdk-*` or `veoveo-service-*` package. The check stage runs it
 with the rest of the suite.

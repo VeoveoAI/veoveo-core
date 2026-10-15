@@ -2,7 +2,7 @@
 //! and appends, idempotent and conflicting repeats, Task costs, daily totals, concurrent
 //! repeats, money rules, row-level security and monthly partitions.
 #[allow(dead_code, reason = "each test binary uses part of the shared fixture")]
-#[path = "../../../testing/fixtures/store.rs"]
+#[path = "../../../testing/fixtures/src/store.rs"]
 mod store;
 
 use std::{future::Future, time::Duration};

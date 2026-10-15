@@ -2,9 +2,7 @@
 //! include the same files by path, so each fixture has one source.
 
 #[cfg(feature = "store")]
-#[path = "../../store.rs"]
 pub mod store;
 
 #[cfg(feature = "database-conformance")]
-#[path = "../../database.rs"]
 pub mod database;

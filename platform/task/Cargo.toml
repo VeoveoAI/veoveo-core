@@ -33,6 +33,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 hex.workspace = true
-# The database conformance checks in testing/fixtures/database.rs, included by path.
+# The database conformance checks in testing/fixtures/src/database.rs, included by path.
 pg_query.workspace = true
 tokio = { workspace = true, features = ["full"] }

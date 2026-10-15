@@ -19,7 +19,7 @@ These rules apply to veoveo-core.
   registration. Do not add a dependency on rmcp or on a `veoveo-mcp-*`,
   `veoveo-sdk-*` or `veoveo-service-*` crate.
 - Fixtures shared with other repositories live in `testing/fixtures` and are exported by
-  `veoveo-test-fixtures`. Core's own tests include the same files, so each fixture has
+  `veoveo-fixtures`. Core's own tests include the same files, so each fixture has
   one source.
 - The database follows [`docs/DATABASE.md`](docs/DATABASE.md). Every static query is a
   `.sql` file run through sqlx's `query_file!` macros. After changing a query or a
