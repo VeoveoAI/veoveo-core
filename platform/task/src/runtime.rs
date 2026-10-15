@@ -14,7 +14,7 @@ use tokio::{
     task::{AbortHandle, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
-use veoveo_platform_store::{Channel, Instance, InstanceId, PlatformStore, StoreError};
+use veoveo_store::{Channel, Instance, InstanceId, PlatformStore, StoreError};
 use veoveo_types::{ServerSlug, TaskId};
 
 use crate::{
@@ -196,7 +196,7 @@ impl TaskRuntime {
 
     /// This server's Task, without a caller selection. Callers read through `for_owner`.
     /// ```compile_fail
-    /// use veoveo_task_runtime::TaskRuntime;
+    /// use veoveo_task::TaskRuntime;
     /// async fn raw_identity(runtime: &TaskRuntime) {
     ///     runtime.get("01983da0-0000-7000-8000-000000000001").await;
     /// }

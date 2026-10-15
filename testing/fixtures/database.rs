@@ -19,7 +19,7 @@ use std::{
 };
 
 use sqlx::migrate::Migrator;
-use veoveo_platform_store::{KERNEL_SCHEMAS, ServerSchema};
+use veoveo_store::{KERNEL_SCHEMAS, ServerSchema};
 use veoveo_types::ServerSlug;
 
 use super::store::TestDb;

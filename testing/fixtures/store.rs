@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 use secrecy::SecretString;
 use sqlx::migrate::Migrator;
 use uuid::Uuid;
-use veoveo_platform_store::{LoginName, PlatformStore, ServerSchema, StoreConfig};
+use veoveo_store::{LoginName, PlatformStore, ServerSchema, StoreConfig};
 use veoveo_types::ServerSlug;
 
 #[path = "store/cluster.rs"]

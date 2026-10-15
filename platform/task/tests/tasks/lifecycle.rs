@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use crate::store::TestDb;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
-use veoveo_task_runtime::{
+use veoveo_task::{
     MaintenanceBatch, Pruned, RecoveryClass, ResumeCancellationPolicy, TaskError, TaskFailure,
     TaskPayloadState, TaskRetentionPin, TaskStatus, TaskTransition,
 };

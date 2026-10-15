@@ -3303,7 +3303,7 @@ dependencies = [
  "url",
  "uuid",
  "veoveo-audit-contract",
- "veoveo-platform-store",
+ "veoveo-store",
  "veoveo-types",
  "zeroize",
 ]
@@ -3359,7 +3359,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "veoveo-oauth-client"
+name = "veoveo-oauth"
 version = "0.1.0"
 dependencies = [
  "aws-lc-rs",
@@ -3376,7 +3376,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "veoveo-platform-store"
+name = "veoveo-store"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
@@ -3401,18 +3401,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "veoveo-task-contract"
-version = "0.1.0"
-dependencies = [
- "schemars",
- "serde",
- "serde_json",
- "sqlx",
- "veoveo-types",
-]
-
-[[package]]
-name = "veoveo-task-runtime"
+name = "veoveo-task"
 version = "0.1.0"
 dependencies = [
  "async-stream",
@@ -3433,8 +3422,19 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
- "veoveo-platform-store",
+ "veoveo-store",
  "veoveo-task-contract",
+ "veoveo-types",
+]
+
+[[package]]
+name = "veoveo-task-contract"
+version = "0.1.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
+ "sqlx",
  "veoveo-types",
 ]
 
@@ -3451,7 +3451,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "uuid",
- "veoveo-platform-store",
+ "veoveo-store",
  "veoveo-types",
 ]
 
@@ -3487,7 +3487,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
- "veoveo-platform-store",
+ "veoveo-store",
  "veoveo-types",
  "veoveo-usage-contract",
 ]

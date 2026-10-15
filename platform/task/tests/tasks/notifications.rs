@@ -2,8 +2,8 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use veoveo_platform_store::{ChangeOperation, ChangeSignal, ChangeStream, Channel};
-use veoveo_task_runtime::{RecoveryClass, TaskStatus};
+use veoveo_store::{ChangeOperation, ChangeSignal, ChangeStream, Channel};
+use veoveo_task::{RecoveryClass, TaskStatus};
 
 use crate::{
     store::TestDb,

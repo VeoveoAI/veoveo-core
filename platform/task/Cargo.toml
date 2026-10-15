@@ -1,5 +1,5 @@
 [package]
-name = "veoveo-task-runtime"
+name = "veoveo-task"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,13 +7,13 @@ repository.workspace = true
 publish.workspace = true
 
 [lib]
-name = "veoveo_task_runtime"
+name = "veoveo_task"
 path = "src/lib.rs"
 
 [dependencies]
 veoveo-task-contract = { workspace = true, features = ["postgres"] }
 veoveo-types.workspace = true
-veoveo-platform-store.workspace = true
+veoveo-store.workspace = true
 async-stream = "0.3.6"
 base64.workspace = true
 chrono.workspace = true

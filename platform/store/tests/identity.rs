@@ -4,7 +4,7 @@
 mod store;
 
 use store::TestDb;
-use veoveo_platform_store::{
+use veoveo_store::{
     GrantPermission, GrantSubjectKind, PrincipalKind, StoreError, TenantId,
     WorkContextInitialGrantRecord, WorkContextMembershipLevel, WorkContextMembershipRuleRecord,
     deterministic_enterprise_id, deterministic_principal_id, deterministic_tenant_id,

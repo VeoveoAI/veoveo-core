@@ -8,8 +8,8 @@ members = [
     "platform/macros",
     "platform/oauth",
     "platform/store",
-    "platform/task-runtime",
-    "platform/task-runtime/contract",
+    "platform/task",
+    "platform/task/contract",
     "platform/types",
     "platform/usage",
     "platform/usage/contract",
@@ -25,7 +25,7 @@ repository = "https://github.com/VeoveoAI/veoveo-core"
 publish = false
 
 [workspace.dependencies]
-veoveo-task-contract = { path = "platform/task-runtime/contract" }
+veoveo-task-contract = { path = "platform/task/contract" }
 veoveo-macros = { path = "platform/macros" }
 veoveo-audit-contract = { path = "platform/audit/contract" }
 veoveo-usage-contract = { path = "platform/usage/contract" }
@@ -69,4 +69,4 @@ pg_query = "=6.2.1"
 uuid = { version = "1.24.1", features = ["serde", "v4", "v5", "v7"] }
 zeroize = "=1.9.1"
 veoveo-types = { path = "platform/types" }
-veoveo-platform-store = { path = "platform/store" }
+veoveo-store = { path = "platform/store" }

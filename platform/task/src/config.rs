@@ -1,6 +1,6 @@
 //! Connection settings for a Task runtime process.
 use secrecy::SecretString;
-use veoveo_platform_store::{InstanceGrace, StoreConfig, StoreError};
+use veoveo_store::{InstanceGrace, StoreConfig, StoreError};
 
 use crate::TaskError;
 

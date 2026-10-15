@@ -14,7 +14,7 @@ use sqlx::{
     postgres::{PgConnectOptions, types::PgInterval},
 };
 use store::TestDb;
-use veoveo_platform_store::{
+use veoveo_store::{
     Change, ChangeOperation, ChangeSignal, ChangeStream, INSTANCE_GRACE, Instance, InstanceGrace,
     InstanceId, InstancePhase, InstanceState, LoginName, PlatformStore, ServerSchema, Singleton,
     SingletonName, StoreError, TenantId,

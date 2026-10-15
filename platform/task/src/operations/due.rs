@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use tokio::task::JoinHandle;
-use veoveo_platform_store::{Instance, MaintenanceBatch, PlatformStore};
+use veoveo_store::{Instance, MaintenanceBatch, PlatformStore};
 use veoveo_types::ServerSlug;
 
 use crate::{TaskError, TaskRuntime};

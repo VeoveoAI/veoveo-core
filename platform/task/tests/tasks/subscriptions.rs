@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::store::TestDb;
 use futures::StreamExt;
-use veoveo_task_runtime::{
+use veoveo_task::{
     RecoveryClass, TaskError, TaskSnapshot, TaskStatus, TaskTransition, TaskUpdateStream,
 };
 use veoveo_types::TaskId;

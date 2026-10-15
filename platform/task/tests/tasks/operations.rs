@@ -11,7 +11,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use veoveo_task_runtime::{
+use veoveo_task::{
     CallbackToken, CheckObservation, CheckSchedule, Delivery, EventTarget, ExternalJobId,
     MaintenanceBatch, Operation, OperationCalls, OperationEvent, OperationEventId, OperationKey,
     OperationSpec, OperationState, ProviderName, RecoveryClass, StepAttempt, StepDispatch, StepKey,
@@ -116,7 +116,7 @@ async fn dispatch(
     (operation, token)
 }
 
-async fn never(_: veoveo_task_runtime::OperationAttempt) -> Result<Submission, Failure> {
+async fn never(_: veoveo_task::OperationAttempt) -> Result<Submission, Failure> {
     panic!("a recorded operation was dispatched again")
 }
 
@@ -366,7 +366,7 @@ async fn checks_follow_their_schedule_and_the_deadline_leaves_the_outcome_open()
         worker
             .transition_if_current(
                 &current,
-                TaskTransition::Failed(veoveo_task_runtime::TaskFailure {
+                TaskTransition::Failed(veoveo_task::TaskFailure {
                     code: "provider_timeout".into(),
                     message: "The provider did not answer in time.".into(),
                     details: None,

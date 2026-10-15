@@ -13,7 +13,7 @@ ed25519-dalek = "=3.0.0"
 base64.workspace = true
 veoveo-types.workspace = true
 veoveo-audit-contract = { workspace = true, features = ["postgres"] }
-veoveo-platform-store.workspace = true
+veoveo-store.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true

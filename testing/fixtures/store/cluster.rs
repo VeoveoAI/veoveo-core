@@ -23,7 +23,7 @@ use sqlx::{
     postgres::{PgConnectOptions, PgSslMode},
 };
 use uuid::Uuid;
-use veoveo_platform_store::{InstanceGrace, MIGRATOR, PlatformStore, StoreConfig};
+use veoveo_store::{InstanceGrace, MIGRATOR, PlatformStore, StoreConfig};
 
 /// Changes when the template's layout changes, so older templates are not reused.
 const TEMPLATE_FORMAT: &str = "veoveo-test-fixtures/postgres/1";

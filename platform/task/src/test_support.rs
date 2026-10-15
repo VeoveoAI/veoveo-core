@@ -1,7 +1,7 @@
 //! Owners, instances and Tasks for the unit tests that run on the PostgreSQL fixture.
 use std::{collections::BTreeSet, sync::Arc};
 
-use veoveo_platform_store::{Instance, PrincipalKind};
+use veoveo_store::{Instance, PrincipalKind};
 use veoveo_types::{
     AccessSubject, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
     ServerSlug, TaskId, TaskTypeName, TenantId, WorkContextId, WorkContextMembershipLevel,

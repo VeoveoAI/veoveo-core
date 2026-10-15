@@ -13,8 +13,8 @@ use futures::StreamExt;
 use serde_json::json;
 use sqlx::AssertSqlSafe;
 use tokio_util::sync::CancellationToken;
-use veoveo_platform_store::{InstanceGrace, InstanceId, InstancePhase, PlatformStore, StoreError};
-use veoveo_task_runtime::{
+use veoveo_store::{InstanceGrace, InstanceId, InstancePhase, PlatformStore, StoreError};
+use veoveo_task::{
     CheckSchedule, ExternalJobId, Operation, OperationCalls, OperationKey, OperationSpec,
     ProviderName, RecoveryClass, Submission, TaskError, TaskRuntime, TaskStatus, TaskTransition,
 };
@@ -79,11 +79,8 @@ struct Pending;
 impl OperationCalls for Pending {
     type Error = TaskError;
 
-    async fn check(
-        &self,
-        _: &Operation,
-    ) -> Result<veoveo_task_runtime::CheckObservation, TaskError> {
-        Ok(veoveo_task_runtime::CheckObservation {
+    async fn check(&self, _: &Operation) -> Result<veoveo_task::CheckObservation, TaskError> {
+        Ok(veoveo_task::CheckObservation {
             event_id: None,
             payload: json!({"status": "processing"}),
             is_final: false,

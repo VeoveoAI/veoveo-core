@@ -38,7 +38,7 @@ END
 $$;
 
 -- The form a process on an earlier core calls during a rolling update. It applies the
--- default grace of `veoveo_platform_store::INSTANCE_GRACE`, so such a process no longer
+-- default grace of `veoveo_store::INSTANCE_GRACE`, so such a process no longer
 -- deletes an instance whose lock dropped a moment ago. It retires once every component
 -- of an installation pins a core with `kernel.reap_instances(interval)`.
 CREATE OR REPLACE FUNCTION kernel.reap_instances() RETURNS integer

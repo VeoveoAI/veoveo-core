@@ -14,7 +14,7 @@ singletons and query style.
 | NIST SP 800-53 Rev. 5 AU-3, AU-9(3), AU-10 and OCSF 1.9.0 | The record content and its OCSF mapping, defined in the [contract design](contract/DESIGN.md#standards-and-protocols) |
 | `xid8` and `pg_snapshot_xmin` | Records are sealed in transaction order below the snapshot horizon |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` on the `audit` channel; records carry their identity as the key, blocks their partition; the tenant member is always null |
-| Advisory locks | The sealer holds the `audit.sealer` singleton through `veoveo-platform-store` |
+| Advisory locks | The sealer holds the `audit.sealer` singleton through `veoveo-store` |
 | SQLSTATE | `VV501` reused identity, `VV503` block or intent disagreement, `VV504` recorded export refusal |
 | RFC 9162, RFC 8785 and RFC 8032 | Merkle roots over canonical record bytes, JCS block heads and Ed25519 signatures |
 | RFC 9562, W3C Trace Context, RFC 3339 | Record and request identities, trace and span identities, timestamps |

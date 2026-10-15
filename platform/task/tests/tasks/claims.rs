@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, time::Duration};
 
 use crate::store::TestDb;
 use futures::StreamExt;
-use veoveo_task_runtime::{RecoveryClass, TaskError, TaskStatus};
+use veoveo_task::{RecoveryClass, TaskError, TaskStatus};
 use veoveo_types::TaskId;
 
 use crate::support::{create, runtime, within};
@@ -18,7 +18,7 @@ async fn concurrent_workers_claim_each_task_once() {
         for _ in 0..24 {
             created.insert(create(&first, RecoveryClass::Resume).await.task_id);
         }
-        let drain = |runtime: veoveo_task_runtime::TaskRuntime| async move {
+        let drain = |runtime: veoveo_task::TaskRuntime| async move {
             let mut claimed = Vec::new();
             while let Some(task) = runtime.claim_next().await.unwrap() {
                 assert_eq!(task.status, TaskStatus::Running);

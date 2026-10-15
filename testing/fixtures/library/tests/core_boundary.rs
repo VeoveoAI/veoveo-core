@@ -21,7 +21,7 @@ fn no_core_crate_depends_on_mcp_or_a_component() {
         .filter_map(|rest| rest.strip_suffix('"'))
         .collect();
     assert!(
-        packages.contains(&"veoveo-platform-store"),
+        packages.contains(&"veoveo-store"),
         "the lockfile lists core's own crates"
     );
     let found: Vec<&str> = packages
@@ -45,7 +45,7 @@ fn the_boundary_names_protocol_and_component_packages() {
     ] {
         assert!(forbidden(name), "{name}");
     }
-    for name in ["veoveo-types", "veoveo-platform-store", "sqlx", "rmcpx"] {
+    for name in ["veoveo-types", "veoveo-store", "sqlx", "rmcpx"] {
         assert!(!forbidden(name), "{name}");
     }
 }

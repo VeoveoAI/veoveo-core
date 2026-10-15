@@ -4,7 +4,7 @@
 mod store;
 
 use store::TestDb;
-use veoveo_platform_store::{PlatformStore, PrincipalKind, StoreConfig, deterministic_tenant_id};
+use veoveo_store::{PlatformStore, PrincipalKind, StoreConfig, deterministic_tenant_id};
 
 #[tokio::test]
 async fn each_fixture_has_its_own_database_and_drops_it() {

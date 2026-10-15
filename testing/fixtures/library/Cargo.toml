@@ -15,7 +15,7 @@ store = [
     "dep:sqlx",
     "dep:tokio",
     "dep:uuid",
-    "dep:veoveo-platform-store",
+    "dep:veoveo-store",
     "dep:veoveo-types",
 ]
 # Tenant-predicate, row-bound, index-use and schema checks over a crate's queries. Only
@@ -32,7 +32,7 @@ sha2 = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["fs", "macros", "process", "rt", "sync", "time"], optional = true }
 uuid = { workspace = true, features = ["v4"], optional = true }
-veoveo-platform-store = { workspace = true, optional = true }
+veoveo-store = { workspace = true, optional = true }
 veoveo-types = { workspace = true, optional = true }
 
 [dev-dependencies]

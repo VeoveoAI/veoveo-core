@@ -3,7 +3,7 @@ use std::{pin::Pin, time::Duration};
 
 use futures::Stream;
 use tokio::sync::watch;
-use veoveo_platform_store::{ReapRound, StoreError};
+use veoveo_store::{ReapRound, StoreError};
 
 use crate::{TaskError, TaskRuntime, TaskSnapshot, signals::TaskSignals};
 

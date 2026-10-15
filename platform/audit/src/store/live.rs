@@ -7,7 +7,7 @@ use futures::{
 };
 use std::collections::VecDeque;
 use veoveo_audit_contract::{AuditPartition, AuditReadScope, AuditRecord, AuditRecordId};
-use veoveo_platform_store::{ChangeSignal, ChangeStream, StoreError};
+use veoveo_store::{ChangeSignal, ChangeStream, StoreError};
 
 /// What a partition's record stream reports.
 #[derive(Debug)]

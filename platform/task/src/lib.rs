@@ -56,7 +56,7 @@ pub use snapshot::{
 pub use steps::{MAX_STEP_KEY_BYTES, StepAttempt, StepDispatch, StepKey, StepOperationId};
 pub use subscriptions::{OwnerTaskSubscription, TaskUpdateStream};
 pub use transition::TaskTransition;
-pub use veoveo_platform_store::{
+pub use veoveo_store::{
     INSTANCE_GRACE, Instance, InstanceGrace, InstanceId, InstancePhase, InstanceState,
     MaintenanceBatch, PrincipalKind, Pruned,
 };

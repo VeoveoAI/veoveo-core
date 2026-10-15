@@ -6,7 +6,7 @@ use veoveo_audit_contract::{
     AuditAppendError, AuditDetailError, AuditPartition, AuditReadScope, AuditRegistry,
     AuditValidationError,
 };
-use veoveo_platform_store::{
+use veoveo_store::{
     ChangeOperation, ChangeSignal, ChangeStream, Channel, PlatformStore, StoreError,
 };
 

@@ -1,8 +1,8 @@
 //! Fixtures shared by the Task runtime tests.
 use std::{collections::BTreeSet, future::Future, sync::Arc, time::Duration};
 
-use veoveo_platform_store::PlatformStore;
-use veoveo_task_runtime::{
+use veoveo_store::PlatformStore;
+use veoveo_task::{
     CreateTask, Instance, InstanceId, PrincipalKind, RecoveryClass, TaskOwner, TaskRuntime,
     TaskSnapshot,
 };

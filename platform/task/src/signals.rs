@@ -6,9 +6,7 @@ use std::collections::BTreeSet;
 
 use futures::StreamExt;
 use tokio::sync::{Mutex, broadcast};
-use veoveo_platform_store::{
-    Change, ChangeOperation, ChangeSignal, ChangeStream, Channel, PlatformStore,
-};
+use veoveo_store::{Change, ChangeOperation, ChangeSignal, ChangeStream, Channel, PlatformStore};
 use veoveo_types::TaskId;
 
 use crate::TaskError;

@@ -8,7 +8,7 @@ use std::sync::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::oneshot;
-use veoveo_task_runtime::{
+use veoveo_task::{
     MaintenanceBatch, RecoveryClass, StepAttempt, StepDispatch, StepKey, StepOperationId,
     TaskError, TaskInputRequest, TaskRuntime, TaskStatus, TaskTransition,
 };
@@ -46,7 +46,7 @@ async fn never<T>(_: StepAttempt) -> Result<T, Failure> {
     panic!("a finished step ran again")
 }
 
-async fn steps_of(store: &veoveo_platform_store::PlatformStore, task: TaskId) -> i64 {
+async fn steps_of(store: &veoveo_store::PlatformStore, task: TaskId) -> i64 {
     sqlx::query_file_scalar!("tests/queries/step_count.sql", task.as_uuid())
         .fetch_one(store.pool())
         .await

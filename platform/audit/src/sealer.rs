@@ -13,7 +13,7 @@ use sqlx::Connection;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, watch};
 use veoveo_audit_contract::*;
-use veoveo_platform_store::{Singleton, SingletonName, StoreError};
+use veoveo_store::{Singleton, SingletonName, StoreError};
 
 /// The most records one pass seals.
 const SEAL_PAGE: usize = 4096;
@@ -303,7 +303,7 @@ impl AuditSealer {
         shutdown: &mut watch::Receiver<bool>,
         health: &watch::Sender<HealthUpdate>,
         maintenance: &Maintenance,
-        changes: &mut veoveo_platform_store::ChangeStream,
+        changes: &mut veoveo_store::ChangeStream,
         export: &mut tokio::task::JoinHandle<Result<(), crate::export::ExportError>>,
     ) -> Result<(), SealError> {
         let mut heartbeat = tokio::time::interval(HEARTBEAT);

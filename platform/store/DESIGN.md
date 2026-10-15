@@ -1,6 +1,6 @@
 # Platform Store
 
-`veoveo-platform-store` is the PostgreSQL access layer every Veoveo component shares.
+`veoveo-store` is the PostgreSQL access layer every Veoveo component shares.
 The [database design](../../docs/DATABASE.md) is normative; this document names what
 the crate implements.
 

@@ -12,11 +12,11 @@ one revision of this repository.
 |---|---|---|
 | `platform/types` | `veoveo-types` | Identifiers, vocabularies, resource addresses and shared scalar types |
 | `platform/macros` | `veoveo-macros` | The `id`, `resource_address`, `Vocabulary` and `embedded_document!` macros |
-| `platform/store` | `veoveo-platform-store` | PostgreSQL access: the connection pool, kernel and identity migrations, process instances, singletons, change notifications, registered servers' roles and schemas, keyset pages and batched maintenance |
-| `platform/oauth` | `veoveo-oauth-client` | RS256 client-assertion signing |
+| `platform/store` | `veoveo-store` | PostgreSQL access: the connection pool, kernel and identity migrations, process instances, singletons, change notifications, registered servers' roles and schemas, keyset pages and batched maintenance |
+| `platform/oauth` | `veoveo-oauth` | RS256 client-assertion signing |
 | `platform/http` | `veoveo-http` | Shared HTTP admission |
-| `platform/task-runtime` | `veoveo-task-runtime` | Durable Tasks in PostgreSQL: claims, recovery, durable steps, operations parked on providers, owner reads, inputs, subscriptions and retention |
-| `platform/task-runtime/contract` | `veoveo-task-contract` | The Task vocabulary |
+| `platform/task` | `veoveo-task` | Durable Tasks in PostgreSQL: claims, recovery, durable steps, operations parked on providers, owner reads, inputs, subscriptions and retention |
+| `platform/task/contract` | `veoveo-task-contract` | The Task vocabulary |
 | `platform/audit` | `veoveo-audit` | The audit log in PostgreSQL: group-committed appends, partition-scoped reads and change streams, the singleton sealer, signed blocks, export, retention and verification |
 | `platform/audit/contract` | `veoveo-audit-contract` | The audit record envelope after NIST SP 800-53 AU-3 with its OCSF 1.9 mapping, owner-declared classes and reason codes, blocks and reader types, and the append inside a caller's PostgreSQL transaction |
 | `platform/usage` | `veoveo-usage` | The usage ledger in PostgreSQL: confined kind declarations and appends inside a caller's transaction, idempotent records in FOCUS 1.4 columns, Task costs and daily totals |

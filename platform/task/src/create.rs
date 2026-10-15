@@ -16,7 +16,7 @@ const DEFAULT_RETENTION_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 
 /// A Task to create in the queued state.
 /// ```compile_fail
-/// use veoveo_task_runtime::CreateTask;
+/// use veoveo_task::CreateTask;
 /// fn unchecked(mut draft: CreateTask) {
 ///     draft.task_type = "unchecked-operation".to_owned();
 /// }
@@ -100,10 +100,10 @@ impl TaskRuntime {
             draft.task_id.as_uuid(),
             self.server().as_str(),
             tenant.as_str(),
-            identity.tenant_id as veoveo_platform_store::TenantId,
+            identity.tenant_id as veoveo_store::TenantId,
             owner.tenant_key.as_ref().map(|tenant| tenant.as_str()),
             owner.principal_key.as_str(),
-            identity.principal_id as veoveo_platform_store::PrincipalId,
+            identity.principal_id as veoveo_store::PrincipalId,
             owner.principal_kind as PrincipalKind,
             owner.issuer.as_str(),
             owner.subject.as_str(),

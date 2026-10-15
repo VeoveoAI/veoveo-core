@@ -1,5 +1,5 @@
 //! Caller selection in SQL and row-level security between servers.
-use veoveo_task_runtime::{
+use veoveo_task::{
     Instance, MAX_GET_MANY, OwnerTaskQuery, RecoveryClass, TaskError, TaskPageOrder, TaskRuntime,
     TaskStatus,
 };
@@ -465,7 +465,7 @@ async fn row_level_security_confines_a_server_login_to_its_own_tasks() {
         );
         assert_eq!(
             intruder
-                .prune_expired(veoveo_task_runtime::MaintenanceBatch::DEFAULT)
+                .prune_expired(veoveo_task::MaintenanceBatch::DEFAULT)
                 .await
                 .unwrap()
                 .rows,

@@ -1,6 +1,6 @@
 # Durable Task Runtime
 
-`veoveo-task-runtime` stores the Tasks of registered servers in the installation's
+`veoveo-task` stores the Tasks of registered servers in the installation's
 PostgreSQL database and runs them on the servers' process instances. A server creates a
 Task for a caller's long-running request. One of its processes claims and runs the
 Task, and the caller reads, answers, cancels and watches it through `OwnerTaskQuery`.

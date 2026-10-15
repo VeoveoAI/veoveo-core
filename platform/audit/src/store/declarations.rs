@@ -1,7 +1,7 @@
 //! Class declarations in `audit.detail_type`.
 use super::{AuditStore, AuditStoreError};
 use veoveo_audit_contract::{AuditClass, AuditDetailDeclaration, AuditOcsfClass};
-use veoveo_platform_store::PlatformStore;
+use veoveo_store::PlatformStore;
 use veoveo_types::ServerSlug;
 
 impl AuditStore {

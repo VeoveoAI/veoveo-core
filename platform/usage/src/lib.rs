@@ -5,7 +5,7 @@
 use chrono::NaiveDate;
 use serde_json::Value;
 use sqlx::PgConnection;
-use veoveo_platform_store::PlatformStore;
+use veoveo_store::PlatformStore;
 use veoveo_types::{PrincipalId, TaskId, TenantId};
 pub use veoveo_usage_contract::*;
 

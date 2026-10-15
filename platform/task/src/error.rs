@@ -43,7 +43,7 @@ pub enum TaskError {
     #[error("the tasks notification listener stopped")]
     ListenerStopped,
     #[error(transparent)]
-    Store(#[from] veoveo_platform_store::StoreError),
+    Store(#[from] veoveo_store::StoreError),
     #[error(transparent)]
     Database(#[from] sqlx::Error),
     #[error(transparent)]
@@ -61,7 +61,7 @@ impl TaskError {
     pub fn is_connection(&self) -> bool {
         match self {
             Self::Store(error) => error.is_connection(),
-            Self::Database(error) => veoveo_platform_store::is_connection_error(error),
+            Self::Database(error) => veoveo_store::is_connection_error(error),
             _ => false,
         }
     }
@@ -81,11 +81,11 @@ pub fn interrupted_by_connection(error: &(dyn std::error::Error + 'static)) -> b
             .downcast_ref::<TaskError>()
             .is_some_and(TaskError::is_connection)
             || error
-                .downcast_ref::<veoveo_platform_store::StoreError>()
-                .is_some_and(veoveo_platform_store::StoreError::is_connection)
+                .downcast_ref::<veoveo_store::StoreError>()
+                .is_some_and(veoveo_store::StoreError::is_connection)
             || error
                 .downcast_ref::<sqlx::Error>()
-                .is_some_and(veoveo_platform_store::is_connection_error)
+                .is_some_and(veoveo_store::is_connection_error)
         {
             return true;
         }

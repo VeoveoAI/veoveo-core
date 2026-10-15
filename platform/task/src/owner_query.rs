@@ -49,7 +49,7 @@ impl OwnerTaskQuery {
 
     /// Select one operation type.
     /// ```compile_fail
-    /// use veoveo_task_runtime::{TaskRuntime, TaskOwner};
+    /// use veoveo_task::{TaskRuntime, TaskOwner};
     /// fn query(runtime: &TaskRuntime, owner: &TaskOwner) {
     ///     runtime.for_owner(owner).of_type("untyped-operation");
     /// }
@@ -101,7 +101,7 @@ impl OwnerTaskQuery {
 
     /// The caller's Task, or `None` when it is missing or not the caller's.
     /// ```compile_fail
-    /// use veoveo_task_runtime::{TaskOwner, TaskRuntime};
+    /// use veoveo_task::{TaskOwner, TaskRuntime};
     /// async fn wrong(runtime: &TaskRuntime, owner: &TaskOwner) {
     ///     runtime.for_owner(owner).get("raw-task-id").await;
     /// }

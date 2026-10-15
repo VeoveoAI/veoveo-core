@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use veoveo_task_runtime::{RecoveryClass, TaskError, TaskFailure, TaskStatus, TaskTransition};
+use veoveo_task::{RecoveryClass, TaskError, TaskFailure, TaskStatus, TaskTransition};
 
 use crate::{
     store::TestDb,

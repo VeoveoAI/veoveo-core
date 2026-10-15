@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::store::TestDb;
 use serde_json::{Value, json};
-use veoveo_task_runtime::{
+use veoveo_task::{
     MAX_TASK_INPUTS, RecoveryClass, TaskError, TaskInputRequest, TaskInputSubmission, TaskStatus,
 };
 

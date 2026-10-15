@@ -1,5 +1,5 @@
 [package]
-name = "veoveo-oauth-client"
+name = "veoveo-oauth"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
