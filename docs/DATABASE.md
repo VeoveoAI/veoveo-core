@@ -28,13 +28,13 @@ An installation has one database. Each owner has one schema:
 |---|---|---|
 | `kernel` | Core | Migration history, process instances and shared functions |
 | `identity` | Core | Enterprises, tenants, principals and Work Contexts |
-| `gateway` | The Gateway | Control-plane revisions, OAuth state, registrations and Task routes, from the Gateway's own migrations |
+| `hub` | The Hub | Control-plane revisions, OAuth state, registrations and Task routes, from the Hub's own migrations |
 | `tasks` | Core | Tasks, their input exchanges, steps, operations with their provider events, and idempotency keys |
 | `audit` | Core | Declared audit classes, audit records, blocks, seals and export cursors; servers declare and append through two functions |
 | `usage` | Core | Declared usage kinds, monthly-partitioned usage records with their idempotency keys, and daily totals; servers declare and append through two functions |
 | `<server>` | A registered server | The server's own tables and functions; the name is the server slug with `-` replaced by `_` |
 
-The Gateway connects as the installation owner, a role that owns the database and has
+The Hub connects as the installation owner, a role that owns the database and has
 `CREATEROLE`. It applies the kernel migrations at startup.
 
 A server name is its slug: a lowercase letter followed by at most 47 lowercase letters,
@@ -47,12 +47,12 @@ three roles:
   member of `veoveo_server`, the kernel's group role for every server.
 - `<server>_<suffix>` is a login role created for one registration, a member of
   `server_<server>` with `SET` and `INHERIT`. The registration grant carries its name and a
-  random password. Deregistration drops it, and so does the Gateway when the login has
+  random password. Deregistration drops it, and so does the Hub when the login has
   held no live process instance for the installation's grace period.
 - `veoveo_server` holds the kernel grants that every server needs. The kernel migrations
   define it.
 
-The Gateway calls `kernel.ensure_server(server)`, which creates the group role and the
+The Hub calls `kernel.ensure_server(server)`, which creates the group role and the
 schema and changes nothing when they exist, `kernel.create_server_login(server, login,
 password)` and `kernel.drop_server_login(login)`. Only the installation owner may run
 them.
@@ -101,7 +101,7 @@ connection for notifications.
 Kernel migrations live in `platform/store/migrations` and record their history in
 `kernel._sqlx_migrations`. Their versions are grouped by schema in hundreds: `01xx` for
 `kernel`, `02xx` for `identity`, `04xx` for `tasks`, `05xx` for `audit` and `06xx` for
-`usage`. The Gateway's
+`usage`. The Hub's
 migrations live in its repository and record their history in its own schema. A
 server's migrations live in its own crate and record their history in
 `<server>._sqlx_migrations`; `PlatformStore::migrate_server` applies them on a dedicated
@@ -116,7 +116,7 @@ Every process that owns work starts an instance. `kernel.start_instance(server)`
 a row into `kernel.instance` on a dedicated connection and takes the session advisory
 lock `(1987471726, id)` before the row commits. The row records the owning server, the
 login that started it and its start time; a kernel component names itself, such as
-`gateway`. The lock lives as long as the connection. `kernel.instance_alive(id)` reports
+`hub`. The lock lives as long as the connection. `kernel.instance_alive(id)` reports
 whether that lock is held, using `pg_locks`. A process that exits or loses its connection
 releases the lock at once; a host that disappears releases it when TCP keepalive closes
 the connection. A clean shutdown deletes the row and releases the lock before it closes
@@ -136,7 +136,7 @@ cannot settle work it no longer owns.
 
 The grace belongs to each process's store configuration, so the shortest grace any
 process of an installation uses decides; installations give every process the same one.
-It stays shorter than the Gateway's 60-second registration grace.
+It stays shorter than the Hub's 60-second registration grace.
 
 The `Instance` type checks its connection and its row every 5 seconds. When a check
 fails, takes longer than 5 seconds or finds the row gone, the instance reconnects with a
@@ -151,7 +151,7 @@ doubling to at most 5 seconds. On the new connection it calls
 | `gone` | A reaper deleted the row, or another login started it | The instance starts again under a new id as its next generation; the reaper already moved its earlier work to recovery |
 
 The instance ends only on shutdown or when the database refuses its login (SQLSTATE
-`28000` or `28P01`), as it does once the Gateway removed the server's registration and
+`28000` or `28P01`), as it does once the Hub removed the server's registration and
 dropped the login. The process then stops acting on the work it owned. A server that
 loses its database connection for less than the grace therefore keeps its registration
 and its work, and one that stays away longer keeps running under a new instance.
@@ -301,7 +301,7 @@ A query exempts itself from one rule with a comment that gives the reason:
 | `-- veoveo: scan (<reason>)` | Index use |
 
 `all_tenants(table, reason)` exempts every query on a table that callers address by an
-identifier alone, such as the Gateway's refresh-token families, which a token digest
+identifier alone, such as the Hub's refresh-token families, which a token digest
 selects. `pending(rule, subject, reason)` accepts the violations of one rule under one
 query file or table as known work, such as a defect that a later change fixes. A marker
 without a reason, an unknown marker and an exemption or pending entry that no finding

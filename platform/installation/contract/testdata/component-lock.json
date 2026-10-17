@@ -2,8 +2,8 @@
   "format": "https://veoveo.ai/formats/component-lock",
   "components": [
     {
-      "name": "veoveo-service-gateway",
-      "repository": "https://github.com/VeoveoAI/veoveo-service-gateway",
+      "name": "veoveo-hub",
+      "repository": "https://github.com/VeoveoAI/veoveo-hub",
       "revision": "0123456789abcdef0123456789abcdef01234567"
     },
     {

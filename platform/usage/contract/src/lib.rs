@@ -479,7 +479,7 @@ pub struct UsageActor {
     pub work_context: WorkContextId,
 }
 
-/// Another server that did the work for the caller through the Gateway, and its Task.
+/// Another server that did the work for the caller through the Hub, and its Task.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct UsageVia {
     pub server: ServerSlug,

@@ -1,4 +1,4 @@
-//! The Gateway's audit service: a standby until it holds the sealer role, then the
+//! The Hub's audit service: a standby until it holds the sealer role, then the
 //! sealer with export and retention. Failures are observable through its health.
 use crate::{
     integrity::AuditSigningKey,

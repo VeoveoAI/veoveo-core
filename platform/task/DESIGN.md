@@ -4,7 +4,7 @@
 PostgreSQL database and runs them on the servers' process instances. A server creates a
 Task for a caller's long-running request. One of its processes claims and runs the
 Task, and the caller reads, answers, cancels and watches it through `OwnerTaskQuery`.
-`veoveo-sdk-rust` adapts it to MCP Tasks, and the runtime itself names no protocol.
+`veoveo-hub-sdk` adapts it to MCP Tasks, and the runtime itself names no protocol.
 
 ## Standards And Protocols
 
@@ -46,7 +46,7 @@ so a Task can succeed with a `null` result.
 | `task_surface`, `task_idempotency_key`, `task_retention_pins` | Surfaces, keys and pins are 1 to 256 bytes without control characters; pins are distinct |
 
 A Task's surface is the opaque `TaskSurface` the creating adapter supplies, such as the
-Gateway profile a call arrived on, and its owner reads the Task only through the same
+Hub profile a call arrived on, and its owner reads the Task only through the same
 surface. An input's kind names what the Task asks for, as the adapter that relays the
 request spells it, such as `elicitation/create`. The runtime stores both without
 interpreting them, so the schema holds no protocol vocabulary.
@@ -171,7 +171,7 @@ Tasks behind them, such as removing records whose Task retention has pruned.
 Row-level security adds a second boundary. A registered server's login is a member of
 `veoveo_server`, and the policies on the three tables admit only rows whose server is in
 `kernel.current_servers()`. An input or a step belongs to the server of its Task. The
-installation owner owns the tables, so the policies do not apply to the Gateway.
+installation owner owns the tables, so the policies do not apply to the Hub.
 
 ## Subscriptions
 

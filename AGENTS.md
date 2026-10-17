@@ -14,10 +14,10 @@ These rules apply to veoveo-core.
 - Pin exact versions and image digests. When changing a pin, verify the latest stable
   release at its source.
 - Core is protocol-independent and names no specific server or domain. MCP code belongs
-  in `veoveo-sdk-rust`; server-owned actions, audit classes and details, targets,
-  schemas and tests belong in the server's repository and reach the Gateway through
+  in `veoveo-hub-sdk`; server-owned actions, audit classes and details, targets,
+  schemas and tests belong in the server's repository and reach the Hub through
   registration. Do not add a dependency on rmcp or on a `veoveo-mcp-*`,
-  `veoveo-sdk-*` or `veoveo-service-*` crate.
+  `veoveo-hub*` or `veoveo-service-*` crate.
 - Fixtures shared with other repositories live in `testing/fixtures` and are exported by
   `veoveo-fixtures`. Core's own tests include the same files, so each fixture has
   one source.

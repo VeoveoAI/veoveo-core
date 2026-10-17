@@ -26,7 +26,7 @@ as in an installation.
 | `server_store(&slug)` | Calls `ensure_server` and `create_server_login` and returns a pool connected as the new login |
 | `migrate_server(&slug, migrator)` | Applies a server's migrations in its schema as one of its logins |
 | `end_sessions(&store)` | Ends every session of the store's login, as a network failure between a server and the database does |
-| `remove_login(&store)` | Drops the store's login as the Gateway does when it removes a registration, then ends the login's sessions |
+| `remove_login(&store)` | Drops the store's login as the Hub does when it removes a registration, then ends the login's sessions |
 
 The first fixture on a machine runs `initdb`, starts a server, creates the owner and
 the `veoveo_template` database, applies the kernel migrations and stops the server.
@@ -63,7 +63,7 @@ service. Core's own suites include the file by path next to `store.rs`.
 |---|---|
 | `Conformance::new()` | An empty check |
 | `server(&slug, migrator)` | Applies the server's migrations as one of its logins, checks the server's schema and plans every query as that login; without it, queries are planned as the installation owner |
-| `owner(schema, migrator)` | Applies the migrations of a component that owns a schema of the installation database, such as the Gateway, as the installation owner after the kernel migrations, and checks that schema; queries are planned as the installation owner. The migrator must keep its history in `<schema>._sqlx_migrations`, the schema must not be a kernel schema, and a check covers one owner or one server, never both |
+| `owner(schema, migrator)` | Applies the migrations of a component that owns a schema of the installation database, such as the Hub, as the installation owner after the kernel migrations, and checks that schema; queries are planned as the installation owner. The migrator must keep its history in `<schema>._sqlx_migrations`, the schema must not be a kernel schema, and a check covers one owner or one server, never both |
 | `schema(name)` | Another schema whose tables the index-use and schema rules cover, such as a kernel schema |
 | `queries_from(dir)` | Every `query-*.json` of a sqlx offline directory, each named by the `.sql` file under the directory's parent whose SHA-256 is its hash |
 | `sources(dir)` | Keeps the queries whose `.sql` file lies under `dir`; repeatable |

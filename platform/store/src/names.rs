@@ -297,7 +297,7 @@ mod tests {
         }
         assert!(ServerSchema::new(&slug(&"t".repeat(MAX_SERVER_NAME))).is_ok());
         assert!(ServerSchema::new(&slug(&"t".repeat(MAX_SERVER_NAME + 1))).is_err());
-        assert!(check_server_name(&slug("gateway")).is_ok());
+        assert!(check_server_name(&slug("hub")).is_ok());
     }
 
     #[test]

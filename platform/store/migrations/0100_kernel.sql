@@ -66,7 +66,7 @@ AS $$
     SELECT kernel.servers_of(current_user)
 $$;
 
--- Creates the server's group role and its schema, owned by that role. The Gateway calls
+-- Creates the server's group role and its schema, owned by that role. The Hub calls
 -- it when a server registers; repeating it changes nothing.
 CREATE FUNCTION kernel.ensure_server(server text) RETURNS void
 LANGUAGE plpgsql

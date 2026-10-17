@@ -94,7 +94,7 @@ impl Conformance {
 
     /// Apply an owner's migrations after the kernel migrations, as the installation
     /// owner, the way a component that owns a schema of the installation database, such
-    /// as the Gateway, applies them at startup, and check `schema`. Queries are planned
+    /// as the Hub, applies them at startup, and check `schema`. Queries are planned
     /// as the installation owner. The migrator creates its schema and keeps its history
     /// inside it, in `<schema>._sqlx_migrations`, as the owner's `sqlx.toml` declares.
     pub fn owner(mut self, schema: impl Into<String>, migrator: Migrator) -> Self {

@@ -32,7 +32,7 @@ pub const REAP_INTERVAL: Duration = Duration::from_secs(15);
 /// its work to recovery, unless the store configuration sets another grace. It covers an
 /// instance noticing a lost connection, which takes up to [`PING_INTERVAL`] plus
 /// [`PING_TIMEOUT`], and several reconnection attempts. It stays shorter than the
-/// Gateway's 60-second registration grace, so a crashed server's Tasks reach recovery
+/// Hub's 60-second registration grace, so a crashed server's Tasks reach recovery
 /// before its registration goes, within this grace and two [`REAP_INTERVAL`]s of the
 /// crash while any instance runs.
 pub const INSTANCE_GRACE: InstanceGrace = InstanceGrace::from_secs(30);
@@ -115,7 +115,7 @@ pub enum InstancePhase {
     /// the row.
     Reconnecting,
     /// The instance ended: it shut down, or the database refused its login, as it does
-    /// once the Gateway removed the server's registration.
+    /// once the Hub removed the server's registration.
     Ended,
 }
 
@@ -149,7 +149,7 @@ pub struct Instance {
 
 impl Instance {
     /// Record this process as an instance of `server` and take its lock. A kernel
-    /// component passes its own name, such as `gateway`; a registered server passes its
+    /// component passes its own name, such as `hub`; a registered server passes its
     /// slug, which row-level security requires its login to own.
     pub async fn start(store: &PlatformStore, server: &ServerSlug) -> Result<Self, StoreError> {
         check_server_name(server)?;

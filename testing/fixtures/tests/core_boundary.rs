@@ -6,7 +6,7 @@
 fn forbidden(name: &str) -> bool {
     name == "rmcp"
         || name.starts_with("rmcp-")
-        || ["veoveo-mcp-", "veoveo-sdk-", "veoveo-service-"]
+        || ["veoveo-mcp-", "veoveo-hub", "veoveo-service-"]
             .iter()
             .any(|prefix| name.starts_with(prefix))
 }
@@ -40,8 +40,8 @@ fn the_boundary_names_protocol_and_component_packages() {
         "rmcp",
         "rmcp-macros",
         "veoveo-mcp-contract",
-        "veoveo-sdk-rust",
-        "veoveo-service-gateway",
+        "veoveo-hub-sdk",
+        "veoveo-hub",
     ] {
         assert!(forbidden(name), "{name}");
     }

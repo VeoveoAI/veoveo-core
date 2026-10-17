@@ -9,7 +9,7 @@ use veoveo_types::{
 
 use crate::{PrincipalKind, TaskError, snapshot::is_valid_key};
 
-/// The surface an owner submitted a Task through, such as the Gateway profile a call
+/// The surface an owner submitted a Task through, such as the Hub profile a call
 /// arrived on. An owner reads a Task only through the surface it was created on. The
 /// runtime treats the value as an opaque key of 1 to 256 bytes without control
 /// characters; the protocol adapter that creates the Task chooses it.

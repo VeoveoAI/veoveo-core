@@ -34,7 +34,7 @@ sqlx.
 | `outcome` | The owner | `success`, `denied`, `failure` or `unknown` |
 | `reason` | The owner | Optional; a code the owner defines, scoped to the record's source |
 | `actor` | The owner | Principal, principal kind, tenant and Work Context, or none for the system |
-| `via` | The owner, from the SDK | The server that acted for the actor through the Gateway, and its Task |
+| `via` | The owner, from the SDK | The server that acted for the actor through the Hub, and its Task |
 | `target` | The owner | Optional; an absolute URI in the owner's address form, such as `artifact://artifacts/{id}`, or `task_target(id)` for a Task |
 | `request` | The owner, from the SDK | Request ID, trace and span IDs, peer address and the Task the action ran in |
 | `detail` | The owner | A JSON object of at most 16 KiB of compact JSON, the owner's own type |
@@ -44,7 +44,7 @@ the actor, acting server, target, reason, identity and occurrence time. Serializ
 input admission share the envelope checks: the partition follows the actor's tenant and
 the detail fits its limit. A partition's storage key, `installation` or `tenant:`
 followed by the tenant, distinguishes the installation partition from a tenant literally
-named `installation`. Attribution that belongs to one component, such as the Gateway's
+named `installation`. Attribution that belongs to one component, such as the Hub's
 OAuth client, profile or policy revision, travels in that component's detail.
 
 ## Classes And Details

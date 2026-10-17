@@ -1,5 +1,5 @@
 //! Server-declared permission and resource-type names. A registered server owns every
-//! name whose first segment is its slug; the Gateway checks that ownership at registration.
+//! name whose first segment is its slug; the Hub checks that ownership at registration.
 use crate::{IdentifierError, ServerSlug};
 
 #[doc = "Permission a registered server declares, `{slug}.{segment}`, for example `time.events.write`."]

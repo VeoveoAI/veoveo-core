@@ -257,13 +257,13 @@ mod tests {
     #[test]
     fn admits_a_url_without_password_and_redacts_the_secret() {
         let config = StoreConfig::builder(
-            "postgres://gateway@db.internal.example:5432/veoveo?sslmode=verify-full",
+            "postgres://hub@db.internal.example:5432/veoveo?sslmode=verify-full",
             secret("not-for-logs"),
         )
-        .application_name("veoveo-service-gateway")
+        .application_name("veoveo-hub")
         .build()
         .unwrap();
-        assert_eq!(config.username(), "gateway");
+        assert_eq!(config.username(), "hub");
         assert_eq!(config.database(), "veoveo");
         assert_eq!(
             config.url().as_str(),
@@ -273,7 +273,7 @@ mod tests {
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("not-for-logs"));
         let options = config.connect_options();
-        assert_eq!(options.get_username(), "gateway");
+        assert_eq!(options.get_username(), "hub");
         assert_eq!(options.get_database(), Some("veoveo"));
     }
 

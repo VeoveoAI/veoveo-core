@@ -36,7 +36,7 @@ declaration changes nothing.
 
 A `UsageDraft` carries the kind, the phase, the caller the work ran for, the quantity,
 a source identifier and the charge period, and optionally the Task and operation, the
-server and Task that did the work for the caller through the Gateway, money, a FOCUS
+server and Task that did the work for the caller through the Hub, money, a FOCUS
 charge category, the correction flag and the target resource's URI. Quantities and
 amounts are exact decimals written as text, so no value passes through a binary float.
 

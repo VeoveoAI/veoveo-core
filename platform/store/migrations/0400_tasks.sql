@@ -45,7 +45,7 @@ CREATE TABLE tasks.task (
     owner_kind text NOT NULL,
     owner_issuer text NOT NULL,
     owner_subject text NOT NULL,
-    -- The surface the owner submitted through, such as a Gateway profile. The owner
+    -- The surface the owner submitted through, such as a Hub profile. The owner
     -- reads the Task only through the same surface.
     surface text NOT NULL,
     -- Data labels the owner held at submission; a reader must hold all of them.

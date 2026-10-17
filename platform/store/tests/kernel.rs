@@ -76,9 +76,9 @@ async fn kernel_migrations_are_recorded_in_the_kernel_schema_and_repeat_as_no_op
 #[tokio::test]
 async fn instances_hold_their_lock_until_shutdown_and_are_reaped_once_it_is_gone() {
     let db = TestDb::new().await;
-    let gateway = slug("gateway");
-    let running = Instance::start(&db.a, &gateway).await.unwrap();
-    let abandoned = Instance::start(&db.b, &gateway).await.unwrap();
+    let hub = slug("hub");
+    let running = Instance::start(&db.a, &hub).await.unwrap();
+    let abandoned = Instance::start(&db.b, &hub).await.unwrap();
     assert!(db.a.instance_alive(running.id()).await.unwrap());
     assert!(db.a.instance_alive(abandoned.id()).await.unwrap());
     assert_eq!(db.a.reap_instances().await.unwrap(), 0);
@@ -95,7 +95,7 @@ async fn instances_hold_their_lock_until_shutdown_and_are_reaped_once_it_is_gone
     let rows = visible_instances(&db.a).await;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].0, running.id());
-    assert_eq!(rows[0].1, "gateway");
+    assert_eq!(rows[0].1, "hub");
     assert_eq!(rows[0].2, db.config().username());
 
     let mut reaps = running.reaps();
@@ -114,7 +114,7 @@ async fn instances_hold_their_lock_until_shutdown_and_are_reaped_once_it_is_gone
 #[tokio::test]
 async fn a_shared_instance_shuts_down_while_other_holders_keep_it() {
     let db = TestDb::new().await;
-    let shared = std::sync::Arc::new(Instance::start(&db.a, &slug("gateway")).await.unwrap());
+    let shared = std::sync::Arc::new(Instance::start(&db.a, &slug("hub")).await.unwrap());
     let holder = shared.clone();
     let id = shared.id();
     shared.shutdown().await.unwrap();
@@ -156,7 +156,7 @@ async fn live_again(instance: &Instance, observer: &PlatformStore, previous: i32
 #[tokio::test]
 async fn an_instance_whose_connection_ends_takes_its_lock_back() {
     let db = TestDb::new().await;
-    let instance = Instance::start(&db.a, &slug("gateway")).await.unwrap();
+    let instance = Instance::start(&db.a, &slug("hub")).await.unwrap();
     let id = instance.id();
     let pid = lock_backend(&db.b, id)
         .await
@@ -242,7 +242,7 @@ async fn an_instance_whose_login_was_dropped_ends() {
     let db = TestDb::new().await;
     let clock = db.server_store(&slug("clock")).await;
     let instance = Instance::start(&clock, &slug("clock")).await.unwrap();
-    // The Gateway removed the registration and dropped its login, and the sessions of
+    // The Hub removed the registration and dropped its login, and the sessions of
     // the login ended, the instance's lock session among them.
     db.remove_login(&clock).await;
 
@@ -287,7 +287,7 @@ async fn marked(store: &PlatformStore, id: InstanceId) -> Option<bool> {
 /// process does, and wait until the lock is free.
 async fn abandoned_instance(db: &TestDb) -> InstanceId {
     let mut holder = session(db).await;
-    let id = sqlx::query_file_scalar!("tests/queries/kernel/start_instance.sql", "gateway")
+    let id = sqlx::query_file_scalar!("tests/queries/kernel/start_instance.sql", "hub")
         .fetch_one(&mut holder)
         .await
         .unwrap();

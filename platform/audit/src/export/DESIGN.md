@@ -12,7 +12,7 @@
 
 ## Configuration And Ownership
 
-The component that runs the audit service, the Gateway in an installation, loads at
+The component that runs the audit service, the Hub in an installation, loads at
 most 64 KiB from `VEOVEO_AUDIT_EXPORT_CONFIG`. The closed JSON
 configuration has optional `s3` and `otlp` destinations. Audit owns their types and
 their delivery state in the `audit` schema. S3 bucket names use lowercase letters, digits

@@ -35,7 +35,7 @@
           }
         }
       },
-      "pattern": "^veoveo-(service|mcp|runtime|app|showcase)-[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "pattern": "^veoveo-[a-z][a-z0-9]*(-[a-z0-9]+)*$",
       "type": "string"
     },
     "ComponentRepository": {
@@ -57,7 +57,7 @@
           }
         }
       },
-      "pattern": "^https://github\\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/veoveo-(service|mcp|runtime|app|showcase)-[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "pattern": "^https://github\\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/veoveo-[a-z][a-z0-9]*(-[a-z0-9]+)*$",
       "type": "string"
     },
     "GitRevision": {

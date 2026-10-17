@@ -26,7 +26,7 @@ one revision of this repository.
 
 Core names no protocol method, server or domain. The Rust MCP layer, including hosting,
 the client servers use to call each other and the server registration protocol, lives
-in [`veoveo-sdk-rust`](https://github.com/VeoveoAI/veoveo-sdk-rust). Each server
+in [`veoveo-hub-sdk`](https://github.com/VeoveoAI/veoveo-hub-sdk). Each server
 publishes its own contract through its crate's `contract` feature, and each owner
 declares its audit classes and details. The core boundary test fails the gate when a
 core crate depends on rmcp or on a `veoveo-mcp-*`, `veoveo-sdk-*` or `veoveo-service-*`

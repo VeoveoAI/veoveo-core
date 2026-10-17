@@ -21,20 +21,20 @@ the crate implements.
 |---|---|
 | `StoreConfig`, `PlatformStore::connect` | Pool settings and the connection pool |
 | `PlatformStore::migrate`, `MIGRATOR` | Kernel migrations from `migrations/`, history in `kernel._sqlx_migrations` |
-| `ensure_server`, `create_server_login`, `drop_server_login` | A registered server's group role, schema and logins, for the Gateway |
+| `ensure_server`, `create_server_login`, `drop_server_login` | A registered server's group role, schema and logins, for the Hub |
 | `migrate_server` | A server's own migrations in its schema, as its group role |
 | `Instance`, `reap_instances`, `instance_alive` | Process liveness through `kernel.instance` and its advisory lock, reconnected after a lost connection, and reaped once the lock stayed free for the instance grace |
 | `InstanceGrace`, `INSTANCE_GRACE`, `StoreConfig::instance_grace` | How long a lock stays free before a reap, in whole milliseconds, 30 seconds by default |
 | `Singleton` | One replica per role, on the connection that holds the lock |
 | `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
-| `ensure_identity`, `work_context_by_key` | Identity records for the Gateway and registered servers |
+| `ensure_identity`, `work_context_by_key` | Identity records for the Hub and registered servers |
 | `MaintenanceBatch`, `Pruned` | Batched deletion of expired rows, described below |
 | `PageSize<MAX>`, `Page` | A page size from 1 to the contract's `MAX`, read with `LIMIT size + 1` so the extra row decides whether a next cursor exists |
 | `CursorScope`, `KeysetCursor`, `KeysetCodec` | An opaque keyset cursor over `OpaqueCursor`, bound to the listing, tenant and filter digest that issued it |
 
 Migration versions are grouped by owner schema in hundreds: `01xx` kernel, `02xx`
 identity, `04xx` tasks and `05xx` audit. Each owner adds versions within its range. A
-component that owns another schema, such as the Gateway, keeps that schema's migrations
+component that owns another schema, such as the Hub, keeps that schema's migrations
 and their history in its own repository.
 
 Every static statement is a `.sql` file beside the module that runs it. The query

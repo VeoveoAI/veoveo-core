@@ -4,8 +4,8 @@ mod component;
 mod lock;
 
 pub use component::{
-    ComponentKind, ComponentName, ComponentNames, ComponentRepositories, ComponentRepository,
-    GitRevision, GitRevisions, MAX_COMPONENT_NAME,
+    ComponentName, ComponentNames, ComponentRepositories, ComponentRepository, GitRevision,
+    GitRevisions, MAX_COMPONENT_NAME,
 };
 pub use lock::{COMPONENT_LOCK_FORMAT, ComponentLock, ComponentLockFormat, LockedComponent};
 
@@ -14,7 +14,7 @@ pub use lock::{COMPONENT_LOCK_FORMAT, ComponentLock, ComponentLockFormat, Locked
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ComponentLockError {
     #[error(
-        "invalid component name {0:?}: veoveo-<kind>-<name> of at most 100 bytes, with kind service, mcp, runtime, app or showcase and a name of lowercase words joined by hyphens"
+        "invalid component name {0:?}: veoveo-<name> of at most 100 bytes, with lowercase words joined by hyphens"
     )]
     Name(String),
     #[error("invalid component repository {0:?}: https://github.com/<owner>/<component name>")]

@@ -78,7 +78,7 @@ impl StoreError {
 
     /// The database refused the login: its password no longer matches, or the role is
     /// gone or may not log in. A registered server's login ends this way once the
-    /// Gateway removed the server's registration.
+    /// Hub removed the server's registration.
     pub fn is_login_refused(&self) -> bool {
         matches!(self, Self::Database(error) if is_login_refused(error))
     }

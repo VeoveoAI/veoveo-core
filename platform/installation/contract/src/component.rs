@@ -6,34 +6,10 @@ use crate::ComponentLockError;
 /// The longest component name, GitHub's limit for a repository name.
 pub const MAX_COMPONENT_NAME: usize = 100;
 
-/// The kinds of repository whose components an installation runs. Each is the `<kind>`
-/// of a `veoveo-<kind>-<name>` repository name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]
-pub enum ComponentKind {
-    /// A platform service that implements a core contract, such as the Gateway.
-    Service,
-    /// A domain MCP server.
-    Mcp,
-    /// A native or GPU runtime that a service uses.
-    Runtime,
-    /// A user-facing application.
-    App,
-    /// A demonstration workload.
-    Showcase,
-}
-
-/// A component's name, which is also its repository's name: `veoveo-<kind>-<name>`,
-/// where `<name>` is lowercase words of letters and digits joined by hyphens and starting
-/// with a letter, such as `veoveo-service-gateway` or `veoveo-mcp-time`.
+/// A component's repository name: `veoveo-` followed by lowercase words of
+/// letters and digits joined by hyphens, starting with a letter.
 #[veoveo_types::id(text(ComponentNames))]
 pub struct ComponentName(String);
-
-impl ComponentName {
-    /// The kind of repository the name declares.
-    pub fn kind(&self) -> ComponentKind {
-        component_kind(self.as_str()).expect("an admitted component name declares its kind")
-    }
-}
 
 /// The GitHub repository that holds a component's source:
 /// `https://github.com/<owner>/<component name>`.
@@ -66,14 +42,13 @@ pub struct GitRevision(String);
 
 const GITHUB: &str = "https://github.com/";
 
-const NAME_PATTERN: &str = "veoveo-(service|mcp|runtime|app|showcase)-[a-z][a-z0-9]*(-[a-z0-9]+)*";
+const NAME_PATTERN: &str = "veoveo-[a-z][a-z0-9]*(-[a-z0-9]+)*";
 
-fn component_kind(value: &str) -> Option<ComponentKind> {
+fn component_name(value: &str) -> Option<()> {
     if value.len() > MAX_COMPONENT_NAME {
         return None;
     }
-    let (kind, name) = value.strip_prefix("veoveo-")?.split_once('-')?;
-    let kind = kind.parse::<ComponentKind>().ok()?;
+    let name = value.strip_prefix("veoveo-")?;
     let mut words = name.split('-');
     let first = words.next()?;
     let lowercase_word = |word: &str| {
@@ -83,7 +58,7 @@ fn component_kind(value: &str) -> Option<ComponentKind> {
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
     };
     let starts_with_letter = first.bytes().next().is_some_and(|b| b.is_ascii_lowercase());
-    (starts_with_letter && lowercase_word(first) && words.all(lowercase_word)).then_some(kind)
+    (starts_with_letter && lowercase_word(first) && words.all(lowercase_word)).then_some(())
 }
 
 /// The owner and repository segments of a GitHub repository URL.
@@ -97,7 +72,7 @@ fn repository_path(value: &str) -> Option<(&str, &str)> {
         && !owner.starts_with('-')
         && !owner.ends_with('-')
         && !owner.contains("--");
-    (owner_admitted && component_kind(repository).is_some()).then_some((owner, repository))
+    (owner_admitted && component_name(repository).is_some()).then_some((owner, repository))
 }
 
 #[doc(hidden)]
@@ -105,7 +80,7 @@ pub struct ComponentNames;
 impl IdProfile for ComponentNames {
     type Error = ComponentLockError;
     const PROFILE: IdProfileSpec<Self::Error> = IdProfileSpec::text(|value, _| {
-        component_kind(value)
+        component_name(value)
             .map(|_| ())
             .ok_or_else(|| ComponentLockError::Name(value.to_owned()))
     })

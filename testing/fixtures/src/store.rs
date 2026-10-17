@@ -17,7 +17,7 @@ use cluster::{Cluster, OWNER, random_secret};
 const SETUP: Duration = Duration::from_secs(120);
 
 /// One database owned by this test. `a` and `b` are two independent pools connected as
-/// the installation owner, as two Gateway replicas would be. Dropping the fixture drops
+/// the installation owner, as two Hub replicas would be. Dropping the fixture drops
 /// the database; the cluster stops when the last fixture of the process is dropped.
 pub struct TestDb {
     pub a: PlatformStore,
@@ -80,7 +80,7 @@ impl TestDb {
             .unwrap_or_else(|failure| panic!("{failure}"))
     }
 
-    /// Register `server` as the Gateway would: its group role and schema, and a login
+    /// Register `server` as the Hub would: its group role and schema, and a login
     /// `<schema>_<random>` with a random password. Returns a pool connected as that
     /// login, which row-level security and grants treat as the server.
     pub async fn server_store(&self, server: &ServerSlug) -> PlatformStore {
@@ -137,7 +137,7 @@ impl TestDb {
         ended
     }
 
-    /// Drop `store`'s login as the Gateway does when it removes a server's registration,
+    /// Drop `store`'s login as the Hub does when it removes a server's registration,
     /// then end the login's sessions. The database refuses the login from then on.
     pub async fn remove_login(&self, store: &PlatformStore) {
         let ender = connect(store.config().clone(), "session ender")

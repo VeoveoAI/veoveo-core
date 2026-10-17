@@ -230,7 +230,7 @@ its `postgres` feature. Neither this crate nor `veoveo-types` depends on sqlx.
 `embedded_document!("relative/path.md")` reads under the consumer's manifest
 directory, validates UTF-8 and hashes the original bytes during compilation. It
 emits `include_str!` alongside the digest, so rustc tracks document changes.
-`server_docs!` lives in `veoveo-sdk-rust` because its declaration selects the calling
+`server_docs!` lives in `veoveo-hub-sdk` because its declaration selects the calling
 server's documents. Document content and discovery remain owned by their consumers.
 
 ## Macro Catalog And Enforcement
@@ -247,7 +247,7 @@ selects source paths, including newly staged files, and excludes build outputs.
 | `id`, `resource_address` | Attributes in `platform/macros/src/lib.rs` | Compact owner declarations delegate to ordinary foundation traits |
 | `Vocabulary` | Derive in `platform/macros/src/lib.rs` | One owner spelling declaration supplies vocabulary traits |
 | `embedded_document` | Function-like proc macro in `platform/macros/src/lib.rs` | Compile-time UTF-8 embedding and hashing |
-| `server_docs` | Declarative macro in `veoveo-sdk-rust` | Document selection must expand in the calling server crate |
+| `server_docs` | Declarative macro in `veoveo-hub-sdk` | Document selection must expand in the calling server crate |
 
 The checker matches path, public macro name, Rust entrypoint name and kind, and
 requires one definition for every catalog entry. Adding an entry requires owner

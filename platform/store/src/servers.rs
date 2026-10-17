@@ -7,7 +7,7 @@ use veoveo_types::ServerSlug;
 use crate::{LoginName, PlatformStore, ServerSchema, StoreError};
 
 impl PlatformStore {
-    /// Create the server's group role and schema. The Gateway calls it when a server
+    /// Create the server's group role and schema. The Hub calls it when a server
     /// registers; repeating it changes nothing. Requires the installation owner.
     pub async fn ensure_server(&self, server: &ServerSlug) -> Result<ServerSchema, StoreError> {
         let schema = ServerSchema::new(server)?;
@@ -56,7 +56,7 @@ impl PlatformStore {
     /// Apply a server's migrations in its own schema, on a dedicated connection that has
     /// taken the server's group role, so the group role owns every object and the
     /// history lives in `<schema>._sqlx_migrations`. Unqualified names resolve in the
-    /// server's schema. The migrator must not create schemas; the Gateway has created
+    /// server's schema. The migrator must not create schemas; the Hub has created
     /// the server's schema with [`Self::ensure_server`].
     pub async fn migrate_server(
         &self,

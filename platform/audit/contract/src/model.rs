@@ -46,7 +46,7 @@ pub struct AuditActor {
     pub work_context: Option<WorkContextId>,
 }
 
-/// The server that acted for the actor through the Gateway, and the Task of that server
+/// The server that acted for the actor through the Hub, and the Task of that server
 /// the call came from. OCSF names it as the actor's application.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

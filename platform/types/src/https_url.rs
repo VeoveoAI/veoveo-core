@@ -8,7 +8,7 @@ use url::Url;
 /// Whether plain HTTP is allowed for this URL's host: only a local installation's
 /// loopback names (RFC 6761 `localhost` and `*.localhost`), loopback addresses and
 /// names under `.internal`, the top-level domain ICANN reserves for private networks,
-/// which a local installation gives its containers, such as `vv-gateway.internal`.
+/// which a local installation gives its containers, such as `vv-hub.internal`.
 pub fn is_local_host(url: &Url) -> bool {
     match url.host() {
         Some(url::Host::Domain(name)) => {
@@ -110,16 +110,16 @@ mod local_host_tests {
     fn plain_http_is_local_only_on_loopback_and_private_names() {
         for local in [
             "http://localhost:8080",
-            "http://gateway.localhost",
+            "http://hub.localhost",
             "http://127.0.0.1:5432",
             "http://[::1]:9000",
-            "http://vv-gateway.internal:8080",
+            "http://vv-hub.internal:8080",
         ] {
             assert!(is_local_host(&Url::parse(local).unwrap()), "{local}");
         }
         for remote in [
-            "http://vv-gateway:8080",
-            "http://gateway.example.com",
+            "http://vv-hub:8080",
+            "http://hub.example.com",
             "http://internal.example.com",
             "http://example.internalx",
             "http://10.0.0.5",

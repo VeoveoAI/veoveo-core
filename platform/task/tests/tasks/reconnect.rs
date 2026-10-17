@@ -194,7 +194,7 @@ async fn a_runtime_whose_login_was_dropped_stops_claiming() {
         let db = TestDb::new().await;
         let (runtime, store) = server_runtime(&db).await;
         let mut work = runtime.work().await.unwrap();
-        // The Gateway removed the registration and dropped its login.
+        // The Hub removed the registration and dropped its login.
         db.remove_login(&store).await;
 
         let ended = tokio::time::timeout(Duration::from_secs(30), work.next())

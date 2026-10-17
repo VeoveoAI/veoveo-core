@@ -22,8 +22,8 @@ source on every host.
   "format": "https://veoveo.ai/formats/component-lock",
   "components": [
     {
-      "name": "veoveo-service-gateway",
-      "repository": "https://github.com/VeoveoAI/veoveo-service-gateway",
+      "name": "veoveo-hub",
+      "repository": "https://github.com/VeoveoAI/veoveo-hub",
       "revision": "0123456789abcdef0123456789abcdef01234567"
     }
   ]
@@ -36,15 +36,13 @@ exactly these members:
 
 | Member | Rule |
 |---|---|
-| `name` | The component's repository name, `veoveo-<kind>-<name>`, at most 100 bytes. `<name>` is lowercase words of letters and digits joined by single hyphens, and its first word starts with a letter |
+| `name` | The component's repository name, `veoveo-<name>`, at most 100 bytes. `<name>` is lowercase words of letters and digits joined by single hyphens, and its first word starts with a letter |
 | `repository` | `https://github.com/<owner>/<repository>`, without a trailing slash, `.git`, query or fragment. The owner is a GitHub account name: 1 to 39 letters, digits and single inner hyphens. The repository segment equals `name` |
 | `revision` | The commit to run, as `GitRevision` |
 
-`<kind>` is one of the [repository kinds](../../../docs/CONVENTIONS.md#runtime-and-repository-names)
-whose components an installation runs: `service`, `mcp`, `runtime`, `app` and
-`showcase`, the `ComponentKind` vocabulary.
-Libraries, templates, SDKs and qualification suites are not components, and neither
-are `veoveo-core` or an organization's singleton repositories.
+Repository names are lexical identifiers; they do not classify runtime roles.
+The installation selects which components it runs through its native runtime
+configuration. A repository name alone grants no runtime authority.
 
 `ComponentName`, `ComponentRepository` and `GitRevision` admit their text once, on
 construction and on decoding. `LockedComponent::new` and `ComponentLock::new` apply the
@@ -55,7 +53,7 @@ name and that names are unique, because JSON Schema cannot compare two values.
 
 ## Crate Boundary
 
-The installation configuration's types belong to the Gateway, which brings its policy,
+The installation configuration's types belong to the Hub, which brings its policy,
 Work Context and audit contracts. A bootstrap that reads the lock needs none of them,
 so the lock has a crate of its own that depends only on `veoveo-types`, serde, schemars
 and thiserror.

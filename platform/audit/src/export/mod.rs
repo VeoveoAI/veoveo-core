@@ -1,4 +1,4 @@
-//! Gateway-owned export, independent of request latency. The sealer runs it and records
+//! Hub-owned export, independent of request latency. The sealer runs it and records
 //! its intents and receipts on the connection that holds the sealer role.
 mod config;
 pub use config::{AuditExportConfig, BucketName, ObjectLock, ObjectPrefix, OtlpConfig, S3Config};

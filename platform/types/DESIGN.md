@@ -127,7 +127,7 @@ Resolved invocation values also belong here: `InvocationAuthority`,
 `WorkContextMembershipLevel`, `WorkContextOutputPolicy`, `WorkContextGrant` and
 `AccessLevel`. They carry the selected Work Context, membership, output defaults and
 provenance across protocols and domain contracts. Their string enums, field names,
-defaults and order comparisons form one shared model. The Gateway owns Work Context
+defaults and order comparisons form one shared model. The Hub owns Work Context
 configuration and membership matching against authenticated principals and signs the
 resolved authority, and each server enforces it. Possessing or
 deserializing these values establishes no grant.
@@ -167,7 +167,7 @@ Task runtime uses that relationship to share an authorized observation source ac
 Task status and resource notifications. This trait supplies identity, not permission;
 domain admission and current SQL owner checks still apply.
 
-`veoveo-sdk-rust` consumes these types for protocol descriptors, identity, policy and
+`veoveo-hub-sdk` consumes these types for protocol descriptors, identity, policy and
 discovery. Consumers import the foundational types directly from this crate. It
 provides no server-specific enums or blanket implementation that makes an arbitrary
 name or reference a domain contract.
@@ -456,8 +456,8 @@ tests and conformance profiles.
 The foundational library owns the names every component shares: `ServerSlug` for a
 registered server and `OAuthClientId` for an OAuth client. Names that belong to one
 protocol or component stay with their owner. MCP tool and prompt names and Task routes
-belong to `veoveo-sdk-rust`, Gateway profiles, refresh families and authentication
-codes to the Gateway, and agent names to Agents.
+belong to `veoveo-hub-sdk`, Hub profiles, refresh families and authentication
+codes to the Hub, and agent names to Agents.
 
 ## Permission Names
 

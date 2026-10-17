@@ -3,8 +3,8 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use veoveo_installation_contract::{
-    COMPONENT_LOCK_FORMAT, ComponentKind, ComponentLock, ComponentLockError, ComponentName,
-    ComponentRepository, GitRevision, LockedComponent,
+    COMPONENT_LOCK_FORMAT, ComponentLock, ComponentLockError, ComponentName, ComponentRepository,
+    GitRevision, LockedComponent,
 };
 
 const EXAMPLE: &str = include_str!("../testdata/component-lock.json");
@@ -32,11 +32,10 @@ fn schema() -> Value {
 fn the_example_lock_decodes_and_keeps_its_wire_form() {
     let lock = decode(example()).unwrap();
     assert_eq!(serde_json::to_value(&lock).unwrap(), example());
-    let gateway = ComponentName::parse("veoveo-service-gateway").unwrap();
-    let pin = lock.component(&gateway).unwrap();
-    assert_eq!(pin.name().kind(), ComponentKind::Service);
+    let hub = ComponentName::parse("veoveo-hub").unwrap();
+    let pin = lock.component(&hub).unwrap();
     assert_eq!(pin.repository().owner(), "VeoveoAI");
-    assert_eq!(pin.repository().name(), gateway);
+    assert_eq!(pin.repository().name(), hub);
     assert_eq!(
         pin.revision().as_str(),
         "0123456789abcdef0123456789abcdef01234567"
@@ -46,7 +45,7 @@ fn the_example_lock_decodes_and_keeps_its_wire_form() {
         .iter()
         .map(|component| component.name().as_str())
         .collect();
-    assert_eq!(names, ["veoveo-service-gateway", "veoveo-mcp-time"]);
+    assert_eq!(names, ["veoveo-hub", "veoveo-mcp-time"]);
     assert!(
         lock.component(&ComponentName::parse("veoveo-mcp-map").unwrap())
             .is_none()
@@ -95,30 +94,27 @@ fn constructors_apply_the_same_admission_as_decoding() {
 
 #[test]
 fn names_follow_the_repository_naming_rule() {
-    for (name, kind) in [
-        ("veoveo-service-gateway", ComponentKind::Service),
-        ("veoveo-mcp-time", ComponentKind::Mcp),
-        ("veoveo-runtime-embedding", ComponentKind::Runtime),
-        ("veoveo-app-console", ComponentKind::App),
-        ("veoveo-showcase-uav", ComponentKind::Showcase),
-        ("veoveo-mcp-time-zones2", ComponentKind::Mcp),
+    for name in [
+        "veoveo-hub",
+        "veoveo-hub-sdk",
+        "veoveo-mcp-time",
+        "veoveo-runtime-embedding",
+        "veoveo-app-console",
+        "veoveo-showcase-uav",
+        "veoveo-mcp-time-zones2",
     ] {
-        assert_eq!(ComponentName::parse(name).unwrap().kind(), kind, "{name}");
+        assert!(ComponentName::parse(name).is_ok(), "{name}");
     }
     let longest = format!("veoveo-mcp-{}", "a".repeat(89));
     assert_eq!(longest.len(), 100);
     assert!(ComponentName::parse(&longest).is_ok());
     for name in [
-        "veoveo-core".to_owned(),
-        "veoveo-docs".to_owned(),
-        "veoveo-template-mcp-rust".to_owned(),
-        "veoveo-sdk-python".to_owned(),
-        "veoveo-qualify-runtime".to_owned(),
-        "veoveo-mcp".to_owned(),
+        "veoveo-".to_owned(),
+        "veoveo".to_owned(),
         "veoveo-mcp-".to_owned(),
         "veoveo-mcp-time-".to_owned(),
         "veoveo-mcp--time".to_owned(),
-        "veoveo-mcp-1time".to_owned(),
+        "veoveo-1time".to_owned(),
         "veoveo-mcp-Time".to_owned(),
         "veoveo-mcp-time_zones".to_owned(),
         "vv-mcp-time".to_owned(),
@@ -147,24 +143,23 @@ fn repositories_are_github_urls_named_after_their_component() {
     assert_eq!(repository.owner(), "Acme-Robotics");
     assert_eq!(repository.name().as_str(), "veoveo-mcp-inventory");
     for url in [
-        "http://github.com/VeoveoAI/veoveo-service-gateway",
-        "https://gitlab.com/VeoveoAI/veoveo-service-gateway",
-        "https://www.github.com/VeoveoAI/veoveo-service-gateway",
-        "https://github.com:443/VeoveoAI/veoveo-service-gateway",
-        "https://GitHub.com/VeoveoAI/veoveo-service-gateway",
-        "https://github.com/VeoveoAI/veoveo-service-gateway/",
-        "https://github.com/VeoveoAI/veoveo-service-gateway.git",
-        "https://github.com/VeoveoAI/veoveo-service-gateway/tree/main",
-        "https://github.com/VeoveoAI/veoveo-service-gateway?tab=readme",
-        "https://github.com/VeoveoAI/veoveo-service-gateway#readme",
-        "https://user@github.com/VeoveoAI/veoveo-service-gateway",
-        "https://github.com/-VeoveoAI/veoveo-service-gateway",
-        "https://github.com/VeoveoAI-/veoveo-service-gateway",
-        "https://github.com/Veoveo--AI/veoveo-service-gateway",
-        "https://github.com/Veoveo_AI/veoveo-service-gateway",
-        "https://github.com//veoveo-service-gateway",
-        "https://github.com/VeoveoAI/veoveo-core",
-        "github.com/VeoveoAI/veoveo-service-gateway",
+        "http://github.com/VeoveoAI/veoveo-hub",
+        "https://gitlab.com/VeoveoAI/veoveo-hub",
+        "https://www.github.com/VeoveoAI/veoveo-hub",
+        "https://github.com:443/VeoveoAI/veoveo-hub",
+        "https://GitHub.com/VeoveoAI/veoveo-hub",
+        "https://github.com/VeoveoAI/veoveo-hub/",
+        "https://github.com/VeoveoAI/veoveo-hub.git",
+        "https://github.com/VeoveoAI/veoveo-hub/tree/main",
+        "https://github.com/VeoveoAI/veoveo-hub?tab=readme",
+        "https://github.com/VeoveoAI/veoveo-hub#readme",
+        "https://user@github.com/VeoveoAI/veoveo-hub",
+        "https://github.com/-VeoveoAI/veoveo-hub",
+        "https://github.com/VeoveoAI-/veoveo-hub",
+        "https://github.com/Veoveo--AI/veoveo-hub",
+        "https://github.com/Veoveo_AI/veoveo-hub",
+        "https://github.com//veoveo-hub",
+        "github.com/VeoveoAI/veoveo-hub",
     ] {
         assert!(
             matches!(
@@ -289,8 +284,8 @@ fn the_schema_is_identified_by_the_format_and_closes_every_object() {
         ("no components", empty),
         ("an unknown component member", extra),
         (
-            "a template repository",
-            with_component("name", json!("veoveo-template-mcp-rust")),
+            "an invalid repository name",
+            with_component("name", json!("veoveo-invalid_name")),
         ),
         (
             "a short revision",
@@ -304,7 +299,7 @@ fn the_schema_is_identified_by_the_format_and_closes_every_object() {
             "a repository on another host",
             with_component(
                 "repository",
-                json!("https://gitlab.com/VeoveoAI/veoveo-service-gateway"),
+                json!("https://gitlab.com/VeoveoAI/veoveo-hub"),
             ),
         ),
     ] {

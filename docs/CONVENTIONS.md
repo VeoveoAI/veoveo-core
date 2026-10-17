@@ -75,7 +75,7 @@ A concept has one noun across every surface, and each surface spells it in its o
 | Database function | `<schema>.<name>()` | `time.due_events()` |
 
 A server's URI scheme equals its slug. RFC 7595 §3.8 recommends reverse-domain names
-for private schemes; Veoveo uses the shorter slug because the Gateway pins each scheme
+for private schemes; Veoveo uses the shorter slug because the Hub pins each scheme
 to one registered server within an installation, which rules out collisions there. The
 scheme `veoveo` is reserved for platform resources, such as `veoveo://tasks/{task_id}`,
 and no server may register it or a scheme registered with IANA. Resource templates use
@@ -97,9 +97,9 @@ of the risks `sensitive`, `destructive`, `billed`, `physical` and `administer`.
 
 ## Tokens And Keys
 
-An access token's `iss` is the Gateway's issuer URL and its `aud` is the target
+An access token's `iss` is the Hub's issuer URL and its `aud` is the target
 server's resource URL. `client_id` names the caller's OAuth client, and an `act` claim
-names the Gateway when it acts for a caller. Every key identifier is the key's RFC 7638
+names the Hub when it acts for a caller. Every key identifier is the key's RFC 7638
 thumbprint. Veoveo uses no unregistered URN namespace.
 
 ## Identifiers, Times And Digests
@@ -119,7 +119,7 @@ Issuers, endpoints and resource URLs use `https`. A local installation, whose tr
 stays on one host, may use plain `http` for loopback names (`localhost` and
 `*.localhost`, per RFC 6761), loopback addresses and names under `.internal`, the
 top-level domain ICANN reserves for private networks. The local installation names its
-containers there, such as `vv-gateway.internal`. Every other host requires `https`.
+containers there, such as `vv-hub.internal`. Every other host requires `https`.
 
 ## Environment Variables And Flags
 
@@ -154,7 +154,7 @@ A repository's kind says what it holds, and its code shortens runtime names.
 
 | Kind | Code | Holds |
 |---|---|---|
-| `service` | `srv` | A platform process that is not an MCP server, such as the Gateway |
+| `service` | `srv` | A platform process that is not an MCP server, such as the Hub |
 | `mcp` | `mcp` | An MCP server, which publishes its contract through its crate's `contract` feature |
 | `runtime` | `rt` | A native or GPU runtime that a service uses |
 | `app` | `app` | A user-facing application |
@@ -165,7 +165,7 @@ A repository's kind says what it holds, and its code shortens runtime names.
 
 | Thing | Form |
 |---|---|
-| Repository, crate, binary, image name | `veoveo-<kind>-<name>` |
+| Repository, crate, binary, image name | `veoveo-<role>`; lowercase words joined by hyphens, such as `veoveo-hub`, `veoveo-hub-sdk` or `veoveo-mcp-time` |
 | Compose project, service and container | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-postgres`; on a local installation's network, the same name under `.internal`, such as `vv-postgres.internal` |
 | Throwaway test container | `vv-qual-<run>-<role>` |
 | Environment image tag | `:dev` |
