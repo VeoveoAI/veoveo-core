@@ -573,6 +573,10 @@ than defining or reexporting another paging API. A collection associates its ite
 filters, unique ordering key, checked size and keyset consistency policy. Families
 sharing a key type retain different nominal cursor tokens.
 
+Cursor scopes recursively sort JSON object keys before hashing, preserving array
+order and full-width signed/unsigned integer values. Unordered filter maps do not
+change scope solely because their iteration order changes.
+
 The pager captures filters, tenant, limit and optional revision, admits a returned
 token against that context, supplies the seek key and `limit + 1` fetch bound, and
 constructs private immutable items and continuation from ordered lookahead.

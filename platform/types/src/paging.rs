@@ -98,14 +98,17 @@ pub struct CursorScope(Sha256Digest);
 
 impl CursorScope {
     /// `listing` names the read, such as `tasks.owner_page`. `filter` holds every request
-    /// value besides the cursor that shapes the result, serialized as JSON; a struct or
-    /// a `BTreeMap` keeps that serialization stable.
+    /// value besides the cursor that shapes the result. JSON object keys are sorted
+    /// recursively before hashing; array order and full-width integer values remain
+    /// significant. An unordered map's iteration order does not change its scope.
     pub fn new(
         listing: &str,
         tenant: impl fmt::Display,
         filter: &impl Serialize,
     ) -> Result<Self, CursorError> {
-        let filter = serde_json::to_vec(filter).map_err(|_| CursorError::Encoding)?;
+        let mut filter = serde_json::to_value(filter).map_err(|_| CursorError::Encoding)?;
+        filter.sort_all_objects();
+        let filter = serde_json::to_vec(&filter).map_err(|_| CursorError::Encoding)?;
         let tenant = tenant.to_string();
         let mut digest = Sha256::new();
         digest.update(SCOPE_FORMAT.as_bytes());
@@ -243,4 +246,55 @@ pub enum CursorError {
     Scope,
     #[error("the cursor position or filter does not serialize as JSON within 4096 bytes")]
     Encoding,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::ser::SerializeMap;
+
+    /// A map whose serialization order is explicit, unlike a HashMap's randomized
+    /// iteration. Nesting it in an array exercises recursive object normalization.
+    struct OrderedMap([(&'static str, u128); 2]);
+    impl Serialize for OrderedMap {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let mut map = serializer.serialize_map(Some(self.0.len()))?;
+            for (key, value) in self.0 {
+                map.serialize_entry(key, &value)?;
+            }
+            map.end()
+        }
+    }
+    #[test]
+    fn scope_ignores_nested_object_order_without_narrowing_wide_integers() {
+        let a = (vec![OrderedMap([("a", u128::MAX), ("b", 1)])], i128::MIN);
+        let b = (vec![OrderedMap([("b", 1), ("a", u128::MAX)])], i128::MIN);
+        assert_ne!(
+            serde_json::to_vec(&a).unwrap(),
+            serde_json::to_vec(&b).unwrap()
+        );
+        let scope = CursorScope::new("entries", "tenant", &a).unwrap();
+        let reordered = CursorScope::new("entries", "tenant", &b).unwrap();
+        assert_eq!(scope, reordered);
+        let cursor = scope.cursor(7u32).unwrap();
+        assert_eq!(
+            *reordered.parse::<u32>(cursor.as_str()).unwrap().position(),
+            7
+        );
+        let changed = (
+            vec![OrderedMap([("a", u128::MAX - 1), ("b", 1)])],
+            i128::MIN,
+        );
+        assert_ne!(
+            scope,
+            CursorScope::new("entries", "tenant", &changed).unwrap()
+        );
+        assert_eq!(
+            CursorScope::new("entries", "other-tenant", &a)
+                .unwrap()
+                .parse::<u32>(cursor.as_str())
+                .unwrap_err(),
+            CursorError::Scope
+        );
+    }
 }
