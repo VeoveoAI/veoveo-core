@@ -563,3 +563,26 @@ The local naming helper accepts an export-root schema identity. It refuses neste
 ### Naming Schema Context
 
 `NamingSchemaContext` borrows the exported schema and its admitted definitions location. Standard `$defs` and `definitions` name maps are recognized directly. An owner with an OpenAPI or configured definitions path supplies that exact local pointer through the context builder. Generator decoration supplies `SchemaSettings::definitions_path` without generating another type or executing transforms. Entries named `id` or `$id` are ordinary definition names; nested schema resource identities still require a resolver outside this supported profile and are refused. URI fragments are admitted with the maintained URI parser and percent-decoded before strict JSON Pointer escape admission and lookup. Generator paths remove one optional trailing separator; empty pointer segments are unsupported and refuse decoration. The context does not fetch external resources or prove general schema implication.
+
+
+## Collection Construction
+
+Types owns the single `Page<C: Collection>`, checked `PageSize<MAX>`, `Pager<C>`,
+`CursorScope` and native keyset codec. Store depends on these declarations rather
+than defining or reexporting another paging API. A collection associates its item,
+filters, unique ordering key, checked size and keyset consistency policy. Families
+sharing a key type retain different nominal cursor tokens.
+
+The pager captures filters, tenant, limit and optional revision, admits a returned
+token against that context, supplies the seek key and `limit + 1` fetch bound, and
+constructs private immutable items and continuation from ordered lookahead.
+`LiveKeyset` and `RevisionBound` select actual keyset consistency scope; they do
+not claim arbitrary remote paging or retained-snapshot behavior. Ordering may be
+descending or mixed, provided the collection supplies its total comparator.
+
+A page has the protocol-neutral JSON envelope `items`, `limit`, `nextCursor`.
+Deserialization checks observable size bounds and keeps continuation as a bounded
+wire token. It does not claim contextual cursor, ordering, authority or source
+admission. Only Pager parses query context; authorization remains current at
+every owner read. Protocol/domain projections may borrow the immutable page but
+cannot reopen arbitrary item/continuation construction.

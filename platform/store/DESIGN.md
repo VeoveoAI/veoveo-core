@@ -4,6 +4,9 @@
 The [database design](../../docs/DATABASE.md) is normative; this document names what
 the crate implements.
 
+Collection paging declarations live in [Types](../types/DESIGN.md#collection-construction).
+Store has no paging types or compatibility reexports.
+
 ## Standards And Protocols
 
 | Standard or interface | Profile |
@@ -29,8 +32,6 @@ the crate implements.
 | `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
 | `ensure_identity`, `work_context_by_key` | Identity records for the Hub and registered servers |
 | `MaintenanceBatch`, `Pruned` | Batched deletion of expired rows, described below |
-| `PageSize<MAX>`, `Page` | A page size from 1 to the contract's `MAX`, read with `LIMIT size + 1` so the extra row decides whether a next cursor exists |
-| `CursorScope`, `KeysetCursor`, `KeysetCodec` | An opaque keyset cursor over `OpaqueCursor`, bound to the listing, tenant and filter digest that issued it |
 
 Migration versions are grouped by owner schema in hundreds: `01xx` kernel, `02xx`
 identity, `04xx` tasks and `05xx` audit. Each owner adds versions within its range. A

@@ -3459,12 +3459,14 @@ dependencies = [
 name = "veoveo-types"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "chrono",
  "iri-string",
  "percent-encoding",
  "schemars",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.21",
  "url",
  "uuid",

@@ -10,7 +10,6 @@ mod instance;
 mod maintenance;
 mod names;
 mod notifications;
-mod paging;
 mod servers;
 mod singleton;
 mod store;
@@ -31,9 +30,6 @@ pub use instance::{
 pub use maintenance::{MaintenanceBatch, Pruned};
 pub use names::{Channel, KERNEL_SCHEMAS, LoginName, MAX_SERVER_NAME, ServerSchema, SingletonName};
 pub use notifications::{Change, ChangeOperation, ChangeSignal, ChangeStream};
-pub use paging::{
-    CursorError, CursorScope, KeysetCodec, KeysetCursor, Page, PageSize, PageSizeError,
-};
 pub use singleton::Singleton;
 pub use store::{MIGRATOR, PlatformStore};
 pub use work_context::{

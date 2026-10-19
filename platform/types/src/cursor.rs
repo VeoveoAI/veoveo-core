@@ -132,6 +132,9 @@ impl<C: CursorCodec> OpaqueCursor<C> {
     pub fn into_wire(self) -> String {
         self.wire
     }
+    pub fn into_position(self) -> C::Position {
+        self.position
+    }
 }
 
 #[cfg(test)]

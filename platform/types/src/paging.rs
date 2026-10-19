@@ -1,12 +1,12 @@
-//! Keyset pages: a page size the caller's contract caps, the page that a read with
+//! Protocol-independent keyset admission: a page size the caller's contract caps, the page that a read with
 //! `LIMIT size + 1` produces, and an opaque cursor bound to the scope that issued it.
 use std::{fmt, marker::PhantomData, num::NonZeroU32};
 
+use crate::{CursorCodec, OpaqueCursor, Sha256Digest};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use veoveo_types::{CursorCodec, OpaqueCursor, Sha256Digest};
 
 /// The hash domain of a cursor scope, followed by a NUL byte in the digest input.
 const SCOPE_FORMAT: &str = "https://veoveo.ai/formats/keyset-cursor-scope";
@@ -17,6 +17,25 @@ const MAX_CURSOR_BYTES: usize = 4096;
 /// so `PageSize<1000>` and `PageSize<100>` are different types.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PageSize<const MAX: u32>(NonZeroU32);
+
+impl<const MAX: u32> Serialize for PageSize<MAX> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.get().serialize(serializer)
+    }
+}
+impl<'de, const MAX: u32> Deserialize<'de> for PageSize<MAX> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(u32::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+impl<const MAX: u32> schemars::JsonSchema for PageSize<MAX> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("PageSize{MAX}").into()
+    }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({"type":"integer", "minimum":1, "maximum":MAX})
+    }
+}
 
 impl<const MAX: u32> PageSize<MAX> {
     const VALID: () = assert!(MAX >= 1, "a page holds at least one row");
@@ -54,21 +73,6 @@ impl<const MAX: u32> PageSize<MAX> {
     pub fn fetch_limit(self) -> i64 {
         i64::from(self.0.get()) + 1
     }
-
-    /// The page from rows read with [`Self::fetch_limit`]. When the extra row came back,
-    /// the page drops it and `next` holds the position of the last row kept.
-    pub fn page<T, P>(self, mut rows: Vec<T>, position: impl FnOnce(&T) -> P) -> Page<T, P> {
-        let size = self.0.get() as usize;
-        if rows.len() <= size {
-            return Page {
-                items: rows,
-                next: None,
-            };
-        }
-        rows.truncate(size);
-        let next = rows.last().map(position);
-        Page { items: rows, next }
-    }
 }
 
 impl<const MAX: u32> fmt::Display for PageSize<MAX> {
@@ -83,23 +87,6 @@ impl<const MAX: u32> fmt::Display for PageSize<MAX> {
 pub struct PageSizeError {
     pub requested: u32,
     pub max: u32,
-}
-
-/// One page of a listing and where the next page starts, if one follows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Page<T, N> {
-    pub items: Vec<T>,
-    pub next: Option<N>,
-}
-
-impl<T, N> Page<T, N> {
-    /// Turn the next position into another form, such as a [`KeysetCursor`].
-    pub fn try_map_next<M, E>(self, map: impl FnOnce(N) -> Result<M, E>) -> Result<Page<T, M>, E> {
-        Ok(Page {
-            items: self.items,
-            next: self.next.map(map).transpose()?,
-        })
-    }
 }
 
 /// What a cursor is bound to: the listing that issued it, the tenant it read and the
@@ -256,116 +243,4 @@ pub enum CursorError {
     Scope,
     #[error("the cursor position or filter does not serialize as JSON within 4096 bytes")]
     Encoding,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase", deny_unknown_fields)]
-    struct Position {
-        created_at: i64,
-        id: u32,
-    }
-
-    #[derive(Serialize)]
-    struct Filter<'a> {
-        status: Option<&'a str>,
-    }
-
-    fn scope(tenant: &str, status: Option<&str>) -> CursorScope {
-        CursorScope::new("fixture.page", tenant, &Filter { status }).unwrap()
-    }
-
-    #[test]
-    fn page_sizes_stay_within_the_contract_maximum() {
-        assert_eq!(PageSize::<100>::new(100).unwrap().get(), 100);
-        assert_eq!(
-            PageSize::<100>::new(101).unwrap_err(),
-            PageSizeError {
-                requested: 101,
-                max: 100
-            }
-        );
-        assert!(PageSize::<100>::new(0).is_err());
-        assert_eq!(
-            PageSize::<100>::capped(NonZeroU32::new(500).unwrap()).get(),
-            100
-        );
-        assert_eq!(PageSize::<100>::max().fetch_limit(), 101);
-    }
-
-    #[test]
-    fn the_extra_row_becomes_the_next_position() {
-        let size = PageSize::<10>::new(2).unwrap();
-        let page = size.page(vec![1, 2, 3], |last| *last);
-        assert_eq!(page.items, vec![1, 2]);
-        assert_eq!(page.next, Some(2));
-        let last = size.page(vec![1, 2], |last| *last);
-        assert_eq!(last.items, vec![1, 2]);
-        assert_eq!(last.next, None);
-    }
-
-    #[test]
-    fn cursors_round_trip_only_in_their_own_scope() {
-        let position = Position {
-            created_at: 1_700_000_000,
-            id: 7,
-        };
-        let issued = scope("acme", None).cursor(position.clone()).unwrap();
-        let wire = issued.as_str().to_owned();
-        let parsed = scope("acme", None).parse::<Position>(wire.clone()).unwrap();
-        assert_eq!(parsed.position(), &position);
-        assert_eq!(
-            scope("globex", None)
-                .parse::<Position>(wire.clone())
-                .unwrap_err(),
-            CursorError::Scope
-        );
-        assert_eq!(
-            scope("acme", Some("failed"))
-                .parse::<Position>(wire.clone())
-                .unwrap_err(),
-            CursorError::Scope
-        );
-        let other_listing = CursorScope::new("fixture.other", "acme", &Filter { status: None });
-        assert_eq!(
-            other_listing.unwrap().parse::<Position>(wire).unwrap_err(),
-            CursorError::Scope
-        );
-    }
-
-    #[test]
-    fn cursors_refuse_altered_and_oversized_wires() {
-        let scope = scope("acme", None);
-        let wire = scope
-            .cursor(Position {
-                created_at: 1,
-                id: 1,
-            })
-            .unwrap()
-            .into_wire();
-        let json = URL_SAFE_NO_PAD.decode(&wire).unwrap();
-        let mut document: serde_json::Value = serde_json::from_slice(&json).unwrap();
-        let spaced = URL_SAFE_NO_PAD.encode(serde_json::to_vec_pretty(&document).unwrap());
-        assert_eq!(
-            scope.parse::<Position>(spaced).unwrap_err(),
-            CursorError::Malformed
-        );
-        document["extra"] = serde_json::Value::Bool(true);
-        let extended = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&document).unwrap());
-        assert_eq!(
-            scope.parse::<Position>(extended).unwrap_err(),
-            CursorError::Malformed
-        );
-        assert_eq!(
-            scope.parse::<Position>("not base64!").unwrap_err(),
-            CursorError::Malformed
-        );
-        assert_eq!(
-            scope.parse::<Position>("A".repeat(5000)).unwrap_err(),
-            CursorError::Malformed
-        );
-    }
 }

@@ -47,6 +47,13 @@ pub use extensions::{
     AdmittedExtensions, ExtensionError, ExtensionKey, ExtensionName, ExtensionRegistry,
     ExtensionRegistryBuilder, UniqueJsonValue,
 };
+mod paging;
+pub use paging::{CursorError, CursorScope, KeysetCodec, KeysetCursor, PageSize, PageSizeError};
+pub mod collection;
+pub use collection::{
+    Collection, CursorToken, LiveKeyset, Page, PageLimit, Pager, PagingError, PagingPolicy,
+    RevisionBound,
+};
 mod cursor;
 pub use checked::{Check, Checked};
 pub use cursor::{CursorCodec, OpaqueCursor, StatelessCursorCodec};
