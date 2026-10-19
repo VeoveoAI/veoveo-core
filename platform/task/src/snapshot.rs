@@ -132,8 +132,10 @@ pub enum TaskPageOrder {
     NewestFirst,
 }
 
-/// A position in a caller-owned Task collection and the order of the page that reached
-/// it. Only a page creates one, and a page in the other order refuses it.
+/// A seek position and ordering for a caller-owned Task query.
+///
+/// A position grants no access: every query applies its current owner, type and label
+/// selection, and a page in another order refuses the position.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskPageCursor {
@@ -143,12 +145,20 @@ pub struct TaskPageCursor {
 }
 
 impl TaskPageCursor {
-    pub(crate) fn after(order: TaskPageOrder, last: &TaskSnapshot) -> Self {
+    /// Construct a seek position, without admitting it to any owner or collection.
+    ///
+    /// `OwnerTaskQuery::page` still applies the current owner, task types and labels
+    /// and verifies that the requested order matches this position.
+    pub fn from_position(order: TaskPageOrder, created_at: DateTime<Utc>, task_id: TaskId) -> Self {
         Self {
             order,
-            created_at: last.created_at,
-            task_id: last.task_id,
+            created_at,
+            task_id,
         }
+    }
+
+    pub(crate) fn after(order: TaskPageOrder, last: &TaskSnapshot) -> Self {
+        Self::from_position(order, last.created_at, last.task_id)
     }
 
     /// The order of the page that issued the cursor; the next page reads in it.
