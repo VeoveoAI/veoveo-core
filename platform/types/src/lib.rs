@@ -60,6 +60,7 @@ pub use cursor::{CursorCodec, OpaqueCursor, StatelessCursorCodec};
 mod authority;
 mod digest;
 mod error;
+mod execution;
 mod https_url;
 mod id;
 pub mod identifier_syntax;
@@ -85,6 +86,7 @@ pub use authority::{
 };
 pub use digest::{Sha256Digest, Sha256DigestError};
 pub use error::IdentifierError;
+pub use execution::{BuildId, DeploymentId, EnvironmentId};
 pub use https_url::{HttpsUrl, HttpsUrlError, is_local_host};
 pub use names::{ResourceScheme, ScopeDefinition, ScopeName};
 pub use resource::{ResourceAddress, ResourceUri, TaskResourceAddress};

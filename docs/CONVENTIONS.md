@@ -109,6 +109,14 @@ span identifiers follow that specification instead. JSON timestamps use RFC 3339
 OAuth and JWT members use NumericDate as their specifications require. Every digest is
 written `sha256:<lowercase hex>`.
 
+Execution environment and deployment identities are canonical lowercase UUIDv7s,
+separate from tenant and business work-context identities. An environment keeps its
+identity across label/composition changes; a deployment identifies one admitted
+instance of a logical component. A build gets a fresh UUIDv7 even for unchanged
+source. Resolved-composition/content digests reuse `Sha256Digest` where their owning
+contract specifies canonical bytes and hash domains. Native source revision formats
+remain owned by their adapters. IDs confer no registration or access authority.
+
 ## HTTP Paths
 
 Health endpoints are `/livez` and `/readyz`. Well-known URIs follow RFC 8615 and the
