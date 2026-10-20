@@ -8,7 +8,7 @@ SET status = CASE WHEN task.status = 'queued' THEN 'running' ELSE task.status EN
 FROM (
     SELECT id
     FROM tasks.task
-    WHERE id = $1 AND server = $2
+    WHERE id = $1 AND server = $2 AND deployment = $4
         AND (status = 'queued' OR (status = 'cancel_requested' AND owner_instance IS NULL))
     FOR UPDATE SKIP LOCKED
 ) AS claimable
@@ -16,6 +16,7 @@ WHERE task.id = claimable.id
 RETURNING
     task.id,
     task.server,
+    task.deployment,
     task.tenant,
     task.owner_tenant,
     task.owner_principal,

@@ -4,7 +4,7 @@
 WITH parent AS (
     SELECT id
     FROM tasks.task
-    WHERE server = $1
+    WHERE server = $1 AND deployment = $12
         AND tenant = $2
         AND owner_principal = $3
         AND surface = $4

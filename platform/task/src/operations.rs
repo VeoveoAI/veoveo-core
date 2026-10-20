@@ -583,6 +583,7 @@ impl TaskRuntime {
             limit,
             spec.deadline,
             callback.digest(),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await
@@ -623,6 +624,7 @@ impl TaskRuntime {
             spec.key.as_str(),
             operation.operation_id as StepOperationId,
             submission.external_id.as_ref().map(ExternalJobId::as_str),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await
@@ -651,6 +653,7 @@ impl TaskRuntime {
             task_id.as_uuid(),
             key.as_str(),
             self.server().as_str(),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?
@@ -743,6 +746,7 @@ impl TaskRuntime {
             event_id.as_str(),
             observation.payload,
             observation.is_final,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await
@@ -760,6 +764,7 @@ impl TaskRuntime {
             self.instance_id() as InstanceId,
             operation.key.as_str(),
             format!("Waiting for {}", operation.provider),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;
@@ -801,6 +806,7 @@ impl TaskRuntime {
             self.server().as_str(),
             self.instance_id() as InstanceId,
             operation.key.as_str(),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await
@@ -816,6 +822,7 @@ impl TaskRuntime {
             self.instance_id() as InstanceId,
             operation.key.as_str(),
             receipt,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await

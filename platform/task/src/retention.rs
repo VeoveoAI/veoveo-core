@@ -89,7 +89,7 @@ mod tests {
     use crate::{
         TaskRuntime, TaskTransition,
         test_store::TestDb,
-        test_support::{create, instance},
+        test_support::{create, deployment, instance},
     };
 
     #[tokio::test]
@@ -100,6 +100,7 @@ mod tests {
             let runtime = TaskRuntime::with_retention_interval(
                 db.a.clone(),
                 server.clone(),
+                deployment(),
                 instance(&db, "time").await,
                 Duration::from_millis(100),
             );

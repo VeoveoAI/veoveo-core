@@ -3,7 +3,7 @@
 WITH parent AS (
     SELECT id
     FROM tasks.task
-    WHERE id = $1 AND server = $2 AND owner_instance = $3 AND status = 'cancel_requested'
+    WHERE id = $1 AND server = $2 AND deployment = $6 AND owner_instance = $3 AND status = 'cancel_requested'
     FOR SHARE
 )
 UPDATE tasks.task_operation AS o

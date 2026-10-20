@@ -1,10 +1,11 @@
 -- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 UPDATE tasks.task
 SET retention_pins = array_remove(retention_pins, $3)
-WHERE id = $1 AND server = $2 AND $3 = ANY (retention_pins)
+WHERE id = $1 AND server = $2 AND deployment = $4 AND $3 = ANY (retention_pins)
 RETURNING
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,

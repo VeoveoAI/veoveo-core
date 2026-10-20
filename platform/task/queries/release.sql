@@ -3,10 +3,11 @@
 -- trigger, which moves the Task on as the end of its instance would.
 UPDATE tasks.task
 SET owner_instance = NULL
-WHERE id = $1 AND server = $2 AND owner_instance = $3
+WHERE id = $1 AND server = $2 AND deployment = $4 AND owner_instance = $3
 RETURNING
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,

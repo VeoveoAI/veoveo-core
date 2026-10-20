@@ -15,7 +15,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use veoveo_store::{Channel, Instance, InstanceId, PlatformStore, StoreError};
-use veoveo_types::{ServerSlug, TaskId};
+use veoveo_types::{DeploymentId, ServerSlug, TaskId};
 
 use crate::{
     TaskError, TaskOwner, TaskPayloadState, TaskRetentionPin, TaskRuntimeConfig, TaskSnapshot,
@@ -46,7 +46,10 @@ struct Worker {
     registration: u64,
 }
 
-/// Durable Tasks of one server, executed by one process instance.
+/// Durable Tasks of one logical server deployment, executed by one process instance.
+///
+/// Deployment is execution affinity, not database-role or data isolation. Replacement
+/// processes of the same deployment recover its queue; other deployments never do.
 ///
 /// The instance owns every Task this runtime claims. When the process ends, the kernel
 /// reaper deletes its instance row and the Tasks move to their recovery state; a worker
@@ -58,6 +61,7 @@ struct Worker {
 pub struct TaskRuntime {
     store: PlatformStore,
     server: ServerSlug,
+    deployment: DeploymentId,
     instance: Arc<Instance>,
     workers: Arc<Mutex<HashMap<TaskId, Worker>>>,
     registrations: Arc<AtomicU64>,
@@ -70,24 +74,40 @@ pub struct TaskRuntime {
 
 impl TaskRuntime {
     /// Connect to the installation database and start this process's instance.
-    pub async fn connect(config: TaskRuntimeConfig, server: ServerSlug) -> Result<Self, TaskError> {
+    pub async fn connect(
+        config: TaskRuntimeConfig,
+        server: ServerSlug,
+        deployment: DeploymentId,
+    ) -> Result<Self, TaskError> {
         let store = PlatformStore::connect(config.store_config().clone()).await?;
         let instance = Instance::start(&store, &server).await?;
-        Ok(Self::new(store, server, Arc::new(instance)))
+        Ok(Self::new(store, server, deployment, Arc::new(instance)))
     }
 
-    /// A runtime of `server` whose claims belong to `instance`. It prunes the server's
+    /// A runtime of `server` and `deployment` whose claims belong to `instance`. It prunes the server's
     /// expired Tasks every [`RETENTION_INTERVAL`](crate::RETENTION_INTERVAL) and queues
     /// Tasks whose operations fall due, at least every
     /// [`DUE_INTERVAL`](crate::DUE_INTERVAL), until its last clone is dropped or the
     /// instance is lost, so it must be created inside a Tokio runtime.
-    pub fn new(store: PlatformStore, server: ServerSlug, instance: Arc<Instance>) -> Self {
-        Self::with_retention_interval(store, server, instance, crate::RETENTION_INTERVAL)
+    pub fn new(
+        store: PlatformStore,
+        server: ServerSlug,
+        deployment: DeploymentId,
+        instance: Arc<Instance>,
+    ) -> Self {
+        Self::with_retention_interval(
+            store,
+            server,
+            deployment,
+            instance,
+            crate::RETENTION_INTERVAL,
+        )
     }
 
     pub(crate) fn with_retention_interval(
         store: PlatformStore,
         server: ServerSlug,
+        deployment: DeploymentId,
         instance: Arc<Instance>,
         interval: Duration,
     ) -> Self {
@@ -101,6 +121,7 @@ impl TaskRuntime {
         Self {
             store,
             server,
+            deployment,
             instance,
             workers: Arc::default(),
             registrations: Arc::default(),
@@ -117,6 +138,12 @@ impl TaskRuntime {
 
     pub fn server(&self) -> &ServerSlug {
         &self.server
+    }
+
+    /// Immutable execution affinity. Replacement processes of this deployment may
+    /// recover its Tasks; another deployment sharing the schema cannot claim them.
+    pub fn deployment(&self) -> DeploymentId {
+        self.deployment
     }
 
     /// The process instance that owns this runtime's claims.
@@ -208,6 +235,7 @@ impl TaskRuntime {
             "queries/get.sql",
             task_id.as_uuid(),
             self.server.as_str(),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?
@@ -237,12 +265,18 @@ impl TaskRuntime {
             .iter()
             .map(|task_id| task_id.as_uuid())
             .collect::<Vec<_>>();
-        sqlx::query_file_as!(TaskRow, "queries/get_many.sql", self.server.as_str(), &ids,)
-            .fetch_all(self.pool())
-            .await?
-            .into_iter()
-            .map(TaskSnapshot::try_from)
-            .collect()
+        sqlx::query_file_as!(
+            TaskRow,
+            "queries/get_many.sql",
+            self.server.as_str(),
+            &ids,
+            self.deployment().as_uuid(),
+        )
+        .fetch_all(self.pool())
+        .await?
+        .into_iter()
+        .map(TaskSnapshot::try_from)
+        .collect()
     }
 
     /// The owner and authority retained with this server's Task.
@@ -261,6 +295,7 @@ impl TaskRuntime {
                 "queries/cancel.sql",
                 task_id.as_uuid(),
                 self.server.as_str(),
+                self.deployment().as_uuid(),
             )
             .fetch_optional(self.pool())
             .await?;
@@ -368,6 +403,7 @@ impl TaskRuntime {
             task_id.as_uuid(),
             self.server.as_str(),
             pin.as_str(),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;

@@ -10,7 +10,7 @@ SET status = CASE WHEN task.status = 'queued' THEN 'running' ELSE task.status EN
 FROM (
     SELECT id
     FROM tasks.task
-    WHERE server = $1
+    WHERE server = $1 AND deployment = $3
         AND (status = 'queued' OR (status = 'cancel_requested' AND owner_instance IS NULL))
     ORDER BY created_at, id
     LIMIT 1
@@ -20,6 +20,7 @@ WHERE task.id = claimable.id
 RETURNING
     task.id,
     task.server,
+    task.deployment,
     task.tenant,
     task.owner_tenant,
     task.owner_principal,

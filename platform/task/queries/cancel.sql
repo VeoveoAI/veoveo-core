@@ -13,10 +13,11 @@ SET status = CASE
     END,
     cancel_requested_at = now(),
     completed_at = CASE WHEN owner_instance IS NULL AND parked_on IS NULL THEN now() END
-WHERE id = $1 AND server = $2 AND status IN ('queued', 'running', 'waiting')
+WHERE id = $1 AND server = $2 AND deployment = $3 AND status IN ('queued', 'running', 'waiting')
 RETURNING
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,

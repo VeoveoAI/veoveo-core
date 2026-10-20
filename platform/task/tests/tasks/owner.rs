@@ -405,6 +405,7 @@ async fn a_batch_reads_only_the_servers_own_tasks() {
         let intruder = TaskRuntime::new(
             alpha.clone(),
             slug("beta"),
+            alpha_runtime.deployment(),
             alpha_runtime.instance().clone(),
         );
         assert!(intruder.get_many(&[beta_task]).await.unwrap().is_empty());
@@ -449,6 +450,7 @@ async fn row_level_security_confines_a_server_login_to_its_own_tasks() {
         let intruder = TaskRuntime::new(
             alpha.clone(),
             slug("beta"),
+            alpha_runtime.deployment(),
             alpha_runtime.instance().clone(),
         );
         assert!(intruder.get(beta_task.task_id).await.unwrap().is_none());

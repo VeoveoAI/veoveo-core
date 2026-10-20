@@ -9,6 +9,7 @@ PREPARE owner_page AS
 SELECT
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,
@@ -43,7 +44,7 @@ SELECT
     completed_at,
     retention_expires_at
 FROM tasks.task
-WHERE server = $1
+WHERE server = $1 AND deployment = $12
     AND tenant = $2
     AND owner_principal = $3
     AND surface = $4
@@ -61,7 +62,7 @@ LIMIT $11
 SET LOCAL plan_cache_mode = force_generic_plan;
 EXPLAIN (FORMAT JSON) EXECUTE owner_page(
     'time', 'installation', 'pilot', 'operator', NULL, '{}', NULL, NULL,
-    '2026-01-01T00:00:00Z', '0199d4a1-7c00-7b3e-9f2a-6c1d2e3f4a5b', 101
+    '2026-01-01T00:00:00Z', '0199d4a1-7c00-7b3e-9f2a-6c1d2e3f4a5b', 101, '019a5b30-0000-7000-8000-000000000001'
 );
 DEALLOCATE owner_page;
 ROLLBACK;

@@ -4,6 +4,7 @@
 SELECT
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,
@@ -38,5 +39,5 @@ SELECT
     completed_at,
     retention_expires_at
 FROM tasks.task
-WHERE server = $1 AND id = ANY ($2::uuid[])
+WHERE server = $1 AND deployment = $3 AND id = ANY ($2::uuid[])
 ORDER BY id

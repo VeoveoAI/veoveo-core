@@ -87,6 +87,7 @@ impl TaskRuntime {
                     event.event_id.as_str(),
                     event.payload,
                     event.is_final,
+                    self.deployment().as_uuid(),
                 )
                 .fetch_one(self.pool())
                 .await?
@@ -110,6 +111,7 @@ impl TaskRuntime {
             event.event_id.as_str(),
             event.payload,
             event.is_final,
+            self.deployment().as_uuid(),
         )
         .fetch_one(self.pool())
         .await?)

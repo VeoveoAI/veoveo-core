@@ -3,7 +3,7 @@
 WITH parent AS (
     UPDATE tasks.task
     SET status = 'waiting', status_message = 'Waiting for input'
-    WHERE id = $1 AND server = $2 AND owner_instance = $3 AND status IN ('running', 'waiting')
+    WHERE id = $1 AND server = $2 AND deployment = $7 AND owner_instance = $3 AND status IN ('running', 'waiting')
     RETURNING id
 )
 INSERT INTO tasks.task_input (task_id, request_key, kind, params)

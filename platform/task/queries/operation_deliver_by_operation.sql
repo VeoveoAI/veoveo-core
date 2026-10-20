@@ -6,8 +6,9 @@
 -- is stored as late. A repeated event identifier stores nothing.
 WITH op AS (
     SELECT task_id, operation_key, server, provider, state
-    FROM tasks.task_operation
+    FROM tasks.task_operation AS operation
     WHERE operation_id = $1 AND server = $2 AND ($3::bytea IS NULL OR callback_digest = $3)
+    AND EXISTS (SELECT 1 FROM tasks.task AS affinity WHERE affinity.id = operation.task_id AND affinity.deployment = $7)
     FOR UPDATE
 ),
 event AS (

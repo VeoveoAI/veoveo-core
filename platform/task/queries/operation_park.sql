@@ -14,6 +14,6 @@ WITH pending AS (
 UPDATE tasks.task AS task
 SET status = 'waiting', status_message = $5, owner_instance = NULL, parked_on = $4
 FROM pending
-WHERE task.id = pending.task_id AND task.server = $2 AND task.owner_instance = $3
+WHERE task.id = pending.task_id AND task.server = $2 AND task.deployment = $6 AND task.owner_instance = $3
     AND task.status IN ('running', 'waiting')
 RETURNING task.id

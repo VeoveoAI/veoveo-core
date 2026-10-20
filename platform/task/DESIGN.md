@@ -10,7 +10,7 @@ Task, and the caller reads, answers, cancels and watches it through `OwnerTaskQu
 
 | Standard or interface | Profile |
 |---|---|
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0411` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
+| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0401` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads, keyed by Task ID and tenant, on the channel of the Task's server, `tasks.<server>` |
 | Row-level security | A member of `veoveo_server` reads and writes only the Tasks of its own servers |
@@ -51,7 +51,7 @@ surface. An input's kind names what the Task asks for, as the adapter that relay
 request spells it, such as `elicitation/create`. The runtime stores both without
 interpreting them, so the schema holds no protocol vocabulary.
 
-A unique index on server, tenant, principal, surface and idempotency key returns the
+A unique index on logical server, deployment, tenant, principal, surface and idempotency key returns the
 existing Task to a repeated creation, and pruning the Task releases its key.
 `tasks.task_input` holds the inputs a Task requests and the caller's answers, keyed by
 Task and request key. `tasks.task_step` holds the [steps](#steps) of a Task's work,
@@ -65,8 +65,24 @@ on no other channel.
 
 ## Ownership And Recovery
 
+The runtime attaches its required `DeploymentId` at creation; `CreateTask` cannot
+choose another deployment. The immutable snapshot retains it. Reads, owner pages,
+claims, input/step/operation access and worker writes select the same deployment in
+SQL, in addition to the existing caller and owner-instance checks. Idempotency is
+independent across deployments sharing a logical server. A replacement process with
+the same deployment may recover resumable Tasks; a different deployment cannot read
+or claim them. `interrupted_indeterminate` still fails without reexecution.
+
+This is execution affinity, not schema cloning or a new database authorization
+boundary: existing logical-server roles and admitted shared data remain unchanged.
+Notifications remain logical-server wake hints; consumers reread under deployment
+selection. Retention and due passes may maintain the logical server's rows across
+deployments, but they never execute provider work, change deployment identity or
+transfer a claim. A queued due Task remains consumable only by its own deployment.
+Provider callback URL/routing contracts remain the adapter's responsibility.
+
 `TaskRuntime::connect` opens the store and starts the process's `Instance`;
-`TaskRuntime::new` takes a store, a server and an instance the caller started. A claim
+`TaskRuntime::new` takes a store, a logical server, a required `DeploymentId` and an instance the caller started. A claim
 records the instance in `owner_instance`, which references `kernel.instance` with
 `ON DELETE SET NULL`. When the process ends, its instance lock is released; once the
 lock has stayed free for the instance grace, a reap deletes the instance row, and the
@@ -105,7 +121,7 @@ claiming.
 ## Work
 
 `TaskRuntime::work` returns a stream of Tasks this instance claimed. It claims the
-oldest queued Task of its server, or a parked Task whose cancellation awaits its
+oldest queued Task of its server and deployment, or a parked Task whose cancellation awaits its
 provider, for each polled item with `FOR UPDATE SKIP LOCKED`, so
 replicas sharing the queue take different Tasks without waiting. With the queue empty,
 the stream waits for a created or changed Task of its server, a reap round of its
@@ -147,7 +163,7 @@ Task becomes `cancel_requested`, and its worker settles it. A local worker regis
 ## Caller Access
 
 `TaskRuntime::for_owner` builds an `OwnerTaskQuery` for one `TaskOwner`. Every query
-selects in SQL by server, tenant, principal, surface and explicit tenant claim, and
+selects in SQL by server, runtime deployment, tenant, principal, surface and explicit tenant claim, and
 requires the caller to hold every data label the owner held. `of_type` and `of_types`
 select 1–32 operations. `in_work_context` adds the caller's Work Context after checking
 that it belongs to the owner's tenant. A missing Task and another caller's Task both read

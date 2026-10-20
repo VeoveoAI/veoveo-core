@@ -5,6 +5,7 @@
 mod store;
 
 mod claims;
+mod deployment;
 mod inputs;
 mod lifecycle;
 mod notifications;

@@ -39,6 +39,11 @@ pub(crate) fn owner() -> TaskOwner {
     }
 }
 
+/// The explicitly shared deployment used by existing same-deployment replica tests.
+pub fn deployment() -> veoveo_types::DeploymentId {
+    veoveo_types::DeploymentId::parse("019a5b30-0000-7000-8000-000000000001").unwrap()
+}
+
 /// A process instance of `server` on the fixture's first pool.
 pub(crate) async fn instance(db: &TestDb, server: &str) -> Arc<Instance> {
     let server = ServerSlug::parse(server).unwrap();
@@ -50,6 +55,7 @@ pub(crate) async fn runtime(db: &TestDb, server: &str) -> TaskRuntime {
     TaskRuntime::new(
         db.a.clone(),
         ServerSlug::parse(server).unwrap(),
+        deployment(),
         instance(db, server).await,
     )
 }

@@ -23,6 +23,7 @@ use columns::*;
 pub(crate) struct TaskRow {
     pub id: Uuid,
     pub server: String,
+    pub deployment: Uuid,
     pub tenant: String,
     pub owner_tenant: Option<String>,
     pub owner_principal: String,
@@ -122,6 +123,7 @@ impl TryFrom<TaskRow> for TaskSnapshot {
             task_id: TaskId::from_uuid(row.id),
             owner,
             server: admit("server", &row.server)?,
+            deployment: admit("deployment", &row.deployment.to_string())?,
             task_type: admit("operation", &row.task_type)?,
             request: row.input,
             recovery_class: row.recovery_class,

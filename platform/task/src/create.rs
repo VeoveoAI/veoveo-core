@@ -29,7 +29,7 @@ pub struct CreateTask {
     pub task_type: TaskTypeName,
     pub request: Value,
     pub recovery_class: RecoveryClass,
-    /// Scoped to the owner's tenant, principal and surface and to the server.
+    /// Scoped to the owner's tenant, principal and surface, logical server and runtime deployment.
     pub idempotency_key: Option<String>,
     pub ttl_ms: Option<u64>,
     pub poll_interval_ms: Option<u64>,
@@ -54,7 +54,8 @@ fn signed(field: &str, value: Option<u64>) -> Result<Option<i64>, TaskError> {
 }
 
 impl TaskRuntime {
-    /// Create a queued Task. A repeated idempotency key returns the existing Task.
+    /// Create a queued Task in this runtime's immutable deployment. The caller cannot
+    /// select another deployment. A repeated key returns a Task only in this deployment.
     pub async fn create(&self, draft: CreateTask) -> Result<CreateTaskResult, TaskError> {
         crate::runtime::validate_task_id(draft.task_id)?;
         if draft.server != *self.server() {
@@ -127,6 +128,7 @@ impl TaskRuntime {
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
             retention_ms,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;
@@ -148,6 +150,7 @@ impl TaskRuntime {
             owner.principal_key.as_str(),
             owner.surface.as_str(),
             key,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?

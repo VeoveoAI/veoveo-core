@@ -56,6 +56,8 @@ pub struct TaskSnapshot {
     pub task_id: TaskId,
     pub owner: TaskOwner,
     pub server: ServerSlug,
+    /// Immutable execution affinity, retained through ownership loss and recovery.
+    pub deployment: veoveo_types::DeploymentId,
     pub task_type: TaskTypeName,
     pub request: Value,
     pub recovery_class: RecoveryClass,

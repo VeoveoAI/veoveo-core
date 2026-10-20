@@ -456,6 +456,7 @@ async fn row_level_security_keeps_another_server_out_of_steps() {
         let intruder = TaskRuntime::new(
             alpha.clone(),
             slug("beta"),
+            alpha_runtime.deployment(),
             alpha_runtime.instance().clone(),
         );
         assert!(matches!(

@@ -87,6 +87,7 @@ impl TaskRuntime {
             key,
             request.kind,
             object(request.params),
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await
@@ -128,6 +129,7 @@ impl TaskRuntime {
             task_id.as_uuid(),
             self.server().as_str(),
             key,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?
@@ -145,6 +147,7 @@ impl TaskRuntime {
             "queries/outstanding_inputs.sql",
             task_id.as_uuid(),
             self.server().as_str(),
+            self.deployment().as_uuid(),
         )
         .fetch_all(self.pool())
         .await?
@@ -174,6 +177,7 @@ impl TaskRuntime {
                 self.server().as_str(),
                 key,
                 object(response),
+                self.deployment().as_uuid(),
             )
             .fetch_one(self.pool())
             .await?;

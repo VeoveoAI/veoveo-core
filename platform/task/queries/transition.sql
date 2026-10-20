@@ -15,10 +15,11 @@ SET status = $5,
         WHEN $5 IN ('succeeded', 'failed', 'cancelled') THEN NULL
         ELSE owner_instance
     END
-WHERE id = $1 AND server = $2 AND owner_instance = $3 AND revision = $4
+WHERE id = $1 AND server = $2 AND deployment = $13 AND owner_instance = $3 AND revision = $4
 RETURNING
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,

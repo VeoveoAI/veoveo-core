@@ -174,6 +174,7 @@ impl TaskRuntime {
             error_code,
             error_message,
             error_details,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;
@@ -196,6 +197,7 @@ impl TaskRuntime {
             task_id.as_uuid(),
             self.server().as_str(),
             self.instance_id() as InstanceId,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;

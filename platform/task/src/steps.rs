@@ -150,6 +150,7 @@ impl TaskRuntime {
             self.instance_id() as InstanceId,
             key.as_str(),
             StepOperationId::new() as StepOperationId,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;
@@ -174,6 +175,7 @@ impl TaskRuntime {
             key.as_str(),
             operation_id as StepOperationId,
             result,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;

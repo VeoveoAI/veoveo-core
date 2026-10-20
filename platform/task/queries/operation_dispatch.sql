@@ -5,7 +5,7 @@
 WITH parent AS (
     SELECT id, server
     FROM tasks.task
-    WHERE id = $1 AND server = $2 AND owner_instance = $3
+    WHERE id = $1 AND server = $2 AND deployment = $14 AND owner_instance = $3
         AND status IN ('running', 'waiting', 'cancel_requested')
     FOR SHARE
 ),

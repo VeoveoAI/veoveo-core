@@ -19,6 +19,7 @@ impl TaskRuntime {
             task_id.as_uuid(),
             self.server().as_str(),
             instance as InstanceId,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?;
@@ -46,6 +47,7 @@ impl TaskRuntime {
             "queries/claim_next.sql",
             self.server().as_str(),
             instance as InstanceId,
+            self.deployment().as_uuid(),
         )
         .fetch_optional(self.pool())
         .await?

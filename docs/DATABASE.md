@@ -169,6 +169,12 @@ the holder's connection ends, Postgres grants the lock to the next waiter.
 
 ## Work Claims
 
+Task runtimes additionally capture an immutable `DeploymentId`. Their queries select
+that deployment within the logical server's queue, including idempotency and owner
+reads; a replacement instance of the same deployment can recover its Tasks. This
+execution affinity does not change the existing logical-server database roles or
+claim isolated domain data. Shared retention and due scheduling do not execute work.
+
 Workers claim queued work with `SELECT … FOR UPDATE SKIP LOCKED` and record their instance
 as the owner in the same transaction. A trigger notifies the channel of the work's server
 when work is created or released, and workers also claim at startup and after each reap.

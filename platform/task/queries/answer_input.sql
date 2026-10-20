@@ -4,7 +4,7 @@
 WITH parent AS (
     SELECT id
     FROM tasks.task
-    WHERE id = $1 AND server = $2 AND status IN ('queued', 'running', 'waiting')
+    WHERE id = $1 AND server = $2 AND deployment = $5 AND status IN ('queued', 'running', 'waiting')
     FOR UPDATE
 ),
 answered AS (

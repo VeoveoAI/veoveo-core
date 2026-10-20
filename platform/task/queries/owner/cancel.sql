@@ -12,7 +12,7 @@ SET status = CASE
     END,
     cancel_requested_at = now(),
     completed_at = CASE WHEN owner_instance IS NULL AND parked_on IS NULL THEN now() END
-WHERE server = $1
+WHERE server = $1 AND deployment = $10
     AND tenant = $2
     AND owner_principal = $3
     AND surface = $4
@@ -25,6 +25,7 @@ WHERE server = $1
 RETURNING
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,

@@ -106,6 +106,7 @@ impl OwnerTaskQuery {
             scope.task_types.as_deref(),
             scope.work_context,
             &ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>(),
+            self.runtime.deployment().as_uuid(),
         )
         .fetch_all(self.runtime.pool())
         .await?

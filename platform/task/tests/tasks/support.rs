@@ -28,6 +28,11 @@ pub fn slug(server: &str) -> ServerSlug {
     ServerSlug::parse(server).unwrap()
 }
 
+/// The explicitly shared deployment used by existing same-deployment replica tests.
+pub fn deployment() -> veoveo_types::DeploymentId {
+    veoveo_types::DeploymentId::parse("019a5b30-0000-7000-8000-000000000001").unwrap()
+}
+
 /// A process instance of `server` on `store`.
 pub async fn instance(store: &PlatformStore, server: &str) -> Arc<Instance> {
     Arc::new(
@@ -39,7 +44,12 @@ pub async fn instance(store: &PlatformStore, server: &str) -> Arc<Instance> {
 
 /// A runtime of `server` on its own process instance.
 pub async fn runtime_for(store: &PlatformStore, server: &str) -> TaskRuntime {
-    TaskRuntime::new(store.clone(), slug(server), instance(store, server).await)
+    TaskRuntime::new(
+        store.clone(),
+        slug(server),
+        deployment(),
+        instance(store, server).await,
+    )
 }
 
 /// A runtime of the default server, as one installation-owner replica.

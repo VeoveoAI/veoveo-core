@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- veoveo: all tenants (the installation-owner fixture attempts to rebind one Task)\nUPDATE tasks.task SET deployment = $2 WHERE id = $1\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f0481269b03f543a8377d4b6a8ad717fa229208ef75c0462e873343c2882e82d"
+}

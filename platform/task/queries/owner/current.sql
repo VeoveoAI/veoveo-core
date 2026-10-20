@@ -2,6 +2,7 @@
 SELECT
     id,
     server,
+    deployment,
     tenant,
     owner_tenant,
     owner_principal,
@@ -36,7 +37,7 @@ SELECT
     completed_at,
     retention_expires_at
 FROM tasks.task
-WHERE server = $1
+WHERE server = $1 AND deployment = $10
     AND tenant = $2
     AND owner_principal = $3
     AND surface = $4
