@@ -1,7 +1,8 @@
 # Database
 
-Every Veoveo component stores its state in one PostgreSQL database per installation.
-Core owns the kernel schemas, the connection layer, process instances and change
+Every Veoveo component stores its state in PostgreSQL: the installation's database,
+and one data-environment database per Lore branch name whose servers run in factory
+sandboxes. Each database holds the same kernel schemas. Core owns the kernel schemas, the connection layer, process instances and change
 notifications. A server owns one schema of its own and reaches kernel data through
 grants that Postgres enforces.
 
@@ -22,7 +23,9 @@ grants that Postgres enforces.
 
 ## Database, Schemas And Roles
 
-An installation has one database. Each owner has one schema:
+Each database has the kernel schemas and one schema per server that registers into
+it; the `hub` schema exists only in the installation's database. Each owner has one
+schema:
 
 | Schema | Owner | Contents |
 |---|---|---|
