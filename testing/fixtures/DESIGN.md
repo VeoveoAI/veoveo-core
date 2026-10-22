@@ -28,10 +28,12 @@ as in an installation.
 | `end_sessions(&store)` | Ends every session of the store's login, as a network failure between a server and the database does |
 | `remove_login(&store)` | Drops the store's login as the Hub does when it removes a registration, then ends the login's sessions |
 
-The first fixture on a machine runs `initdb`, starts a server, creates the owner and
-the `veoveo_template` database, applies the kernel migrations and stops the server.
+The first fixture on a machine runs `initdb`, starts a server, creates the owner with
+`CREATEROLE` and `CREATEDB`, as an installation's owner has, and the `veoveo_template`
+database, applies the kernel migrations and stops the server.
 The resulting data directory is kept under `$TMPDIR/vvpg/template-<key>`, where the key
-hashes the PostgreSQL version and the kernel migrations' checksums. A file lock
+hashes the fixture's template format, the PostgreSQL version and the kernel
+migrations' checksums. A file lock
 serializes the build across processes. Each test process copies the template, starts
 `postgres` with `fsync`, `synchronous_commit` and `full_page_writes` off, and sets a
 random owner password through the superuser socket. `createdb --template` then clones a
