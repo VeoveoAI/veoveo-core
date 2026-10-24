@@ -3,7 +3,7 @@
 //! usage; this crate names no server, unit vocabulary beyond FOCUS's format, or price.
 use std::str::FromStr;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SubsecRound, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -486,8 +486,8 @@ pub struct UsageVia {
     pub task: Option<TaskId>,
 }
 
-/// When the metered usage happened. FOCUS ChargePeriodStart is inclusive and
-/// ChargePeriodEnd exclusive.
+/// When the metered usage happened, in whole microseconds, the precision PostgreSQL
+/// stores. FOCUS ChargePeriodStart is inclusive and ChargePeriodEnd exclusive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ChargePeriod {
     pub start: DateTime<Utc>,
@@ -496,6 +496,7 @@ pub struct ChargePeriod {
 
 impl ChargePeriod {
     pub fn new(start: DateTime<Utc>, end: DateTime<Utc>) -> Result<Self, UsageError> {
+        let (start, end) = (start.trunc_subsecs(6), end.trunc_subsecs(6));
         if start < end {
             Ok(Self { start, end })
         } else {
@@ -505,9 +506,10 @@ impl ChargePeriod {
 
     /// A period of one microsecond at `at`, for usage that happened at once.
     pub fn at(at: DateTime<Utc>) -> Self {
+        let start = at.trunc_subsecs(6);
         Self {
-            start: at,
-            end: at + chrono::TimeDelta::microseconds(1),
+            start,
+            end: start + chrono::TimeDelta::microseconds(1),
         }
     }
 }
@@ -767,5 +769,18 @@ mod tests {
                 *category
             );
         }
+    }
+
+    #[test]
+    fn charge_periods_hold_whole_microseconds() {
+        // PostgreSQL rounds 500 ns half to even, which made start and end equal here.
+        let at = "2026-10-23T21:00:21.123455500Z".parse().unwrap();
+        let period = ChargePeriod::at(at);
+        assert_eq!(
+            period.start.to_rfc3339(),
+            "2026-10-23T21:00:21.123455+00:00"
+        );
+        assert_eq!(period.end.to_rfc3339(), "2026-10-23T21:00:21.123456+00:00");
+        assert!(ChargePeriod::new(at, at + chrono::TimeDelta::nanoseconds(400)).is_err());
     }
 }

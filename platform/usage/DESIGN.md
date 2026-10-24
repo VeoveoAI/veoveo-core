@@ -39,6 +39,8 @@ a source identifier and the charge period, and optionally the Task and operation
 server and Task that did the work for the caller through the Hub, money, a FOCUS
 charge category, the correction flag and the target resource's URI. Quantities and
 amounts are exact decimals written as text, so no value passes through a binary float.
+A charge period holds whole microseconds, the precision PostgreSQL stores, so the
+database keeps it exactly as given; `ChargePeriod::at` is one microsecond long.
 
 ```rust
 let estimate = UsageDraft::builder(
