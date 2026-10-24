@@ -1,21 +1,8 @@
-//! Identity of execution selections and instances, independent of transport or runtime.
+//! Identity of deployments and builds, independent of transport or runtime.
 
 use uuid::Uuid;
 
 use crate::IdentifierError;
-
-/// Stable identity of an execution environment, independent of its label or current composition.
-///
-/// The environment owner resolves selection and access. This is not a tenant or business
-/// work context, and possession of this identifier grants no authority.
-///
-/// ```compile_fail
-/// use veoveo_types::{EnvironmentId, WorkContextId};
-/// fn select(_: EnvironmentId) {}
-/// select(WorkContextId::parse("project").unwrap());
-/// ```
-#[veoveo_types::id(uuid(ExecutionIds), fresh)]
-pub struct EnvironmentId(Uuid);
 
 /// Identity of one admitted deployment of a logical component.
 ///
@@ -24,9 +11,9 @@ pub struct EnvironmentId(Uuid);
 /// process identifier or permission to register in a component's namespace.
 ///
 /// ```compile_fail
-/// use veoveo_types::{DeploymentId, EnvironmentId};
+/// use veoveo_types::{BuildId, DeploymentId};
 /// fn retain(_: DeploymentId) {}
-/// retain(EnvironmentId::new());
+/// retain(BuildId::new());
 /// ```
 #[veoveo_types::id(uuid(ExecutionIds), fresh)]
 pub struct DeploymentId(Uuid);

@@ -86,7 +86,7 @@ pub use authority::{
 };
 pub use digest::{Sha256Digest, Sha256DigestError};
 pub use error::IdentifierError;
-pub use execution::{BuildId, DeploymentId, EnvironmentId};
+pub use execution::{BuildId, DeploymentId};
 pub use https_url::{HttpsUrl, HttpsUrlError, is_local_host};
 pub use names::{ResourceScheme, ScopeDefinition, ScopeName};
 pub use resource::{ResourceAddress, ResourceUri, TaskResourceAddress};

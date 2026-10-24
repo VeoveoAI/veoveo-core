@@ -1,5 +1,5 @@
 use serde::{Serialize, de::DeserializeOwned};
-use veoveo_types::{BuildId, DeploymentId, EnvironmentId};
+use veoveo_types::{BuildId, DeploymentId};
 
 fn canonical_id<I: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(id: I) {
     let encoded = serde_json::to_value(&id).unwrap();
@@ -23,7 +23,6 @@ fn canonical_id<I: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(i
 
 #[test]
 fn execution_ids_admit_only_canonical_uuid_v7_across_serde() {
-    canonical_id(EnvironmentId::new());
     canonical_id(DeploymentId::new());
     canonical_id(BuildId::new());
 }
@@ -31,7 +30,6 @@ fn execution_ids_admit_only_canonical_uuid_v7_across_serde() {
 #[test]
 fn execution_id_schemas_declare_version_variant_and_spelling() {
     for schema in [
-        schemars::schema_for!(EnvironmentId),
         schemars::schema_for!(DeploymentId),
         schemars::schema_for!(BuildId),
     ] {
