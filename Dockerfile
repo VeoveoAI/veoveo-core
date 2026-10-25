@@ -37,8 +37,15 @@ WORKDIR /home/sandbox/src
 COPY --chown=sandbox:sandbox . .
 
 FROM source AS check
+# The check steps keep Cargo's registry and the workspace target in BuildKit cache mounts
+# of the build host, so consecutive checks reuse compiled crates. Core has no Git
+# dependencies, so there are no Git checkouts to keep. The steps run as the sandbox user,
+# so these caches are its own, apart from the root-owned registry cache of the dev
+# stage's cargo install. Factory builds never use them.
 # The committed .sqlx query metadata must match the queries and the kernel migrations.
-RUN initdb --pgdata /tmp/sqlx/data --username postgres --auth=trust --no-instructions --no-sync \
+RUN --mount=type=cache,id=veoveo-core-cargo-registry,target=/usr/local/cargo/registry,uid=1000,sharing=locked \
+    --mount=type=cache,id=veoveo-core-target,target=/home/sandbox/src/target,uid=1000,sharing=locked \
+    initdb --pgdata /tmp/sqlx/data --username postgres --auth=trust --no-instructions --no-sync \
     && pg_ctl start --pgdata /tmp/sqlx/data --wait --silent \
         --options "-c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp/sqlx -c fsync=off" \
     && createdb --host 127.0.0.1 --username postgres veoveo \
@@ -51,7 +58,9 @@ RUN initdb --pgdata /tmp/sqlx/data --username postgres --auth=trust --no-instruc
 # The nextest run includes the core boundary test, which fails when the lockfile holds rmcp,
 # a veoveo-mcp-*, veoveo-sdk-* or veoveo-service-* crate, and the audit contract's test
 # that the platform's audit classes belong to platform owners.
-RUN cargo fmt --check \
+RUN --mount=type=cache,id=veoveo-core-cargo-registry,target=/usr/local/cargo/registry,uid=1000,sharing=locked \
+    --mount=type=cache,id=veoveo-core-target,target=/home/sandbox/src/target,uid=1000,sharing=locked \
+    cargo fmt --check \
     && cargo clippy --locked --all-targets --all-features -- -D warnings \
     && cargo deny --locked check \
     && cargo hack check --each-feature --no-dev-deps \
