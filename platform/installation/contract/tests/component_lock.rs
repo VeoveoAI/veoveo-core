@@ -1,10 +1,10 @@
 //! Admission, wire form and the published schema of the component lock.
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use serde_json::{Value, json};
 use veoveo_installation_contract::{
     COMPONENT_LOCK_FORMAT, ComponentLock, ComponentLockError, ComponentName, ComponentRepository,
-    GitRevision, LockedComponent,
+    GitRevision, ImageName, LockedComponent, PinnedImage,
 };
 
 const EXAMPLE: &str = include_str!("../testdata/component-lock.json");
@@ -50,6 +50,14 @@ fn the_example_lock_decodes_and_keeps_its_wire_form() {
         lock.component(&ComponentName::parse("veoveo-mcp-map").unwrap())
             .is_none()
     );
+    let lore = lock.image(&ImageName::parse("lore").unwrap()).unwrap();
+    assert_eq!(lore.repository(), "registry.example.com:5000/veoveo/lore");
+    assert_eq!(
+        lore.digest().hex(),
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    );
+    let images: Vec<_> = lock.images().keys().map(ImageName::as_str).collect();
+    assert_eq!(images, ["hub-sdk-cli", "lore"]);
 }
 
 #[test]
@@ -62,7 +70,7 @@ fn constructors_apply_the_same_admission_as_decoding() {
         revision.clone(),
     )
     .unwrap();
-    let lock = ComponentLock::new(vec![time.clone()]).unwrap();
+    let lock = ComponentLock::new(vec![time.clone()], BTreeMap::new()).unwrap();
     assert_eq!(
         serde_json::to_value(&lock).unwrap(),
         json!({
@@ -83,13 +91,133 @@ fn constructors_apply_the_same_admission_as_decoding() {
         Err(ComponentLockError::RepositoryName { .. })
     ));
     assert!(matches!(
-        ComponentLock::new(vec![time.clone(), time]),
+        ComponentLock::new(vec![time.clone(), time], BTreeMap::new()),
         Err(ComponentLockError::DuplicateComponent(_))
     ));
     assert!(matches!(
-        ComponentLock::new(Vec::new()),
+        ComponentLock::new(Vec::new(), BTreeMap::new()),
         Err(ComponentLockError::Empty)
     ));
+}
+
+const DIGEST: &str = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+/// The example with its `lore` image replaced, or with an image named `name` added.
+fn with_image(name: &str, image: Value) -> Value {
+    let mut lock = example();
+    lock["images"][name] = image;
+    lock
+}
+
+#[test]
+fn a_lock_without_images_decodes_and_omits_them() {
+    let mut lock = example();
+    lock.as_object_mut().unwrap().remove("images");
+    let decoded = decode(lock.clone()).unwrap();
+    assert!(decoded.images().is_empty());
+    assert_eq!(serde_json::to_value(&decoded).unwrap(), lock);
+    let mut empty = example();
+    empty["images"] = json!({});
+    assert_eq!(serde_json::to_value(decode(empty).unwrap()).unwrap(), lock);
+    let lore = ImageName::parse("lore").unwrap();
+    let pinned =
+        PinnedImage::parse(format!("registry.example.com:5000/veoveo/lore@{DIGEST}")).unwrap();
+    let constructed = ComponentLock::new(
+        decoded.components().to_vec(),
+        BTreeMap::from([(lore.clone(), pinned.clone())]),
+    )
+    .unwrap();
+    assert_eq!(constructed.image(&lore), Some(&pinned));
+}
+
+#[test]
+fn images_are_pinned_by_a_sha256_digest_without_a_tag() {
+    for image in [
+        format!("registry.example.com:5000/veoveo/lore@{DIGEST}"),
+        format!("veoveo/lore@{DIGEST}"),
+        format!("lore@{DIGEST}"),
+        format!("localhost/team/tools_cli__x.y-z@{DIGEST}"),
+        format!("Registry.Example.com/lore@{DIGEST}"),
+    ] {
+        assert!(PinnedImage::parse(&image).is_ok(), "{image}");
+        assert!(decode(with_image("lore", json!(image))).is_ok(), "{image}");
+    }
+    for image in [
+        "registry.example.com:5000/veoveo/lore".to_owned(),
+        "registry.example.com:5000/veoveo/lore:v1".to_owned(),
+        format!("registry.example.com:5000/veoveo/lore:v1@{DIGEST}"),
+        format!(
+            "registry.example.com:5000/veoveo/lore@{}",
+            DIGEST.to_uppercase()
+        ),
+        "registry.example.com:5000/veoveo/lore@sha256:0123".to_owned(),
+        format!(
+            "registry.example.com:5000/veoveo/lore@sha256:{}",
+            "0".repeat(64)
+        ),
+        format!(
+            "registry.example.com:5000/veoveo/lore@sha512:{}",
+            "ab".repeat(64)
+        ),
+        format!("registry.example.com:5000/veoveo/Lore@{DIGEST}"),
+        format!("registry.example.com:5000/@{DIGEST}"),
+        format!("registry.example.com:5000/veoveo//lore@{DIGEST}"),
+        format!("{}/lore@{DIGEST}", "a".repeat(252)),
+        format!("@{DIGEST}"),
+        "@image:lore@".to_owned(),
+    ] {
+        assert!(
+            matches!(
+                PinnedImage::parse(&image),
+                Err(ComponentLockError::Image(_))
+            ),
+            "{image}"
+        );
+        assert!(decode(with_image("lore", json!(image))).is_err(), "{image}");
+    }
+}
+
+#[test]
+fn image_names_are_lowercase_words_named_once() {
+    for name in ["lore", "hub-sdk-cli", "a1", "embedding-runtime2"] {
+        assert!(ImageName::parse(name).is_ok(), "{name}");
+    }
+    let longest = "a".repeat(100);
+    assert!(ImageName::parse(&longest).is_ok());
+    for name in [
+        String::new(),
+        "Lore".to_owned(),
+        "1lore".to_owned(),
+        "lore-".to_owned(),
+        "-lore".to_owned(),
+        "hub--sdk".to_owned(),
+        "hub_sdk_cli".to_owned(),
+        "veoveo/lore".to_owned(),
+        "a".repeat(101),
+    ] {
+        assert!(
+            matches!(
+                ImageName::parse(&name),
+                Err(ComponentLockError::ImageName(_))
+            ),
+            "{name}"
+        );
+        let image = format!("registry.example.com:5000/veoveo/lore@{DIGEST}");
+        assert!(decode(with_image(&name, json!(image))).is_err(), "{name}");
+    }
+    // A JSON object may repeat a name; the lock refuses it instead of keeping the last.
+    let repeated = EXAMPLE.replacen(
+        "\"images\": {",
+        &format!("\"images\": {{\n    \"lore\": \"other/lore@{DIGEST}\","),
+        1,
+    );
+    let error = serde_json::from_str::<ComponentLock>(&repeated).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("image lore is named more than once"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -227,6 +355,8 @@ fn documents_are_closed_objects_of_their_format() {
     extra["installation"] = json!("bioma");
     let mut extra_member = example();
     extra_member["components"][0]["chart"] = json!("1.0.0");
+    let mut images_list = example();
+    images_list["images"] = json!([format!("registry.example.com:5000/veoveo/lore@{DIGEST}")]);
     let mut empty = example();
     empty["components"] = json!([]);
     let mut duplicate = example();
@@ -243,6 +373,7 @@ fn documents_are_closed_objects_of_their_format() {
         ("no format", no_format),
         ("an unknown member", extra),
         ("an unknown component member", extra_member),
+        ("images as a list", images_list),
         ("no components", empty),
         ("a duplicate component", duplicate),
         ("a missing revision", missing),
@@ -300,6 +431,27 @@ fn the_schema_is_identified_by_the_format_and_closes_every_object() {
             with_component(
                 "repository",
                 json!("https://gitlab.com/VeoveoAI/veoveo-hub"),
+            ),
+        ),
+        (
+            "a tagged image",
+            with_image("lore", json!("registry.example.com:5000/veoveo/lore:v1")),
+        ),
+        (
+            "an image with a zero digest",
+            with_image(
+                "lore",
+                json!(format!(
+                    "registry.example.com:5000/veoveo/lore@sha256:{}",
+                    "0".repeat(64)
+                )),
+            ),
+        ),
+        (
+            "an invalid image name",
+            with_image(
+                "Lore",
+                json!(format!("registry.example.com:5000/veoveo/lore@{DIGEST}")),
             ),
         ),
     ] {

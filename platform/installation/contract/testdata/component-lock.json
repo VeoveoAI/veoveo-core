@@ -11,5 +11,9 @@
       "repository": "https://github.com/VeoveoAI/veoveo-mcp-time",
       "revision": "89abcdef0123456789abcdef0123456789abcdef"
     }
-  ]
+  ],
+  "images": {
+    "hub-sdk-cli": "registry.example.com:5000/veoveo/hub-sdk-cli@sha256:89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+    "lore": "registry.example.com:5000/veoveo/lore@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
 }

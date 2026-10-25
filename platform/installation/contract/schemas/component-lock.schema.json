@@ -104,12 +104,36 @@
         "revision"
       ],
       "type": "object"
+    },
+    "PinnedImage": {
+      "namingProfile": {
+        "role": {
+          "kind": "scalar",
+          "profile": {
+            "declaration": {
+              "applicability": "the declared scalar identity schema",
+              "authority": {
+                "kind": "owner",
+                "module": "veoveo_installation_contract::image"
+              },
+              "profile": "PinnedImage",
+              "version": "unversioned"
+            },
+            "kind": "owner_identity"
+          }
+        }
+      },
+      "not": {
+        "pattern": "@sha256:0{64}$"
+      },
+      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*(?::[0-9]+)?/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*@sha256:[0-9a-f]{64}$",
+      "type": "string"
     }
   },
   "$id": "https://veoveo.ai/formats/component-lock",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "An installation's component lock: the repository and Git revision of each component it runs, each component named once.",
+  "description": "An installation's component lock: the repository and Git revision of each component it runs, each component named once, and each image it builds by digest, each named once.",
   "properties": {
     "components": {
       "items": {
@@ -120,6 +144,16 @@
     },
     "format": {
       "$ref": "#/$defs/ComponentLockFormat"
+    },
+    "images": {
+      "additionalProperties": false,
+      "description": "Each image the installation builds, by its name, pinned by digest.",
+      "patternProperties": {
+        "^[a-z][a-z0-9]*(-[a-z0-9]+)*$": {
+          "$ref": "#/$defs/PinnedImage"
+        }
+      },
+      "type": "object"
     }
   },
   "required": [

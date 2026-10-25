@@ -21,7 +21,7 @@ one revision of this repository.
 | `platform/audit/contract` | `veoveo-audit-contract` | The audit record envelope after NIST SP 800-53 AU-3 with its OCSF 1.9 mapping, owner-declared classes and reason codes, blocks and reader types, and the append inside a caller's PostgreSQL transaction |
 | `platform/usage` | `veoveo-usage` | The usage ledger in PostgreSQL: confined kind declarations and appends inside a caller's transaction, idempotent records in FOCUS 1.4 columns, Task costs and daily totals |
 | `platform/usage/contract` | `veoveo-usage-contract` | Usage kinds, FOCUS units and categories, exact quantities and amounts, and record drafts |
-| `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision |
+| `platform/installation/contract` | `veoveo-installation-contract` | The component lock that pins each component an installation runs to a repository and Git revision, and each image it builds to a digest |
 | `testing/fixtures` | `veoveo-fixtures` | Test fixtures for consuming repositories: a disposable PostgreSQL database and the database conformance checks |
 
 Core names no protocol method, server or domain. The Rust MCP layer, including hosting,

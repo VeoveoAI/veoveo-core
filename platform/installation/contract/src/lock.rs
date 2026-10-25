@@ -1,11 +1,20 @@
 //! The component lock document, `https://veoveo.ai/formats/component-lock`.
-use std::{borrow::Cow, collections::BTreeSet};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 use schemars::{JsonSchema, Schema, SchemaGenerator};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{MapAccess, Visitor},
+};
 use veoveo_types::{Check, Checked};
 
-use crate::{ComponentLockError, ComponentName, ComponentRepository, GitRevision};
+use crate::{
+    ComponentLockError, ComponentName, ComponentRepository, GitRevision, ImageName, PinnedImage,
+};
 
 /// The format URI of a component lock, its `format` member and its schema's `$id`.
 pub const COMPONENT_LOCK_FORMAT: &str = "https://veoveo.ai/formats/component-lock";
@@ -92,7 +101,7 @@ impl JsonSchema for LockedComponent {
 }
 
 /// An installation's component lock: the repository and Git revision of each component it
-/// runs, each component named once.
+/// runs, each component named once, and each image it builds by digest, each named once.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct ComponentLock(Checked<ComponentLockValue>);
@@ -104,6 +113,42 @@ struct ComponentLockValue {
     format: ComponentLockFormat,
     #[schemars(length(min = 1))]
     components: Vec<LockedComponent>,
+    /// Each image the installation builds, by its name, pinned by digest.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "unique_images"
+    )]
+    images: BTreeMap<ImageName, PinnedImage>,
+}
+
+/// The images of a lock, refusing a document that names an image twice, which a plain
+/// map would settle silently by keeping the last.
+fn unique_images<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<ImageName, PinnedImage>, D::Error> {
+    struct Images;
+    impl<'de> Visitor<'de> for Images {
+        type Value = BTreeMap<ImageName, PinnedImage>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a map from image names to images pinned by digest")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut images = BTreeMap::new();
+            while let Some((name, image)) = map.next_entry::<ImageName, PinnedImage>()? {
+                if images.contains_key(&name) {
+                    return Err(serde::de::Error::custom(
+                        ComponentLockError::DuplicateImage(name),
+                    ));
+                }
+                images.insert(name, image);
+            }
+            Ok(images)
+        }
+    }
+    deserializer.deserialize_map(Images)
 }
 
 impl Check for ComponentLockValue {
@@ -125,17 +170,31 @@ impl Check for ComponentLockValue {
 }
 
 impl ComponentLock {
-    /// A lock of `components`, in their given order.
-    pub fn new(components: Vec<LockedComponent>) -> Result<Self, ComponentLockError> {
+    /// A lock of `components`, in their given order, and `images`.
+    pub fn new(
+        components: Vec<LockedComponent>,
+        images: BTreeMap<ImageName, PinnedImage>,
+    ) -> Result<Self, ComponentLockError> {
         Checked::new(ComponentLockValue {
             format: ComponentLockFormat::ComponentLock,
             components,
+            images,
         })
         .map(Self)
     }
 
     pub fn components(&self) -> &[LockedComponent] {
         &self.0.components
+    }
+
+    /// Every image the lock names, ordered by name.
+    pub fn images(&self) -> &BTreeMap<ImageName, PinnedImage> {
+        &self.0.images
+    }
+
+    /// The image named `name`.
+    pub fn image(&self, name: &ImageName) -> Option<&PinnedImage> {
+        self.0.images.get(name)
     }
 
     /// The pin of the component named `name`.
@@ -166,7 +225,7 @@ impl JsonSchema for ComponentLock {
         schema.insert("$id".into(), COMPONENT_LOCK_FORMAT.into());
         schema.insert(
             "description".into(),
-            "An installation's component lock: the repository and Git revision of each component it runs, each component named once.".into(),
+            "An installation's component lock: the repository and Git revision of each component it runs, each component named once, and each image it builds by digest, each named once.".into(),
         );
         schema
     }
