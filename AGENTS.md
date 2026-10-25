@@ -30,5 +30,9 @@ These rules apply to veoveo-core.
   --all-features` against a migrated database.
 - Tests that need PostgreSQL use the store fixture, which runs a private `postgres` from
   the PostgreSQL 18 programs on `PATH`.
-- Run `docker build --target check .` on macOS and on Linux before pushing.
+- Run `docker build --target check .` on macOS and on Linux before pushing. The `check`
+  stage keeps Cargo's registry and the workspace `target/` in BuildKit cache mounts, so
+  consecutive checks reuse compiled crates. These caches live only in the build host's
+  BuildKit, are built by the operator from our own repositories, and are never used by
+  factory builds, which share no writable cache.
 - Commit small, coherent changes. Commits carry no AI or tool attribution.
