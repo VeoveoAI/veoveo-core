@@ -10,7 +10,7 @@ grants that Postgres enforces.
 
 | Standard or interface | Profile |
 |---|---|
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | Server 18.6, the latest stable release. Installations use the official `postgres` image pinned by digest; tests run the same major version from the PGDG packages |
+| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | Server 18.6, the latest stable release. Core needs no extension, only the server's built-in features listed here, so the image is the installation's choice; tests run the same major version from the PGDG packages |
 | PostgreSQL frontend/backend protocol | Through [sqlx](https://docs.rs/sqlx/0.9.0) 0.9.0 with Rustls; every static query is checked at compile time against the migrated schema |
 | SQL migrations | sqlx `Migrator`, one migration set for the kernel schemas and one per server schema, checksummed and applied under the migrator's advisory lock; `platform/store/sqlx.toml` names the kernel history table |
 | `LISTEN` / `NOTIFY` | Change notifications; payloads are JSON objects under 8,000 bytes |
