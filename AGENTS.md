@@ -2,6 +2,9 @@
 
 These rules apply to veoveo-core.
 
+- The design is in [docs/DATABASE.md](docs/DATABASE.md), [docs/CONVENTIONS.md](docs/CONVENTIONS.md)
+  and each crate's `DESIGN.md` under `platform/` and `testing/`. Change the design in
+  the same change as the code.
 - Use upstream runtimes such as PostgreSQL unmodified. Adapt through
   supported configuration.
 - Every name, identifier, format, wire field and protocol element follows a published
