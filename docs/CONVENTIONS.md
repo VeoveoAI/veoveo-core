@@ -156,8 +156,9 @@ or `scan` and the reason is not empty.
 
 ## Runtime And Repository Names
 
-A repository's kind says what it holds, and its code shortens runtime names.
-`veoveo-core` and organization singletons such as `veoveo-docs` have no kind.
+A repository's kind says what it holds, and its code shortens the names of local
+Compose fixtures. `veoveo-core` and organization singletons such as `veoveo-docs` have
+no kind.
 
 | Kind | Code | Holds |
 |---|---|---|
@@ -173,8 +174,9 @@ A repository's kind says what it holds, and its code shortens runtime names.
 | Thing | Form |
 |---|---|
 | Repository, crate, binary, image name | `veoveo-<role>`; lowercase words joined by hyphens, such as `veoveo-hub`, `veoveo-hub-sdk` or `veoveo-mcp-time` |
-| Compose project, service and container | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-postgres`; on a local installation's network, the same name under `.internal`, such as `vv-postgres.internal` |
+| Compose project, service and container of a local fixture | `vv-<code>-<name>` with the repository's kind code, or `vv-<name>` for a name without a kind, such as `vv-core` or `vv-postgres`; on a local installation's network, the same name under `.internal`, such as `vv-postgres.internal` |
 | Throwaway test container | `vv-qual-<run>-<role>` |
+| Kubernetes and OpenShell runtime names: namespaces, workspaces, sandboxes, templates and provider profiles | The installation's; its [design](https://github.com/VeoveoAI/veoveo-template-installation/blob/main/DESIGN.md) names them |
 | Environment image tag | `:dev` |
 | OpenTelemetry `service.name` | the repository name |
 | Image labels | `org.opencontainers.image.title`, `source`, `revision`, `version` and `licenses` |
