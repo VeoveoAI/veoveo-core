@@ -287,6 +287,14 @@ schema, and `sources` keeps the queries whose `.sql` files lie in a directory.
 | Index use | The generic plan, with `enable_seqscan = off`, reaches every row of a checked table through an index. A Seq Scan fails, and so does an index scan without an index condition, except a top-N read under a LIMIT that filters nothing and the input of a hash or merge join whose key leads an index of that table. A scan under a LIMIT fails when its filter tests a key column of its index that no index condition seeks, as an optional keyset bound does under a generic plan; a nested loop's join filter counts as the filter of its outer scan, so a bound read from a joined row instead of a scalar subquery fails too |
 | Schema rules | Every table of a checked schema has a primary key, every foreign key has an index whose leading columns are the key's columns, and every table's comment states its retention |
 
+A query may read PostgreSQL's own catalogs and statistics views in `pg_catalog`, such as
+`pg_stat_activity` to watch lock waits in a test or `pg_roles` to read a login. They are
+not platform tables: no tenant column scopes them, so the tenant rule does not apply, and
+no checked schema holds them, so neither do the index and schema rules. The row bounds
+apply as to any relation, through `pg_catalog`'s own primary and unique keys, and a read
+they do not bound takes the `unbounded` marker with its reason. Other PostgreSQL schemas,
+such as `pg_toast`, and `information_schema` stay unknown to the check.
+
 Tenant columns are `tenant` and `tenant_id` unless the check names others with
 `tenant_columns`, such as `partition` for `audit.record`. A tenant value also travels
 through a statement: a column equated to a bind parameter, a WITH query's output column

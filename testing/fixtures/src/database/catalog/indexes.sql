@@ -1,5 +1,5 @@
--- Every index outside the PostgreSQL schemas: its key columns in order, with NULL for an
--- expression, and its predicate when it is partial.
+-- Every index outside the PostgreSQL schemas and of pg_catalog: its key columns in order,
+-- with NULL for an expression, and its predicate when it is partial.
 SELECT
     i.indrelid::bigint AS relation,
     ic.relname::text AS name,
@@ -18,5 +18,5 @@ JOIN pg_catalog.pg_class AS ic ON ic.oid = i.indexrelid
 JOIN pg_catalog.pg_namespace AS n ON n.oid = ic.relnamespace
 WHERE i.indisvalid
     AND n.nspname <> 'information_schema'
-    AND n.nspname NOT LIKE 'pg\_%'
+    AND (n.nspname = 'pg_catalog' OR n.nspname NOT LIKE 'pg\_%')
 ORDER BY ic.relname

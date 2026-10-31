@@ -1,5 +1,5 @@
-//! The migrated database's relations, keys, indexes and functions, read once from the
-//! PostgreSQL catalog.
+//! The migrated database's relations, keys, indexes and functions, and those of
+//! `pg_catalog`, read once from the PostgreSQL catalog.
 use std::collections::{BTreeMap, HashMap};
 
 use pg_query::{NodeEnum, protobuf as pb};
@@ -11,6 +11,10 @@ pub(super) type RelationId = usize;
 
 /// The tenant columns PostgreSQL tables use unless the configuration names others.
 pub(super) const DEFAULT_TENANT_COLUMNS: [&str; 2] = ["tenant", "tenant_id"];
+
+/// PostgreSQL's own catalogs and statistics views, which a query may read, such as a test
+/// that watches lock waits or roles. They hold no platform rows, so no tenant scopes them.
+pub(super) const POSTGRESQL_CATALOG: &str = "pg_catalog";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RelationKind {
@@ -354,7 +358,7 @@ impl Catalog {
     }
 
     /// Give every relation its tenant columns: the configured ones, or the default names
-    /// it has. A relation in `all_tenants` has none.
+    /// it has. A relation in `all_tenants` and one of [`POSTGRESQL_CATALOG`] have none.
     pub fn assign_tenants(
         &mut self,
         configured: &BTreeMap<RelationId, Vec<String>>,
@@ -362,7 +366,9 @@ impl Catalog {
     ) {
         for (id, relation) in self.relations.iter_mut().enumerate() {
             relation.tenant_columns = match configured.get(&id) {
-                _ if all_tenants.contains_key(&id) => Vec::new(),
+                _ if all_tenants.contains_key(&id) || relation.schema == POSTGRESQL_CATALOG => {
+                    Vec::new()
+                }
                 Some(columns) => columns.clone(),
                 None => DEFAULT_TENANT_COLUMNS
                     .iter()

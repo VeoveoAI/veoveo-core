@@ -11,5 +11,5 @@ WHERE a.attnum > 0
     AND NOT a.attisdropped
     AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
     AND n.nspname <> 'information_schema'
-    AND n.nspname NOT LIKE 'pg\_%'
+    AND (n.nspname = 'pg_catalog' OR n.nspname NOT LIKE 'pg\_%')
 ORDER BY a.attrelid, a.attnum

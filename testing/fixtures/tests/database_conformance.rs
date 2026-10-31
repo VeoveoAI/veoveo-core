@@ -132,6 +132,63 @@ async fn conforming_queries_pass_and_report_their_exemptions() {
     );
 }
 
+/// PostgreSQL's own catalogs and statistics views are relations a query may read, such
+/// as a test that watches lock waits: no tenant scopes them, and the row bounds apply as
+/// to any relation, so a marker with its reason covers an unbounded read.
+#[tokio::test]
+async fn a_query_may_read_postgresqls_own_catalogs_and_statistics_views() {
+    const WAITERS: &str = "SELECT waiter.pid FROM pg_stat_activity AS waiter \
+         WHERE waiter.datname = current_database() AND waiter.wait_event_type = 'Lock' \
+         AND $1::integer = ANY (pg_blocking_pids(waiter.pid)) ORDER BY waiter.pid";
+    let report = ledger(migrator("ledger").await)
+        .query("lock waiters", WAITERS)
+        .query(
+            "lock waiters, marked",
+            format!(
+                "-- veoveo: unbounded (a test lists the sessions waiting on one backend)\n{WAITERS}"
+            ),
+        )
+        .query(
+            "blocked",
+            "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity AS waiter \
+             WHERE $1::integer = ANY (pg_blocking_pids(waiter.pid))) AS blocked",
+        )
+        .query(
+            "schema by name",
+            "SELECT oid FROM pg_namespace WHERE nspname = $1",
+        )
+        .query(
+            "roles",
+            "SELECT g.rolname FROM pg_auth_members AS m JOIN pg_roles AS g ON g.oid = m.roleid \
+             WHERE m.member = $1",
+        )
+        .run()
+        .await;
+    let waiters = of(&report, "lock waiters");
+    assert!(
+        !waiters.is_empty() && waiters.iter().all(|(rule, _)| *rule == Rule::RowBound),
+        "only the row bounds apply\n{report}"
+    );
+    for subject in ["lock waiters, marked", "blocked", "schema by name"] {
+        assert_eq!(of(&report, subject), vec![], "{subject}\n{report}");
+    }
+    assert!(
+        report
+            .exemptions
+            .iter()
+            .any(|exemption| exemption.subject == "lock waiters, marked"
+                && exemption.rule == Rule::RowBound),
+        "{report}"
+    );
+    // A catalog read joins on PostgreSQL's own keys and is bounded only by them.
+    assert!(
+        of(&report, "roles")
+            .iter()
+            .all(|(rule, _)| *rule == Rule::RowBound),
+        "{report}"
+    );
+}
+
 #[tokio::test]
 async fn each_broken_query_rule_is_reported_under_its_query() {
     let broken = [

@@ -1,5 +1,5 @@
--- Primary keys, foreign keys and check constraints outside the PostgreSQL schemas, with
--- their columns in key order.
+-- Primary keys, foreign keys and check constraints outside the PostgreSQL schemas and of
+-- pg_catalog, with their columns in key order.
 SELECT
     k.conrelid::bigint AS relation,
     k.conname::text AS name,
@@ -16,5 +16,5 @@ JOIN pg_catalog.pg_class AS c ON c.oid = k.conrelid
 JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
 WHERE k.contype IN ('p', 'f', 'c')
     AND n.nspname <> 'information_schema'
-    AND n.nspname NOT LIKE 'pg\_%'
+    AND (n.nspname = 'pg_catalog' OR n.nspname NOT LIKE 'pg\_%')
 ORDER BY k.conrelid, k.conname
