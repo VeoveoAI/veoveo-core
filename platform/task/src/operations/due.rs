@@ -73,17 +73,26 @@ async fn pass(
             .execute(store.pool())
             .await?
             .rows_affected();
-        let deadlines = sqlx::query_file!(
+        let mut transaction = store.pool().begin().await?;
+        let unresolved = sqlx::query_file!(
             "queries/operation_due_deadlines.sql",
             server.as_str(),
             limit
         )
-        .fetch_one(store.pool())
+        .fetch_all(&mut *transaction)
         .await?;
+        let (tasks, keys): (Vec<_>, Vec<_>) = unresolved
+            .into_iter()
+            .map(|operation| (operation.task_id, operation.operation_key))
+            .unzip();
+        let expired = super::wake(&mut transaction, server, &tasks, &keys).await?;
+        transaction.commit().await?;
         done.checks += checks;
-        done.unresolved += u64::try_from(deadlines.unresolved).unwrap_or_default();
-        done.expired += u64::try_from(deadlines.woken).unwrap_or_default();
-        if checks < u64::try_from(limit).unwrap_or(u64::MAX) && deadlines.unresolved < limit {
+        done.unresolved += u64::try_from(tasks.len()).unwrap_or(u64::MAX);
+        done.expired += expired;
+        if checks < u64::try_from(limit).unwrap_or(u64::MAX)
+            && i64::try_from(tasks.len()).unwrap_or(i64::MAX) < limit
+        {
             break;
         }
     }

@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- How many sessions of this database wait for a lock another transaction holds.\nSELECT count(*) AS \"waiting!\"\nFROM pg_stat_activity\nWHERE datname = current_database() AND wait_event_type = 'Lock'\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "waiting!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1db97dfab63c3e92c5aa1181909409f480ee6cffcebef8bde9274928e8098b85"
+}

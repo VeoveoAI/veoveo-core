@@ -834,6 +834,28 @@ impl TaskRuntime {
     }
 }
 
+/// Queue `server`'s Tasks parked on the listed operations, which `transaction` settled or
+/// marked unresolved under their row locks, and return how many it queued. It must run
+/// as a statement after the one that changed them: a statement that waited for an
+/// operation's lock reads Tasks as they were when it began, and would miss a Task whose
+/// park held that lock and committed meanwhile.
+async fn wake(
+    transaction: &mut sqlx::PgConnection,
+    server: &veoveo_types::ServerSlug,
+    tasks: &[Uuid],
+    keys: &[String],
+) -> Result<u64, TaskError> {
+    if tasks.is_empty() {
+        return Ok(0);
+    }
+    Ok(
+        sqlx::query_file!("queries/operation_wake.sql", server.as_str(), tasks, keys)
+            .execute(transaction)
+            .await?
+            .rows_affected(),
+    )
+}
+
 fn duration_ms(duration: Duration) -> i64 {
     i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
 }

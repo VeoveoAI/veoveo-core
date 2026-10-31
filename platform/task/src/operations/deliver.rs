@@ -53,6 +53,8 @@ struct DeliveryRow {
     found: i64,
     stored: i64,
     settled: i64,
+    settled_task: Option<uuid::Uuid>,
+    settled_key: Option<String>,
     finished: Option<bool>,
 }
 
@@ -62,16 +64,22 @@ impl TaskRuntime {
     /// queued, so its worker resumes on any replica. The server acknowledges the
     /// provider only after this returns.
     pub async fn deliver(&self, event: &OperationEvent) -> Result<Delivery, TaskError> {
+        let mut transaction = self.pool().begin().await?;
         let row = match &event.target {
             EventTarget::Callback {
                 operation_id,
                 token,
             } => {
-                self.deliver_by_operation(*operation_id, Some(token.digest()), event)
-                    .await?
+                self.deliver_by_operation(
+                    &mut transaction,
+                    *operation_id,
+                    Some(token.digest()),
+                    event,
+                )
+                .await?
             }
             EventTarget::Operation(operation_id) => {
-                self.deliver_by_operation(*operation_id, None, event)
+                self.deliver_by_operation(&mut transaction, *operation_id, None, event)
                     .await?
             }
             EventTarget::Job {
@@ -89,15 +97,20 @@ impl TaskRuntime {
                     event.is_final,
                     self.deployment().as_uuid(),
                 )
-                .fetch_one(self.pool())
+                .fetch_one(&mut *transaction)
                 .await?
             }
         };
+        if let (Some(task), Some(key)) = (row.settled_task, row.settled_key.clone()) {
+            super::wake(&mut transaction, self.server(), &[task], &[key]).await?;
+        }
+        transaction.commit().await?;
         Ok(classify(&row, event.is_final))
     }
 
     async fn deliver_by_operation(
         &self,
+        transaction: &mut sqlx::PgConnection,
         operation_id: StepOperationId,
         digest: Option<Vec<u8>>,
         event: &OperationEvent,
@@ -113,7 +126,7 @@ impl TaskRuntime {
             event.is_final,
             self.deployment().as_uuid(),
         )
-        .fetch_one(self.pool())
+        .fetch_one(transaction)
         .await?)
     }
 }

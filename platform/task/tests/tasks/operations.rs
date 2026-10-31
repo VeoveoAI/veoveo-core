@@ -300,6 +300,91 @@ async fn the_first_final_event_wins_under_concurrency() {
     .await;
 }
 
+/// Wait until `count` sessions of the test's database wait for a lock.
+async fn until_lock_waits(db: &TestDb, count: i64) {
+    loop {
+        let waiting = sqlx::query_file_scalar!("tests/queries/lock_waits.sql")
+            .fetch_one(db.a.pool())
+            .await
+            .unwrap();
+        if waiting >= count {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+#[tokio::test]
+async fn a_final_event_that_reads_before_the_park_commits_queues_the_parked_task() {
+    within(async {
+        let db = TestDb::new().await;
+        let worker = runtime(&db).await;
+        let receiver = runtime(&db).await;
+        let task = claimed(&worker, RecoveryClass::Resume).await;
+        let spec = events(Duration::from_secs(3600));
+        let (operation, token) = dispatch(&worker, task.task_id, &spec, "job-park").await;
+        let token = token.expect("the first attempt receives the callback token");
+
+        // Another transaction holds the Task's row, so the park takes the operation's
+        // row lock and then waits to change the Task.
+        let mut holder = db.b.pool().begin().await.unwrap();
+        sqlx::query_file_scalar!("tests/queries/lock_task.sql", task.task_id.as_uuid())
+            .fetch_one(&mut *holder)
+            .await
+            .unwrap();
+        let park = tokio::spawn({
+            let worker = worker.clone();
+            let key = spec.key.clone();
+            async move {
+                worker
+                    .wait_operation::<Prediction, _>(task.task_id, &key, &Provider::default())
+                    .await
+            }
+        });
+        until_lock_waits(&db, 1).await;
+        // The final event reads the database before the park commits, then waits for
+        // the operation's row lock the park holds.
+        let deliver = tokio::spawn({
+            let event = final_event(
+                EventTarget::Callback {
+                    operation_id: operation.operation_id,
+                    token,
+                },
+                "evt-park",
+                "https://out/park.png",
+            );
+            async move { receiver.deliver(&event).await }
+        });
+        until_lock_waits(&db, 2).await;
+        holder.commit().await.unwrap();
+
+        assert!(park.await.unwrap().unwrap_err().parked());
+        assert_eq!(deliver.await.unwrap().unwrap(), Delivery::New);
+        let settled = worker
+            .operation(task.task_id, &spec.key)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(settled.state, OperationState::Settled);
+        assert_eq!(
+            worker.get(task.task_id).await.unwrap().unwrap().status,
+            TaskStatus::Queued,
+            "the settled operation's Task stays parked"
+        );
+        worker.claim(task.task_id).await.unwrap();
+        assert_eq!(
+            worker
+                .wait_operation::<Prediction, _>(task.task_id, &spec.key, &Provider::default())
+                .await
+                .unwrap(),
+            WaitOutcome::Settled(Prediction {
+                url: "https://out/park.png".into()
+            })
+        );
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn checks_follow_their_schedule_and_the_deadline_leaves_the_outcome_open() {
     within(async {

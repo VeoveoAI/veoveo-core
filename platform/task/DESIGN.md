@@ -307,7 +307,11 @@ An operation's outcome arrives in one of two ways, which `Completion` declares:
 `deliver` stores the event and settles the operation in one transaction, under the
 operation's row lock. The first final event settles a pending or unresolved operation and
 queues the Task parked on it; a repeated event ID stores nothing; a final event after the
-operation settled, or after its Task finished, is stored as late. Any replica delivers,
+operation settled, or after its Task finished, is stored as late. The Task is queued by
+the transaction's second statement, after the lock is granted. PostgreSQL's
+read-committed statements read rows as they were when the statement began, so the
+statement that waited for the lock would find a Task whose park held that lock as still
+running and leave it parked on a settled operation, with nothing left to queue it. Any replica delivers,
 and the server acknowledges the provider only after `deliver` returns. `Delivery::Unknown`
 answers an event that names no operation of the server or carries the wrong token.
 
@@ -321,8 +325,9 @@ Task, and its next run replays its finished steps and its dispatch from the data
 reaches the wait again, which returns the outcome.
 
 Every runtime runs a due pass. It queues Tasks parked on an operation whose check is due,
-marks pending operations whose deadline passed as `unresolved` and queues the Tasks
-parked on them, in batches with `SKIP LOCKED`, then sleeps until the server's next due
+marks pending operations whose deadline passed as `unresolved` and, in the same
+transaction's next statement as a delivery does, queues the Tasks parked on them, in
+batches with `SKIP LOCKED`, then sleeps until the server's next due
 time, at most `DUE_INTERVAL`, five seconds. A resumed wait on a checked operation runs the
 check and records it as an event. A wait on an unresolved operation returns
 `WaitOutcome::Expired`: the outcome is unknown, which never counts as a failure, and a

@@ -1,8 +1,9 @@
 -- veoveo: all tenants (a server's workers address the Tasks they run by ID, whichever tenant owns them)
 -- The owning worker parks its Task on a pending operation: the Task waits without an
 -- owner until an event, a due check or the deadline queues it. The operation's row is
--- locked first, so a delivery that settles it either commits before and the Task is not
--- parked, or waits and then wakes the parked Task.
+-- locked first, so a delivery or deadline that settles it either commits before and the
+-- Task is not parked, or waits for this park to commit and then wakes the parked Task in
+-- its transaction's next statement, operation_wake.sql, which sees this commit.
 WITH pending AS (
     SELECT task_id
     FROM tasks.task_operation

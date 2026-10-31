@@ -2,8 +2,9 @@
 -- Store one provider event of an operation, found by its operation identity, with the
 -- callback token's digest when the event came through a callback URL, in one
 -- transaction. The operation's row lock orders concurrent deliveries: the first final
--- event settles the operation and wakes a Task parked on it, and a final event after it
--- is stored as late. A repeated event identifier stores nothing.
+-- event settles the operation, and a final event after it is stored as late. A repeated
+-- event identifier stores nothing. The settled operation's Task and key return for
+-- operation_wake.sql, the transaction's next statement, which queues a Task parked on it.
 WITH op AS (
     SELECT task_id, operation_key, server, provider, state
     FROM tasks.task_operation AS operation
@@ -29,19 +30,13 @@ settled AS (
     WHERE event.applied AND o.task_id = event.task_id
         AND o.operation_key = event.operation_key
     RETURNING o.task_id, o.operation_key
-),
-woken AS (
-    UPDATE tasks.task AS task
-    SET status = 'queued', status_message = 'Queued', parked_on = NULL
-    FROM settled
-    WHERE task.id = settled.task_id AND task.parked_on = settled.operation_key
-        AND task.status = 'waiting'
-    RETURNING task.id
 )
 SELECT
     (SELECT count(*) FROM op) AS "found!",
     (SELECT count(*) FROM event) AS "stored!",
     (SELECT count(*) FROM settled) AS "settled!",
+    (SELECT task_id FROM settled) AS "settled_task",
+    (SELECT operation_key FROM settled) AS "settled_key",
     (
         SELECT task.status IN ('succeeded', 'failed', 'cancelled')
         FROM tasks.task AS task

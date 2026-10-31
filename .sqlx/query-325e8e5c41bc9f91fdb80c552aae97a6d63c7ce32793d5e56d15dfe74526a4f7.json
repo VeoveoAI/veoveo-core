@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- veoveo: all tenants (the installation-owner fixture holds one Task's row)\n-- Lock one Task's row for the rest of the transaction, as a change to it would.\nSELECT id AS \"id!\" FROM tasks.task WHERE id = $1 FOR UPDATE\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tasks.task",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "325e8e5c41bc9f91fdb80c552aae97a6d63c7ce32793d5e56d15dfe74526a4f7"
+}
