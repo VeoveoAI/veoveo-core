@@ -454,7 +454,10 @@ tests and conformance profiles.
 ## Shared Installation Names
 
 The foundational library owns the names every component shares: `ServerSlug` for a
-registered server and `OAuthClientId` for an OAuth client. Names that belong to one
+registered server and `OAuthClientId` for an OAuth client. A slug is nonempty lowercase
+ASCII letters, digits, hyphens and underscores, without two consecutive underscores, so
+a name the Hub forms as `{slug}__{rest}`, such as a listed tool's, splits at its first
+`__`. Names that belong to one
 protocol or component stay with their owner. MCP tool and prompt names and Task routes
 belong to `veoveo-hub-sdk`, Hub profiles, refresh families and authentication
 codes to the Hub, and agent names to Agents.

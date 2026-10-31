@@ -74,7 +74,9 @@ A concept has one noun across every surface, and each surface spells it in its o
 | Table | `<schema>.<singular>` | `time.event` |
 | Database function | `<schema>.<name>()` | `time.due_events()` |
 
-A server's URI scheme equals its slug. RFC 7595 §3.8 recommends reverse-domain names
+A slug holds lowercase ASCII letters, digits, hyphens and underscores, never two
+underscores in a row: the Hub lists a server's tools as `<slug>__<tool>`, and a name
+splits at its first `__`. A server's URI scheme equals its slug. RFC 7595 §3.8 recommends reverse-domain names
 for private schemes; Veoveo uses the shorter slug because the Hub pins each scheme
 to one registered server within an installation, which rules out collisions there. The
 scheme `veoveo` is reserved for platform resources, such as `veoveo://tasks/{task_id}`,

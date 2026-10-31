@@ -62,15 +62,60 @@ fn client_schema(_: &mut schemars::SchemaGenerator, _: crate::IdMetadata) -> sch
     })
 }
 
+/// A path identifier without two consecutive underscores, so a name the Hub forms as
+/// `{slug}__{rest}`, such as a tool's, splits at its first `__`.
+fn validate_server_slug(value: &str) -> Result<(), IdentifierError> {
+    crate::identifier_syntax::validate_path_id(value)?;
+    if value.contains("__") {
+        return Err(IdentifierError::new(
+            value,
+            "must not contain two consecutive underscores",
+        ));
+    }
+    Ok(())
+}
+
 #[doc(hidden)]
 pub struct ServerSlugs;
 impl crate::IdProfile for ServerSlugs {
     type Error = IdentifierError;
     const PROFILE: crate::IdProfileSpec<Self::Error> =
-        <crate::identifier_syntax::PathIdProfile as crate::IdProfile>::PROFILE;
+        crate::IdProfileSpec::text(|value, _| validate_server_slug(value));
     fn naming_profile(_: crate::IdMetadata) -> Option<crate::ScalarNaming> {
         Some(crate::ScalarNaming::builtin(
             crate::ScalarGrammar::ServerSlug,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServerSlug;
+
+    #[test]
+    fn a_slug_is_a_path_identifier_without_two_consecutive_underscores() {
+        for slug in [
+            "time",
+            "time-zones",
+            "time_zones",
+            "a_b_c",
+            "x1",
+            "_a",
+            "a_",
+        ] {
+            assert!(ServerSlug::parse(slug).is_ok(), "{slug:?}");
+        }
+        for slug in [
+            "",
+            "a__b",
+            "__a",
+            "a__",
+            "time___zones",
+            "Time",
+            "a.b",
+            "a b",
+        ] {
+            assert!(ServerSlug::parse(slug).is_err(), "{slug:?}");
+        }
     }
 }
