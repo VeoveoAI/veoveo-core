@@ -6,7 +6,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use veoveo_skills::build::{SkillsError, render};
+use veoveo_skills::{SkillsError, build::render};
 
 /// A fresh directory for one test, removed when dropped.
 struct Dir(PathBuf);

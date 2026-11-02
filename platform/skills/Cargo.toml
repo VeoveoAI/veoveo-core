@@ -7,9 +7,12 @@ repository.workspace = true
 publish.workspace = true
 
 [features]
-# The build-script side: reads a skills directory, parses each SKILL.md's frontmatter and
-# writes the table a server embeds. A server enables it only in its build-dependencies.
-build = ["dep:serde_json", "dep:sha2", "dep:yaml_serde"]
+# A skill from its files in memory: the rules, digests and frontmatter, for a host that
+# takes skills from its configuration.
+load = ["dep:serde_json", "dep:sha2", "dep:yaml_serde"]
+# The build-script side: reads a skills directory through `load` and writes the table a
+# server embeds. A server enables it only in its build-dependencies.
+build = ["load"]
 
 [dependencies]
 veoveo-types.workspace = true

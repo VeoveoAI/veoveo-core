@@ -12,7 +12,7 @@ one revision of this repository.
 |---|---|---|
 | `platform/types` | `veoveo-types` | Identifiers, vocabularies, resource addresses and shared scalar types |
 | `platform/macros` | `veoveo-macros` | The `id`, `resource_address`, `Vocabulary` and `embedded_document!` macros |
-| `platform/skills` | `veoveo-skills` | Skills a crate embeds at build time: bytes, SHA-256, sizes and frontmatter as JSON |
+| `platform/skills` | `veoveo-skills` | Skills a crate embeds at build time or a host loads from its configuration: bytes, SHA-256, sizes and frontmatter as JSON |
 | `platform/store` | `veoveo-store` | PostgreSQL access: the connection pool, kernel and identity migrations, process instances, singletons, change notifications, registered servers' roles and schemas, keyset pages and batched maintenance |
 | `platform/oauth` | `veoveo-oauth` | RS256 client-assertion signing |
 | `platform/http` | `veoveo-http` | Shared HTTP admission |

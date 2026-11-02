@@ -1,12 +1,19 @@
-//! Skills a crate embeds at build time, as the Agent Skills format and the MCP Skills
-//! extension (SEP-2640) describe them: each skill is a directory whose `SKILL.md` starts
-//! with YAML frontmatter naming it, and every file of it is listed with its SHA-256 and
-//! size. A build script turns a `skills/` directory into a table with
-//! [`build::embed_skills`]; the crate includes that table and serves it unchanged, so every
-//! host reads the same bytes, digests and frontmatter. Protocol-independent: the MCP
-//! projection belongs to `veoveo-hub-sdk`.
+//! Skills a crate embeds at build time or a host loads from its configuration, as the
+//! Agent Skills format and the MCP Skills extension (SEP-2640) describe them: each skill
+//! is a directory whose `SKILL.md` starts with YAML frontmatter naming it, and every file
+//! of it is listed with its SHA-256 and size. A build script turns a `skills/` directory
+//! into a table with [`build::embed_skills`]; the crate includes that table and serves it
+//! unchanged, so every host reads the same bytes, digests and frontmatter. A host that
+//! takes skills from its configuration reads each with [`load::skill`], by the same
+//! rules. Protocol-independent: the MCP projection belongs to `veoveo-hub-sdk`.
 #[cfg(feature = "build")]
 pub mod build;
+#[cfg(feature = "load")]
+mod error;
+#[cfg(feature = "load")]
+pub mod load;
+#[cfg(feature = "load")]
+pub use error::SkillsError;
 
 use veoveo_types::Sha256Digest;
 
