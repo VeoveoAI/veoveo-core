@@ -18,13 +18,12 @@ const MAX_TASK_TYPES: usize = 32;
 const MAX_PAGE: usize = 1000;
 
 /// Tasks of one owner on this runtime's server. The default selects every operation;
-/// `of_type`, `of_types` and `in_work_context` narrow the selection.
+/// `of_type` and `of_types` narrow the selection.
 #[derive(Clone)]
 pub struct OwnerTaskQuery {
     pub(crate) runtime: TaskRuntime,
     owner: TaskOwner,
     task_types: Option<BTreeSet<TaskTypeName>>,
-    work_context: bool,
 }
 
 impl TaskRuntime {
@@ -33,20 +32,11 @@ impl TaskRuntime {
             runtime: self.clone(),
             owner: owner.clone(),
             task_types: None,
-            work_context: false,
         }
     }
 }
 
 impl OwnerTaskQuery {
-    /// Also require the Task's Work Context to be the caller's. Invocation admission
-    /// grants membership and permission; this narrows the rows.
-    pub fn in_work_context(mut self) -> Result<Self, TaskError> {
-        self.owner.check_authority()?;
-        self.work_context = true;
-        Ok(self)
-    }
-
     /// Select one operation type.
     /// ```compile_fail
     /// use veoveo_task::{TaskRuntime, TaskOwner};
@@ -93,9 +83,6 @@ impl OwnerTaskQuery {
                 .task_types
                 .as_ref()
                 .map(|kinds| kinds.iter().map(ToString::to_string).collect()),
-            work_context: self
-                .work_context
-                .then(|| self.owner.authority.work_context.to_string()),
         }
     }
 
@@ -119,7 +106,6 @@ impl OwnerTaskQuery {
             scope.owner_tenant,
             &scope.labels,
             scope.task_types.as_deref(),
-            scope.work_context,
             task.as_uuid(),
             self.runtime.deployment().as_uuid(),
         )
@@ -165,7 +151,6 @@ impl OwnerTaskQuery {
                     scope.owner_tenant,
                     &scope.labels,
                     scope.task_types.as_deref(),
-                    scope.work_context,
                     created_at,
                     task_id,
                     fetch,
@@ -185,7 +170,6 @@ impl OwnerTaskQuery {
                     scope.owner_tenant,
                     &scope.labels,
                     scope.task_types.as_deref(),
-                    scope.work_context,
                     created_at,
                     task_id,
                     fetch,
@@ -226,7 +210,6 @@ impl OwnerTaskQuery {
                 scope.owner_tenant,
                 &scope.labels,
                 scope.task_types.as_deref(),
-                scope.work_context,
                 task.as_uuid(),
                 self.runtime.deployment().as_uuid(),
             )
@@ -266,7 +249,6 @@ impl OwnerTaskQuery {
                 scope.owner_tenant,
                 &scope.labels,
                 scope.task_types.as_deref(),
-                scope.work_context,
                 task.as_uuid(),
                 key,
                 object(response),

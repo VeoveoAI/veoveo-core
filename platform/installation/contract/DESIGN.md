@@ -69,7 +69,7 @@ JSON Schema cannot compare two values.
 
 ## Crate Boundary
 
-The installation configuration's types belong to the Hub, which brings its policy,
-Work Context and audit contracts. A bootstrap that reads the lock needs none of them,
+The installation configuration's types belong to the Hub, which brings its policy and
+audit contracts. A bootstrap that reads the lock needs none of them,
 so the lock has a crate of its own that depends only on `veoveo-types`, serde, schemars
 and thiserror.

@@ -141,6 +141,5 @@ pub fn user(tenant: &str, name: &str) -> AuditActor {
         principal: name.parse().unwrap(),
         kind: AuditPrincipalKind::User,
         tenant: Some(tenant.parse().unwrap()),
-        work_context: None,
     }
 }

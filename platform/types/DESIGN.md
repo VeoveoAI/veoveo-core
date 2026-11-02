@@ -85,11 +85,9 @@ and removing only the naming metadata, and exercise independent owner callbacks.
 
 ## Signed Identity And Native Authority Encoding
 
-`AccessSubject`, `InvocationProvenance`, `WorkContextOutputPolicy` and
-`InvocationAuthority` keep their snake_case identity and internal signed-claim
-representation. Configuration uses its own camelCase output-policy adapter, and a
-domain contract that publishes camelCase provenance maps invocation attribution in its
-own adapter. These projections do not rename retained native records or JWT claims.
+`AccessSubject`, `InvocationProvenance` and `InvocationAuthority` keep their snake_case
+identity and internal signed-claim representation. A domain contract that publishes
+camelCase provenance maps invocation attribution in its own adapter. These projections do not rename retained native records or JWT claims.
 Resource selector object fields use camelCase and their controlled kinds use
 snake_case; resource URI text keeps its admitted profile.
 
@@ -111,8 +109,7 @@ permission. The policy evaluator supplies authorized selections.
 the same iri-string expansion engine. Consumers need no URI-library context for this
 case. Names keep their RFC spelling, unreferenced entries are ignored, and absent
 variables remain undefined. Domain builders still validate required IDs and parents.
-Platform identity belongs here too: `PrincipalId`, `TenantId`, `WorkContextId`,
-`DelegationId`, `GroupId`, `RoleId`, `DataLabelId`, `PolicyVersion`, `TokenIssuer`
+Platform identity belongs here too: `PrincipalId`, `TenantId`, `DelegationId`, `GroupId`, `RoleId`, `DataLabelId`, `PolicyVersion`, `TokenIssuer`
 and `TokenSubject` are distinct
 validated newtypes. `AccessSubject` identifies a principal or group. `InvocationMode`
 and `InvocationProvenance` describe direct, delegated, or automated attribution.
@@ -123,21 +120,19 @@ uses its adjacent-tag Serde profile, including identifier-based tag admission.
 It depends on Serde, Schemars, URL, percent encoding, iri-string, UUID and Chrono date/time values. It contains no protocol transport, asynchronous
 runtime, database client, provider integration, or server vocabulary.
 
-Resolved invocation values also belong here: `InvocationAuthority`,
-`WorkContextMembershipLevel`, `WorkContextOutputPolicy`, `WorkContextGrant` and
-`AccessLevel`. They carry the selected Work Context, membership, output defaults and
-provenance across protocols and domain contracts. Their string enums, field names,
-defaults and order comparisons form one shared model. The Hub owns Work Context
-configuration and membership matching against authenticated principals and signs the
-resolved authority, and each server enforces it. Possessing or
+Resolved invocation values also belong here: `InvocationAuthority`, the tenant, policy
+revision and provenance of an invocation, and `AccessLevel`, the capability a grant
+gives, ordered `Read < Write < Admin`. They carry attribution across protocols and
+domain contracts. The Hub signs the resolved authority into every forwarded identity.
+There is no project context: a project is a group, and each server decides access from
+the forwarded identity's groups and data labels and its own grants. Possessing or
 deserializing these values establishes no grant.
 
 `OAuthClientId` admits nonempty claim text without control characters. Its JSON Schema
 expresses that same lexical profile. Domain inputs impose their own size limits.
 
 Identity syntax and attribution establish no authority. Authentication, policy
-evaluation, Work Context membership, and access decisions stay with their existing
-owners. Domain metadata and coordinate vocabularies have domain owners; their use by
+evaluation and access decisions stay with their existing owners. Domain metadata and coordinate vocabularies have domain owners; their use by
 several servers does not make them foundational identity types.
 
 `AccessGrant` exposes a domain grant's subject, access level and expiry to the shared
@@ -211,8 +206,7 @@ knows neither Store tables nor server-owned IDs.
 
 Claim identities (`PrincipalId`, `TenantId`, `DelegationId`, `GroupId`, and `RoleId`)
 require nonempty text without control characters. They preserve Unicode and whitespace.
-`DataLabelId` and `PolicyVersion` also reject whitespace. `WorkContextId` accepts
-nonempty lowercase ASCII letters, digits, hyphens, and underscores. These profiles
+`DataLabelId` and `PolicyVersion` also reject whitespace. These profiles
 preserve supplied spelling and impose no byte limit. Domain and transport rules may
 require additional validation at their own inputs.
 

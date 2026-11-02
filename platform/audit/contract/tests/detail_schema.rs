@@ -13,7 +13,6 @@ const IDENTIFIERS: &[&str] = &[
     "GroupId",
     "RoleId",
     "TenantId",
-    "WorkContextId",
     "DataLabelId",
 ];
 // Sha256Digest deliberately inlines this closed scalar schema instead of a $ref.

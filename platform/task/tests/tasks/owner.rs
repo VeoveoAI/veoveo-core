@@ -3,7 +3,7 @@ use veoveo_task::{
     Instance, MAX_GET_MANY, OwnerTaskQuery, RecoveryClass, TaskError, TaskPageOrder, TaskRuntime,
     TaskStatus,
 };
-use veoveo_types::{TaskId, TaskTypeName, WorkContextId};
+use veoveo_types::{TaskId, TaskTypeName};
 
 use crate::{
     store::TestDb,
@@ -74,7 +74,7 @@ async fn owner_queries_select_the_callers_tasks() {
             None
         );
 
-        // Operation and Work Context selections narrow the rows in SQL.
+        // Operation selections narrow the rows in SQL.
         let other_type = TaskTypeName::new("time.validate_timeline").unwrap();
         assert_eq!(
             runtime
@@ -99,38 +99,6 @@ async fn owner_queries_select_the_callers_tasks() {
             runtime.for_owner(&cleared).of_types([]),
             Err(TaskError::InvalidPageQuery)
         ));
-        assert!(
-            runtime
-                .for_owner(&cleared)
-                .in_work_context()
-                .unwrap()
-                .get(task.task_id)
-                .await
-                .unwrap()
-                .is_some()
-        );
-        let mut elsewhere = cleared.clone();
-        elsewhere.authority.work_context = WorkContextId::parse("elsewhere").unwrap();
-        assert_eq!(
-            runtime
-                .for_owner(&elsewhere)
-                .in_work_context()
-                .unwrap()
-                .get(task.task_id)
-                .await
-                .unwrap(),
-            None
-        );
-        // Without the Work Context selection, the context does not narrow the rows.
-        assert!(
-            runtime
-                .for_owner(&elsewhere)
-                .get(task.task_id)
-                .await
-                .unwrap()
-                .is_some()
-        );
-
         // The owner cancels its own Task.
         let cancelled = runtime
             .for_owner(&cleared)
@@ -260,19 +228,6 @@ async fn pages_read_oldest_or_newest_first_and_keep_the_selection() {
         let mut other = draft(&runtime, &owner(), RecoveryClass::Resume);
         other.task_type = TaskTypeName::new("time.validate_timeline").unwrap();
         let other_type = runtime.create(other).await.unwrap().snapshot.task_id;
-        let elsewhere = runtime
-            .create(draft(
-                &runtime,
-                &owner_with(OwnerSpec {
-                    work_context: "elsewhere",
-                    ..OwnerSpec::default()
-                }),
-                RecoveryClass::Resume,
-            ))
-            .await
-            .unwrap()
-            .snapshot
-            .task_id;
         // A Task with a label the caller lacks is never selected.
         runtime
             .create(draft(
@@ -287,7 +242,7 @@ async fn pages_read_oldest_or_newest_first_and_keep_the_selection() {
             .unwrap();
 
         let mut visible = mine.clone();
-        visible.extend([other_type, elsewhere]);
+        visible.push(other_type);
         let mut snapshots = runtime.get_many(&visible).await.unwrap();
         snapshots.sort_by_key(|task| (task.created_at, task.task_id.as_uuid()));
         let ordered = |keep: &dyn Fn(&TaskId) -> bool, order: TaskPageOrder| {
@@ -303,7 +258,6 @@ async fn pages_read_oldest_or_newest_first_and_keep_the_selection() {
         };
         let all = runtime.for_owner(&owner());
         let typed = runtime.for_owner(&owner()).of_type(TASK_TYPE);
-        let in_context = runtime.for_owner(&owner()).in_work_context().unwrap();
         for order in [TaskPageOrder::OldestFirst, TaskPageOrder::NewestFirst] {
             for limit in [1, 2, 3, 10] {
                 assert_eq!(
@@ -315,10 +269,6 @@ async fn pages_read_oldest_or_newest_first_and_keep_the_selection() {
             assert_eq!(
                 every_page(&typed, order, 2).await,
                 ordered(&|task| *task != other_type, order),
-            );
-            assert_eq!(
-                every_page(&in_context, order, 2).await,
-                ordered(&|task| *task != elsewhere, order),
             );
         }
 

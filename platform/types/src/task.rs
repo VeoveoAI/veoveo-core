@@ -9,9 +9,9 @@ use uuid::Uuid;
 /// This identity establishes neither Task existence nor authority.
 ///
 /// ```compile_fail
-/// use veoveo_types::{TaskId, WorkContextId};
+/// use veoveo_types::{TaskId, TenantId};
 /// fn observe_task(_: TaskId) {}
-/// observe_task(WorkContextId::parse("operations").unwrap());
+/// observe_task(TenantId::parse("operations").unwrap());
 /// ```
 #[veoveo_types::id(uuid(TaskIds), fresh)]
 pub struct TaskId(Uuid);

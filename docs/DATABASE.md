@@ -30,7 +30,7 @@ schema:
 | Schema | Owner | Contents |
 |---|---|---|
 | `kernel` | Core | Migration history, process instances and shared functions |
-| `identity` | Core | Enterprises, tenants, principals and Work Contexts |
+| `identity` | Core | Enterprises, tenants and principals |
 | `hub` | The Hub | Control-plane revisions, OAuth state, registrations and Task routes, from the Hub's own migrations |
 | `tasks` | Core | Tasks, their input exchanges, steps, operations with their provider events, and idempotency keys |
 | `audit` | Core | Declared audit classes, audit records, blocks, seals and export cursors; servers declare and append through two functions |
@@ -350,9 +350,8 @@ filters that produced it, so a cursor from another scope fails to parse. Deletes
 
 Rust types bind through `sqlx::Type`. `#[vocabulary(postgres)]` and the `id`
 attribute's `postgres` capability generate the bindings, so domain types stay typed until
-the driver boundary. A structured value read in one statement, such as a Work Context's
-membership rules, may arrive as `jsonb` built by the query and decode into its typed
-record.
+the driver boundary. A structured value read in one statement, such as a Task's
+authority, may arrive as `jsonb` and decode into its typed record.
 
 ## Testing
 

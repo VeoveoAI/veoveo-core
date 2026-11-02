@@ -32,7 +32,6 @@ pub(crate) struct TaskRow {
     pub owner_subject: String,
     pub surface: String,
     pub data_labels: Vec<String>,
-    pub work_context: String,
     pub authority: Json<InvocationAuthority>,
     pub task_type: String,
     pub recovery_class: RecoveryClass,
@@ -99,11 +98,9 @@ impl TryFrom<TaskRow> for TaskSnapshot {
                 .collect::<Result<_, _>>()?,
             authority: row.authority.0,
         };
-        if owner.tenant().as_str() != row.tenant
-            || owner.authority.work_context.as_str() != row.work_context
-        {
+        if owner.tenant().as_str() != row.tenant {
             return Err(TaskError::invalid_record(
-                "stored Task owner disagrees with its tenant or Work Context",
+                "stored Task owner disagrees with its tenant",
             ));
         }
         let error = match (row.error_code, row.error_message) {

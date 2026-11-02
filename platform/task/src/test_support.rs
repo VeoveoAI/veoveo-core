@@ -3,9 +3,8 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use veoveo_store::{Instance, PrincipalKind};
 use veoveo_types::{
-    AccessSubject, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
-    ServerSlug, TaskId, TaskTypeName, TenantId, WorkContextId, WorkContextMembershipLevel,
-    WorkContextOutputPolicy,
+    InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId, ServerSlug, TaskId,
+    TaskTypeName, TenantId,
 };
 
 use crate::{CreateTask, RecoveryClass, TaskOwner, TaskRuntime, test_store::TestDb};
@@ -22,16 +21,8 @@ pub(crate) fn owner() -> TaskOwner {
         tenant_key: Some(tenant.clone()),
         data_labels: BTreeSet::new(),
         authority: InvocationAuthority {
-            work_context: WorkContextId::parse("mission").unwrap(),
             tenant,
-            membership: WorkContextMembershipLevel::Owner,
             policy_revision: PolicyVersion::parse("r1").unwrap(),
-            output_policy: WorkContextOutputPolicy {
-                owner: AccessSubject::Principal(principal.clone()),
-                initial_grants: Vec::new(),
-                classification: None,
-                data_labels: BTreeSet::new(),
-            },
             provenance: InvocationProvenance::Direct {
                 initiator: principal,
             },

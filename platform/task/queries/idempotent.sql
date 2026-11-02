@@ -10,7 +10,6 @@ SELECT
     owner_subject,
     surface,
     data_labels,
-    work_context,
     authority AS "authority: Json<InvocationAuthority>",
     task_type,
     recovery_class AS "recovery_class: RecoveryClass",

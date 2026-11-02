@@ -21,7 +21,6 @@ pub(super) fn record(
                 principal: "operator".parse().unwrap(),
                 kind: AuditPrincipalKind::User,
                 tenant: None,
-                work_context: None,
             })
             .via(AuditVia {
                 server: "media".parse().unwrap(),

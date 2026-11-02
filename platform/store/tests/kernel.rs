@@ -460,12 +460,6 @@ async fn server_logins_see_and_start_only_their_own_instances() {
 
     // A server cannot manage roles or read identity tables.
     assert!(clock.ensure_server(&slug("calendar")).await.is_err());
-    assert!(
-        clock
-            .work_context_by_key(TenantId::from_uuid(uuid::Uuid::nil()), "development")
-            .await
-            .is_err()
-    );
     clock_instance.shutdown().await.unwrap();
     calendar_instance.shutdown().await.unwrap();
 }

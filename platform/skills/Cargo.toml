@@ -1,0 +1,24 @@
+[package]
+name = "veoveo-skills"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# The build-script side: reads a skills directory, parses each SKILL.md's frontmatter and
+# writes the table a server embeds. A server enables it only in its build-dependencies.
+build = ["dep:serde_json", "dep:sha2", "dep:yaml_serde"]
+
+[dependencies]
+veoveo-types.workspace = true
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+thiserror.workspace = true
+yaml_serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+# The tests read skills directories through the build side.
+veoveo-skills = { path = ".", features = ["build"] }

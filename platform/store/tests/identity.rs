@@ -5,10 +5,8 @@ mod store;
 
 use store::TestDb;
 use veoveo_store::{
-    GrantPermission, GrantSubjectKind, PrincipalKind, StoreError, TenantId,
-    WorkContextInitialGrantRecord, WorkContextMembershipLevel, WorkContextMembershipRuleRecord,
-    deterministic_enterprise_id, deterministic_principal_id, deterministic_tenant_id,
-    deterministic_work_context_id,
+    PrincipalKind, StoreError, TenantId, deterministic_enterprise_id, deterministic_principal_id,
+    deterministic_tenant_id,
 };
 use veoveo_types::ServerSlug;
 
@@ -214,134 +212,6 @@ async fn registered_servers_record_identities_through_the_kernel_function() {
         .await
         .is_err(),
         "servers read no identity table"
-    );
-}
-
-#[tokio::test]
-async fn work_contexts_read_with_their_grants_and_memberships_in_order() {
-    let db = TestDb::new().await;
-    let identity =
-        db.a.ensure_identity("acme", "alice", ISSUER, "alice", PrincipalKind::User)
-            .await
-            .unwrap();
-    let id = deterministic_work_context_id("acme", "development").unwrap();
-    sqlx::query_file!(
-        "tests/queries/identity/insert_work_context.sql",
-        id as _,
-        identity.tenant_id as _,
-        "development",
-        "Development",
-        "7",
-        GrantSubjectKind::Group as _,
-        "builders",
-        Some("internal"),
-        &["pii".to_owned()][..],
-    )
-    .execute(db.a.pool())
-    .await
-    .unwrap();
-    for (ordinal, kind, key, permission) in [
-        (
-            0,
-            GrantSubjectKind::Principal,
-            "alice",
-            GrantPermission::Admin,
-        ),
-        (1, GrantSubjectKind::Group, "readers", GrantPermission::Read),
-    ] {
-        sqlx::query_file!(
-            "tests/queries/identity/insert_work_context_grant.sql",
-            id as _,
-            ordinal,
-            kind as _,
-            key,
-            permission as _,
-        )
-        .execute(db.a.pool())
-        .await
-        .unwrap();
-    }
-    for (ordinal, level, principals, clients) in [
-        (
-            0,
-            WorkContextMembershipLevel::Owner,
-            vec!["alice".to_owned()],
-            Vec::new(),
-        ),
-        (
-            1,
-            WorkContextMembershipLevel::Viewer,
-            vec!["alice".to_owned(), "bob".to_owned()],
-            vec!["console".to_owned()],
-        ),
-    ] {
-        let groups: Vec<String> = Vec::new();
-        sqlx::query_file!(
-            "tests/queries/identity/insert_work_context_membership.sql",
-            id as _,
-            ordinal,
-            level as _,
-            &principals[..],
-            &groups[..],
-            &["member".to_owned()][..],
-            &clients[..],
-        )
-        .execute(db.a.pool())
-        .await
-        .unwrap();
-    }
-
-    let context =
-        db.b.work_context_by_key(identity.tenant_id, "development")
-            .await
-            .unwrap()
-            .unwrap();
-    assert_eq!(context.id, id);
-    assert_eq!(context.policy_revision, "7");
-    assert_eq!(context.output_policy.owner_kind, GrantSubjectKind::Group);
-    assert_eq!(
-        context.output_policy.classification.as_deref(),
-        Some("internal")
-    );
-    assert_eq!(context.output_policy.data_labels, vec!["pii"]);
-    assert_eq!(
-        context.output_policy.initial_grants,
-        vec![
-            WorkContextInitialGrantRecord {
-                subject_kind: GrantSubjectKind::Principal,
-                subject_key: "alice".into(),
-                permission: GrantPermission::Admin,
-            },
-            WorkContextInitialGrantRecord {
-                subject_kind: GrantSubjectKind::Group,
-                subject_key: "readers".into(),
-                permission: GrantPermission::Read,
-            },
-        ]
-    );
-    assert_eq!(
-        context.memberships[1],
-        WorkContextMembershipRuleRecord {
-            level: WorkContextMembershipLevel::Viewer,
-            principals: vec!["alice".into(), "bob".into()],
-            groups: Vec::new(),
-            roles: vec!["member".into()],
-            oauth_clients: vec!["console".into()],
-        }
-    );
-    assert_eq!(
-        context.membership_for_principal("alice"),
-        Some(WorkContextMembershipLevel::Owner)
-    );
-    assert_eq!(
-        context.membership_for_oauth_client("console"),
-        Some(WorkContextMembershipLevel::Viewer)
-    );
-    assert!(
-        db.a.work_context_by_key(identity.tenant_id, "missing")
-            .await
-            .unwrap()
-            .is_none()
     );
 }
 

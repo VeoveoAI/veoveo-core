@@ -112,7 +112,7 @@ OAuth and JWT members use NumericDate as their specifications require. Every dig
 written `sha256:<lowercase hex>`.
 
 Deployment identities are canonical lowercase UUIDv7s, separate from tenant and
-business work-context identities; a deployment identifies one admitted instance of a
+principal identities; a deployment identifies one admitted instance of a
 logical component. A build gets a fresh UUIDv7 even for unchanged
 source. Resolved-composition/content digests reuse `Sha256Digest` where their owning
 contract specifies canonical bytes and hash domains. Native source revision formats

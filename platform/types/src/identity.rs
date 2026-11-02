@@ -13,10 +13,6 @@ pub struct PrincipalId(String);
 #[veoveo_types::id(text(crate::identifier_syntax::ClaimTextProfile))]
 pub struct TenantId(String);
 
-#[doc = "Tenant-local boundary that governs related work and every output it produces."]
-#[veoveo_types::id(text(crate::identifier_syntax::PathIdProfile))]
-pub struct WorkContextId(String);
-
 #[doc = "Auditable identity of authority delegated by an initiator to another actor."]
 #[veoveo_types::id(text(crate::identifier_syntax::ClaimTextProfile))]
 pub struct DelegationId(String);

@@ -80,10 +80,7 @@ mod task_type;
 mod vocabulary;
 
 pub use access_grant::AccessGrant;
-pub use authority::{
-    AccessLevel, InvocationAuthority, WorkContextGrant, WorkContextMembershipLevel,
-    WorkContextOutputPolicy,
-};
+pub use authority::{AccessLevel, InvocationAuthority};
 pub use digest::{Sha256Digest, Sha256DigestError};
 pub use error::IdentifierError;
 pub use execution::{BuildId, DeploymentId};
@@ -106,7 +103,7 @@ pub use resource_template::{ResourceTemplateError, ResourceTemplateUri};
 
 pub use identity::{
     AccessSubject, DataLabelId, DelegationId, GroupId, PolicyVersion, PrincipalId, RoleId,
-    TenantId, TokenIssuer, TokenSubject, WorkContextId,
+    TenantId, TokenIssuer, TokenSubject,
 };
 pub use provenance::{InvocationMode, InvocationProvenance};
 pub use task::TaskId;

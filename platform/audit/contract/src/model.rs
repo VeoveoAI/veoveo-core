@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use veoveo_types::{
     IdMetadata, IdProfile, IdProfileSpec, IdentifierError, PrincipalId, ServerSlug, TaskId,
-    TenantId, WorkContextId,
+    TenantId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -35,15 +35,13 @@ pub enum AuditPrincipalKind {
     Capability,
 }
 
-/// Who acted: a principal in its tenant and Work Context. A record without an actor is
-/// the system's.
+/// Who acted: a principal in its tenant. A record without an actor is the system's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuditActor {
     pub principal: PrincipalId,
     pub kind: AuditPrincipalKind,
     pub tenant: Option<TenantId>,
-    pub work_context: Option<WorkContextId>,
 }
 
 /// The server that acted for the actor through the Hub, and the Task of that server

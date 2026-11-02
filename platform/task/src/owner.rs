@@ -61,11 +61,11 @@ impl TaskOwner {
         })
     }
 
-    /// Reject an owner whose Work Context belongs to another tenant.
+    /// Reject an owner whose invocation authority belongs to another tenant.
     pub(crate) fn check_authority(&self) -> Result<(), TaskError> {
         if self.authority.tenant != self.tenant() {
             return Err(TaskError::InvalidAuthority(
-                "task owner and Work Context belong to different tenants".into(),
+                "task owner and its invocation authority belong to different tenants".into(),
             ));
         }
         Ok(())
@@ -81,5 +81,4 @@ pub(crate) struct OwnerScope {
     pub owner_tenant: Option<String>,
     pub labels: Vec<String>,
     pub task_types: Option<Vec<String>>,
-    pub work_context: Option<String>,
 }

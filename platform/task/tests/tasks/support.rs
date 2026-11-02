@@ -7,9 +7,8 @@ use veoveo_task::{
     TaskSnapshot,
 };
 use veoveo_types::{
-    AccessSubject, DataLabelId, InvocationAuthority, InvocationProvenance, PolicyVersion,
-    PrincipalId, ServerSlug, TaskId, TaskTypeName, TenantId, WorkContextId,
-    WorkContextMembershipLevel, WorkContextOutputPolicy,
+    DataLabelId, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId, ServerSlug,
+    TaskId, TaskTypeName, TenantId,
 };
 
 use crate::store::TestDb;
@@ -98,7 +97,6 @@ pub struct OwnerSpec<'a> {
     pub surface: &'a str,
     pub tenant: Option<&'a str>,
     pub labels: &'a [&'a str],
-    pub work_context: &'a str,
 }
 
 impl Default for OwnerSpec<'_> {
@@ -108,7 +106,6 @@ impl Default for OwnerSpec<'_> {
             surface: "operator",
             tenant: Some("mission-tenant"),
             labels: &[],
-            work_context: "mission",
         }
     }
 }
@@ -129,16 +126,8 @@ pub fn owner_with(spec: OwnerSpec<'_>) -> TaskOwner {
             .map(|label| DataLabelId::parse(label).unwrap())
             .collect(),
         authority: InvocationAuthority {
-            work_context: WorkContextId::parse(spec.work_context).unwrap(),
             tenant: tenant.unwrap_or_else(|| TenantId::parse("installation").unwrap()),
-            membership: WorkContextMembershipLevel::Owner,
             policy_revision: PolicyVersion::parse("r1").unwrap(),
-            output_policy: WorkContextOutputPolicy {
-                owner: AccessSubject::Principal(principal.clone()),
-                initial_grants: Vec::new(),
-                classification: None,
-                data_labels: BTreeSet::new(),
-            },
             provenance: InvocationProvenance::Direct {
                 initiator: principal,
             },

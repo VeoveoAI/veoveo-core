@@ -114,7 +114,6 @@ impl TaskRuntime {
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            owner.authority.work_context.as_str(),
             Json(&owner.authority) as _,
             draft.task_type.as_str(),
             draft.recovery_class as RecoveryClass,

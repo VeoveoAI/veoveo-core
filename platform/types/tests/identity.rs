@@ -15,7 +15,6 @@ use std::{fmt::Debug, str::FromStr};
 use veoveo_types::{
     AccessSubject, DataLabelId, DelegationId, GroupId, InvocationMode, InvocationProvenance,
     OAuthClientId, PolicyVersion, PrincipalId, RoleId, TenantId, TokenIssuer, TokenSubject,
-    WorkContextId,
 };
 
 fn assert_wire_profile<T>(accepted: &[&str], rejected: &[&str])
@@ -95,29 +94,7 @@ fn label_and_policy_tokens_preserve_the_repository_profile() {
 }
 
 #[test]
-fn work_context_profile_is_a_path_identity() {
-    let long = "a".repeat(1024);
-    assert_wire_profile::<WorkContextId>(
-        &["operations", "a-z_9", "0", "-", "_", &long],
-        &[
-            "",
-            "Operations",
-            "ops/one",
-            "ops.one",
-            "ops:one",
-            " ops ",
-            "é",
-            "ops\n",
-        ],
-    );
-    assert_eq!(
-        WorkContextId::parse("").unwrap_err().to_string(),
-        "invalid identifier \"\": must not be empty and must contain lowercase ASCII letters, digits, hyphen, or underscore",
-    );
-    assert_eq!(
-        WorkContextId::parse("Ops").unwrap_err().to_string(),
-        "invalid identifier \"Ops\": must contain only lowercase ASCII letters, digits, hyphen, or underscore",
-    );
+fn identifier_errors_name_their_profile() {
     assert_eq!(
         PrincipalId::parse("").unwrap_err().to_string(),
         "invalid identifier \"\": must not be empty"
@@ -221,7 +198,6 @@ fn identity_schemas_match_the_pre_extraction_contract() {
     capture_schema::<DataLabelId>(&mut schemas, stringify!(DataLabelId));
     capture_schema::<PrincipalId>(&mut schemas, stringify!(PrincipalId));
     capture_schema::<TenantId>(&mut schemas, stringify!(TenantId));
-    capture_schema::<WorkContextId>(&mut schemas, stringify!(WorkContextId));
     capture_schema::<DelegationId>(&mut schemas, stringify!(DelegationId));
     capture_schema::<GroupId>(&mut schemas, stringify!(GroupId));
     capture_schema::<RoleId>(&mut schemas, stringify!(RoleId));

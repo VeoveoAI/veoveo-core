@@ -9,7 +9,7 @@ use std::{future::Future, time::Duration};
 
 use chrono::{Datelike, TimeDelta, Utc};
 use store::TestDb;
-use veoveo_types::{PrincipalId, ServerSlug, TaskId, TenantId, WorkContextId};
+use veoveo_types::{PrincipalId, ServerSlug, TaskId, TenantId};
 use veoveo_usage::{
     Amount, ChargePeriod, Currency, Money, Quantity, ServiceCategory, UsageActor, UsageDraft,
     UsageKind, UsageKindDeclaration, UsagePhase, UsageSourceId, UsageStore, UsageStoreError,
@@ -39,7 +39,6 @@ fn actor(principal: &str) -> UsageActor {
     UsageActor {
         tenant: TenantId::parse("acme").unwrap(),
         principal: PrincipalId::parse(principal).unwrap(),
-        work_context: WorkContextId::parse("studio").unwrap(),
     }
 }
 

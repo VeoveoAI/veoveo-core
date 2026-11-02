@@ -104,7 +104,7 @@ month's partition when its retention passes.
 | `ChargeCategory`, `ChargeClass` | The charge category, and `Correction` for a correction |
 | `BillingAccountId`, `SubAccountId` | The installation and the tenant |
 | `ResourceId` | The target URI |
-| `x_Principal`, `x_WorkContext`, `x_Task`, `x_ActingServer`, `x_ActingTask`, `x_Phase` | Custom columns for the caller, the Work Context, the Task, the server and Task that did the work for the caller, and estimates, which FOCUS does not describe |
+| `x_Principal`, `x_Task`, `x_ActingServer`, `x_ActingTask`, `x_Phase` | Custom columns for the caller, the Task, the server and Task that did the work for the caller, and estimates, which FOCUS does not describe |
 
 ## Verification
 

@@ -120,7 +120,6 @@ async fn upstream_accepts_each_export_class_and_outcome() {
                             principal: "synthetic-user".parse().unwrap(),
                             tenant: Some("fixture".parse().unwrap()),
                             kind: AuditPrincipalKind::User,
-                            work_context: Some("operations".parse().unwrap()),
                         })
                         .via(AuditVia {
                             server: "media".parse().unwrap(),

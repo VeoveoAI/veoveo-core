@@ -30,7 +30,7 @@ Store has no paging types or compatibility reexports.
 | `InstanceGrace`, `INSTANCE_GRACE`, `StoreConfig::instance_grace` | How long a lock stays free before a reap, in whole milliseconds, 30 seconds by default |
 | `Singleton` | One replica per role, on the connection that holds the lock |
 | `listen`, `Channel`, `ChangeSignal` | Wake signals on schema or qualified channels, with `Reconcile` at start and after every reconnection |
-| `ensure_identity`, `work_context_by_key` | Identity records for the Hub and registered servers |
+| `ensure_identity` | Identity records for the Hub and registered servers |
 | `MaintenanceBatch`, `Pruned` | Batched deletion of expired rows, described below |
 
 Migration versions are grouped by owner schema in hundreds: `01xx` kernel, `02xx`
@@ -61,8 +61,7 @@ reaping, a reap that marks a free lock and deletes the instance only after the g
 mark that taking the lock back clears, an instance that takes its lock back after its session ends, continues under a
 new id after its row was reaped, ends the earlier session of its own login, refuses
 another login's resumption and ends once its login is dropped, singletons,
-notifications across a reconnect, identity conflicts, Work Context
-reads and the `postgres` macro bindings.
+notifications across a reconnect, identity conflicts and the `postgres` macro bindings.
 `tests/database_conformance.rs` holds every query under `src` and the `kernel` and
 `identity` schemas to the
 [server schema rules](../../docs/DATABASE.md#server-schema-rules).

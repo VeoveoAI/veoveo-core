@@ -25,7 +25,7 @@ them onto its protocol's statuses.
 
 `tasks.task` holds one row per Task. The columns that queries filter on are typed: the
 server, the owner's tenant, explicit tenant claim, principal, kind, issuer, subject and
-surface, the owner's data labels, the Work Context, the operation, the status, the
+surface, the owner's data labels, the operation, the status, the
 recovery class and the owner instance. `tenant_id` and `principal_id` reference the
 owner's rows in `identity`, which creation records through `ensure_identity`, and
 `task_tenant_id` and `task_principal_id` index them for the foreign-key checks. JSON
@@ -36,7 +36,7 @@ so a Task can succeed with a `null` result.
 | Constraint | Rule |
 |---|---|
 | `task_id_v7` | The ID is an RFC 9562 UUIDv7 |
-| `task_authority` | The authority names the row's tenant and Work Context |
+| `task_authority` | The authority names the row's tenant |
 | `task_type_name`, `task_status`, `task_recovery_class`, `task_owner_kind` | Vocabularies use their wire spellings |
 | `task_result`, `task_result_uri` | Exactly the succeeded Tasks have a result, and only they have a product address |
 | `task_error` | Exactly the failed Tasks have a failure code and message |
@@ -165,9 +165,9 @@ Task becomes `cancel_requested`, and its worker settles it. A local worker regis
 `TaskRuntime::for_owner` builds an `OwnerTaskQuery` for one `TaskOwner`. Every query
 selects in SQL by server, runtime deployment, tenant, principal, surface and explicit tenant claim, and
 requires the caller to hold every data label the owner held. `of_type` and `of_types`
-select 1–32 operations. `in_work_context` adds the caller's Work Context after checking
-that it belongs to the owner's tenant. A missing Task and another caller's Task both read
-as `None`.
+select 1–32 operations. A Task belongs to the person who started it: ownership is
+attribution, and the Task reaches nothing its person's grants and data labels do not. A
+missing Task and another caller's Task both read as `None`.
 
 `get` reads one Task. `page` reads up to 1,000 in a `TaskPageOrder`, oldest first or
 newest first by creation time and then ID, after a `TaskPageCursor`. A cursor records

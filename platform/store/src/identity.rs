@@ -53,10 +53,6 @@ pub struct TenantId(Uuid);
 #[veoveo_types::id(uuid(PersistenceIds), const_uuid, postgres)]
 pub struct PrincipalId(Uuid);
 
-/// `identity.work_context.id`
-#[veoveo_types::id(uuid(PersistenceIds), const_uuid, postgres)]
-pub struct WorkContextId(Uuid);
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, veoveo_types::Vocabulary)]
 #[vocabulary(postgres)]
 pub enum PrincipalKind {
@@ -96,18 +92,6 @@ pub fn deterministic_principal_id(
     Ok(PrincipalId::from_uuid(Uuid::new_v5(
         &PLATFORM_ID_NAMESPACE,
         format!("principal:{tenant_key}:{principal_key}").as_bytes(),
-    )))
-}
-
-pub fn deterministic_work_context_id(
-    tenant_key: &str,
-    context_key: &str,
-) -> Result<WorkContextId, StoreError> {
-    validate_identity_field("tenant_key", tenant_key, 256)?;
-    validate_identity_field("context_key", context_key, 256)?;
-    Ok(WorkContextId::from_uuid(Uuid::new_v5(
-        &PLATFORM_ID_NAMESPACE,
-        format!("work-context:{tenant_key}:{context_key}").as_bytes(),
     )))
 }
 

@@ -6,7 +6,7 @@
 |---|---|
 | NIST SP 800-53 Rev. 5 AU-3 | Every record carries what type of event occurred (its class), when (its occurrence time), where (its source server and request), the source (request, trace and peer), the outcome, and the identity of the actor, the acting server and the target. AU-3(1) additional information travels in the owner's detail, and AU-3(3) limits it: details never hold payloads, tokens or secrets |
 | NIST SP 800-53 Rev. 5 AU-9(3) and AU-10 | Records are sealed into Ed25519-signed blocks over a hash chain in `veoveo-audit` |
-| [OCSF 1.9.0](https://schema.ocsf.io/1.9.0/) | Field mapping of the envelope: class to `class_uid` and `activity_id` as each owner declares them, outcome to `status_id` and the Security Control profile's `action_id`, reason to `status_code`, acting server to `actor.application`, target to `resources`, tenant to `metadata.tenant_uid`, request to `metadata.correlation_uid` and the sealed position to `metadata.sequence`; Work Context, acting Task and details travel in an OCSF extension |
+| [OCSF 1.9.0](https://schema.ocsf.io/1.9.0/) | Field mapping of the envelope: class to `class_uid` and `activity_id` as each owner declares them, outcome to `status_id` and the Security Control profile's `action_id`, reason to `status_code`, acting server to `actor.application`, target to `resources`, tenant to `metadata.tenant_uid`, request to `metadata.correlation_uid` and the sealed position to `metadata.sequence`; acting Task and details travel in an OCSF extension |
 | RFC 3986 | Targets: absolute URIs without a fragment, at most 2048 bytes; a Task is its RFC 9562 UUID URN |
 | RFC 9562 | Canonical UUIDv7 record and HTTP request identities |
 | W3C Trace Context | Nonzero lowercase 32-hex trace IDs and 16-hex span IDs |
@@ -33,7 +33,7 @@ sqlx.
 | `class` | The owner | `<owner>.<name>`, declared; the database derives the record's source from its owner |
 | `outcome` | The owner | `success`, `denied`, `failure` or `unknown` |
 | `reason` | The owner | Optional; a code the owner defines, scoped to the record's source |
-| `actor` | The owner | Principal, principal kind, tenant and Work Context, or none for the system |
+| `actor` | The owner | Principal, principal kind and tenant, or none for the system |
 | `via` | The owner, from the SDK | The server that acted for the actor through the Hub, and its Task |
 | `target` | The owner | Optional; an absolute URI in the owner's address form, such as `artifact://artifacts/{id}`, or `task_target(id)` for a Task |
 | `request` | The owner, from the SDK | Request ID, trace and span IDs, peer address and the Task the action ran in |

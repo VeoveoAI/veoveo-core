@@ -4,7 +4,7 @@
 mod store;
 
 use store::TestDb;
-use veoveo_store::{PlatformStore, PrincipalKind, StoreConfig, deterministic_tenant_id};
+use veoveo_store::{PlatformStore, PrincipalKind, StoreConfig};
 
 #[tokio::test]
 async fn each_fixture_has_its_own_database_and_drops_it() {
@@ -22,15 +22,16 @@ async fn each_fixture_has_its_own_database_and_drops_it() {
         )
         .await
         .unwrap();
-    let tenant = deterministic_tenant_id("acme").unwrap();
-    assert!(
-        second
-            .a
-            .work_context_by_key(tenant, "development")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    // The second database holds none of the first's identities.
+    let seen = sqlx::query_file_scalar!(
+        "tests/queries/identity/principal_count.sql",
+        "acme",
+        "alice"
+    )
+    .fetch_one(second.a.pool())
+    .await
+    .unwrap();
+    assert_eq!(seen, 0);
     let name = first.database().to_owned();
     drop(first);
     let exists = sqlx::query_file_scalar!("tests/queries/fixture/database_exists.sql", name)

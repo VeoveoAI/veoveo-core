@@ -29,7 +29,6 @@ RETURNING
     task.owner_subject,
     task.surface,
     task.data_labels,
-    task.work_context,
     task.authority AS "authority: Json<InvocationAuthority>",
     task.task_type,
     task.recovery_class AS "recovery_class: RecoveryClass",

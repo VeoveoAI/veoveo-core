@@ -1,5 +1,5 @@
--- Identity schema: the installation's enterprise, its tenants, their principals and
--- Work Contexts. Registered servers record identities through identity.ensure_identity.
+-- Identity schema: the installation's enterprise, its tenants and their principals.
+-- Registered servers record identities through identity.ensure_identity.
 
 CREATE SCHEMA identity;
 
@@ -61,56 +61,6 @@ CREATE TABLE identity.principal (
 
 COMMENT ON TABLE identity.principal IS
     'Retention: for the life of the installation.';
-
--- A Work Context and its output policy, as the active control-plane revision defines it.
-CREATE TABLE identity.work_context (
-    id uuid PRIMARY KEY,
-    tenant uuid NOT NULL REFERENCES identity.tenant (id),
-    context_key text NOT NULL CHECK (identity.valid_text(context_key, 256)),
-    title text NOT NULL CHECK (identity.valid_text(title, 512)),
-    policy_revision text NOT NULL CHECK (identity.valid_text(policy_revision, 256)),
-    owner_kind text NOT NULL CHECK (owner_kind IN ('principal', 'group')),
-    owner_key text NOT NULL CHECK (identity.valid_text(owner_key, 512)),
-    classification text CHECK (identity.valid_text(classification, 256)),
-    data_labels text[] NOT NULL DEFAULT '{}',
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (tenant, context_key)
-);
-
-COMMENT ON TABLE identity.work_context IS
-    'Retention: while the active control-plane revision defines it; a publication '
-    'deletes every Work Context the new revision omits.';
-
--- The grants a Work Context gives on its outputs, in declaration order.
-CREATE TABLE identity.work_context_grant (
-    work_context uuid NOT NULL REFERENCES identity.work_context (id) ON DELETE CASCADE,
-    ordinal integer NOT NULL CHECK (ordinal >= 0),
-    subject_kind text NOT NULL CHECK (subject_kind IN ('principal', 'group')),
-    subject_key text NOT NULL CHECK (identity.valid_text(subject_key, 512)),
-    permission text NOT NULL CHECK (permission IN ('read', 'write', 'admin')),
-    PRIMARY KEY (work_context, ordinal)
-);
-
-COMMENT ON TABLE identity.work_context_grant IS
-    'Retention: until a publication replaces its Work Context''s grants, or deletes '
-    'the Work Context.';
-
--- The membership rules of a Work Context, in declaration order.
-CREATE TABLE identity.work_context_membership (
-    work_context uuid NOT NULL REFERENCES identity.work_context (id) ON DELETE CASCADE,
-    ordinal integer NOT NULL CHECK (ordinal >= 0),
-    level text NOT NULL CHECK (level IN ('viewer', 'contributor', 'custodian', 'owner')),
-    principals text[] NOT NULL DEFAULT '{}',
-    groups text[] NOT NULL DEFAULT '{}',
-    roles text[] NOT NULL DEFAULT '{}',
-    oauth_clients text[] NOT NULL DEFAULT '{}',
-    PRIMARY KEY (work_context, ordinal)
-);
-
-COMMENT ON TABLE identity.work_context_membership IS
-    'Retention: until a publication replaces its Work Context''s membership rules, or '
-    'deletes the Work Context.';
 
 -- Records the installation enterprise, a tenant and a principal, each keyed by its
 -- deterministic identifier. Existing rows keep their security fields: a stored tenant or

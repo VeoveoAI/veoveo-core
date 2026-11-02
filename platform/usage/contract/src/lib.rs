@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use uuid::Uuid;
 use veoveo_types::{
     IdMetadata, IdProfile, IdProfileSpec, IdentifierError, PrincipalId, ServerSlug, TaskId,
-    TenantId, WorkContextId,
+    TenantId,
 };
 
 /// Why a usage value or draft is not admitted.
@@ -476,7 +476,6 @@ pub struct UsageKindDeclaration {
 pub struct UsageActor {
     pub tenant: TenantId,
     pub principal: PrincipalId,
-    pub work_context: WorkContextId,
 }
 
 /// Another server that did the work for the caller through the Hub, and its Task.
@@ -586,10 +585,6 @@ impl UsageDraft {
         put(
             "principal",
             Value::String(self.actor.principal.as_str().to_owned()),
-        );
-        put(
-            "work_context",
-            Value::String(self.actor.work_context.as_str().to_owned()),
         );
         put("kind", Value::String(self.kind.as_str().to_owned()));
         if let Some(via) = &self.via {

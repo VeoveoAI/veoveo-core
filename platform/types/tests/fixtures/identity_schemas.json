@@ -170,11 +170,5 @@
     "description": "Tenant, organization, or customer boundary identifier.",
     "title": "TenantId",
     "type": "string"
-  },
-  "WorkContextId": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "description": "Tenant-local boundary that governs related work and every output it produces.",
-    "title": "WorkContextId",
-    "type": "string"
   }
 }

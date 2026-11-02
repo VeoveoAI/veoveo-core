@@ -36,7 +36,6 @@ CREATE TABLE usage.record (
     id uuid NOT NULL,
     tenant text NOT NULL,
     principal text NOT NULL,
-    work_context text NOT NULL,
     kind text NOT NULL REFERENCES usage.kind (kind),
     source text GENERATED ALWAYS AS (split_part(kind, '.', 1)) STORED NOT NULL,
     acting_server text,
@@ -176,12 +175,12 @@ BEGIN
             CONTINUE;
         END IF;
         INSERT INTO usage.record (
-            id, tenant, principal, work_context, kind, acting_server, acting_task, task_id,
+            id, tenant, principal, kind, acting_server, acting_task, task_id,
             operation_key, phase, charge_category, correction, quantity, amount, currency,
             target, source_id, charge_period_start, charge_period_end
         )
         VALUES (
-            (d ->> 'id')::uuid, d ->> 'tenant', d ->> 'principal', d ->> 'work_context',
+            (d ->> 'id')::uuid, d ->> 'tenant', d ->> 'principal',
             d ->> 'kind', d ->> 'acting_server', (d ->> 'acting_task')::uuid,
             (d ->> 'task_id')::uuid, d ->> 'operation_key', d ->> 'phase',
             d ->> 'charge_category', (d ->> 'correction')::boolean,
