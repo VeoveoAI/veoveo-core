@@ -78,6 +78,7 @@ service. Core's own suites include the file by path next to `store.rs`.
 | `Conformance::new()` | An empty check |
 | `server(&slug, migrator)` | Applies the server's migrations as one of its logins, checks the server's schema and plans every query as that login; without it, queries are planned as the installation owner |
 | `owner(schema, migrator)` | Applies the migrations of a component that owns a schema of the installation database, such as the Hub, as the installation owner after the kernel migrations, and checks that schema; queries are planned as the installation owner. The migrator must keep its history in `<schema>._sqlx_migrations`, the schema must not be a kernel schema, and a check covers one owner or one server, never both |
+| `extensions(names)` | Creates the installation's `_extensions` schema and the named extensions in the check's database, as `TestDb::create_extensions` does, before any migration, for migrations that use one such as `vector` |
 | `schema(name)` | Another schema whose tables the index-use and schema rules cover, such as a kernel schema |
 | `queries_from(dir)` | Every `query-*.json` of a sqlx offline directory, each named by the `.sql` file under the directory's parent whose SHA-256 is its hash |
 | `sources(dir)` | Keeps the queries whose `.sql` file lies under `dir`; repeatable |

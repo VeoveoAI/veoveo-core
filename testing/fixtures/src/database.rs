@@ -52,6 +52,7 @@ const LIMIT: Duration = Duration::from_secs(300);
 #[must_use = "a conformance check runs only when awaited through `check` or `run`"]
 #[derive(Default)]
 pub struct Conformance {
+    extensions: Vec<String>,
     schemas: BTreeSet<String>,
     server: Option<(ServerSlug, Migrator)>,
     owner: Option<(String, Migrator)>,
@@ -66,6 +67,15 @@ pub struct Conformance {
 impl Conformance {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create the installation's `_extensions` schema with `names` in it, as
+    /// [`TestDb::create_extensions`] does, before any migration runs, for a schema whose
+    /// migrations use an extension such as `vector`.
+    pub fn extensions(mut self, names: &[&str]) -> Self {
+        self.extensions
+            .extend(names.iter().map(|name| (*name).to_owned()));
+        self
     }
 
     /// Check the tables of `schema`: index use by the queries and the schema rules.
@@ -193,6 +203,7 @@ impl Conformance {
 
     async fn evaluate(self) -> Report {
         let Self {
+            extensions,
             schemas,
             server,
             owner,
@@ -206,6 +217,10 @@ impl Conformance {
         let queries = queries::load(&directories, &sources, &inline)
             .unwrap_or_else(|error| panic!("Database conformance queries: {error}"));
         let db = TestDb::new().await;
+        if !extensions.is_empty() {
+            let names: Vec<&str> = extensions.iter().map(String::as_str).collect();
+            db.create_extensions(&names).await;
+        }
         if let Some((schema, migrator)) = owner {
             migrator
                 .run(db.a.pool())

@@ -387,6 +387,20 @@ async fn each_broken_query_rule_is_reported_under_its_query() {
 }
 
 #[tokio::test]
+async fn a_server_schema_may_use_the_installations_extensions() {
+    let report = Conformance::new()
+        .extensions(&["vector"])
+        .server(&slug("gallery"), migrator("gallery").await)
+        .query(
+            "picture",
+            "SELECT id, embedding FROM gallery.picture WHERE tenant = $1 AND id = $2",
+        )
+        .run()
+        .await;
+    assert!(report.violations.is_empty(), "{report}");
+}
+
+#[tokio::test]
 async fn schema_rules_name_each_table_that_breaks_them() {
     let report = Conformance::new()
         .server(&slug("defects"), migrator("defects").await)
