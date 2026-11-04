@@ -19,7 +19,7 @@ use std::{
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
 use sqlx::{
-    ConnectOptions, Connection, PgConnection,
+    AssertSqlSafe, ConnectOptions, Connection, PgConnection,
     postgres::{PgConnectOptions, PgSslMode},
 };
 use uuid::Uuid;
@@ -226,6 +226,43 @@ impl Cluster {
             .args(self.superuser_arguments())
             .arg(database);
         run_bounded(command, "database removal")
+    }
+
+    /// Create in `database`, as the superuser over the cluster's socket, what the
+    /// installation bootstrap creates: the `_extensions` schema the superuser owns, which
+    /// every role may use and none may write, and each of `names` in it.
+    pub(super) async fn create_extensions(
+        &self,
+        database: &str,
+        names: &[&str],
+    ) -> Result<(), Failure> {
+        for name in names {
+            extension_name(name)?;
+        }
+        let options = superuser_options(&self.socket(), self.port).database(database);
+        let mut connection = tokio::time::timeout(Duration::from_secs(10), options.connect())
+            .await
+            .map_err(|_| failure("extension session", "exceeded 10 seconds"))?
+            .map_err(|error| failure("extension session", error))?;
+        let created = async {
+            sqlx::raw_sql(include_str!("extension_schema.sql"))
+                .execute(&mut connection)
+                .await
+                .map_err(|error| failure("extension schema", error))?;
+            for name in names {
+                // The name is checked above and quoted: it names exactly what it spells.
+                let statement =
+                    format!("CREATE EXTENSION IF NOT EXISTS \"{name}\" WITH SCHEMA _extensions");
+                sqlx::raw_sql(AssertSqlSafe(statement))
+                    .execute(&mut connection)
+                    .await
+                    .map_err(|error| failure("extension", format!("{name}: {error}")))?;
+            }
+            Ok(())
+        }
+        .await;
+        let _ = connection.close().await;
+        created
     }
 
     fn superuser_arguments(&self) -> Vec<String> {
@@ -499,6 +536,27 @@ async fn accepting(socket: &Path, port: u16) -> bool {
             true
         }
         _ => false,
+    }
+}
+
+/// An extension's name: 1 to 63 lowercase ASCII letters, digits, `_` and `-`, starting
+/// with a letter, as the PostgreSQL packages name theirs.
+fn extension_name(name: &str) -> Result<(), Failure> {
+    let mut bytes = name.bytes();
+    let valid = name.len() <= 63
+        && bytes.next().is_some_and(|first| first.is_ascii_lowercase())
+        && bytes.all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(failure(
+            "extension",
+            format!(
+                "{name:?} is not an extension name: 1 to 63 lowercase ASCII letters, digits, `_` and `-`, starting with a letter"
+            ),
+        ))
     }
 }
 

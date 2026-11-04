@@ -4,7 +4,7 @@
 
 | Boundary | Profile |
 |---|---|
-| PostgreSQL 18 | The `postgres`, `initdb`, `pg_ctl`, `createdb` and `dropdb` programs of one PGDG or Homebrew 18.x installation on `PATH`; one private cluster per test process on a loopback port with a private socket directory |
+| PostgreSQL 18 | The `postgres`, `initdb`, `pg_ctl`, `createdb` and `dropdb` programs of one PGDG or Homebrew 18.x installation on `PATH`; one private cluster per test process on a loopback port with a private socket directory; the extensions a test creates, such as pgvector 0.8.7, installed for that PostgreSQL |
 | sqlx 0.9.0 | Superuser sessions over the socket for administration; `PlatformStore` pools over TCP with SCRAM passwords for tests; the offline query metadata format of a `.sqlx` directory (`query`, `hash`) |
 | [pg_query](https://github.com/pganalyze/pg_query.rs) 6.2.1 | The parse tree and scanner of libpg_query, PostgreSQL 17's parser built as a library, for the database conformance checks; statements that need PostgreSQL 18 grammar fail to parse and are reported |
 | `EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON)`, `pg_restore_relation_stats` | PostgreSQL 18 generic plans with `enable_seqscan = off`, read for scan nodes, after singleton tables receive one-row statistics |
@@ -25,6 +25,7 @@ as in an installation.
 | `connect()` | Another owner pool |
 | `server_store(&slug)` | Calls `ensure_server` and `create_server_login` and returns a pool connected as the new login |
 | `migrate_server(&slug, migrator)` | Applies a server's migrations in its schema as one of its logins |
+| `create_extensions(names)` | Creates what the installation bootstrap creates for extensions, as the cluster's superuser: the `_extensions` schema it owns, which every role may use and none may write, and each named extension in it |
 | `end_sessions(&store)` | Ends every session of the store's login, as a network failure between a server and the database does |
 | `remove_login(&store)` | Drops the store's login as the Hub does when it removes a registration, then ends the login's sessions |
 
@@ -37,7 +38,18 @@ migrations' checksums. A file lock
 serializes the build across processes. Each test process copies the template, starts
 `postgres` with `fsync`, `synchronous_commit` and `full_page_writes` off, and sets a
 random owner password through the superuser socket. `createdb --template` then clones a
-database per `TestDb`, and dropping the fixture runs `dropdb --force`.
+database per `TestDb`, and dropping the fixture runs `dropdb --force`. That waits for
+every backend of the cluster, also one still authenticating a connection that the
+dropping thread opened, so a test whose workers or pools keep connecting while it drops
+its fixture runs on a multi-thread runtime.
+
+`create_extensions` connects to the test's database as the superuser over the cluster's
+socket, since an installation's owner creates no extension, and runs `CREATE SCHEMA IF NOT
+EXISTS _extensions AUTHORIZATION postgres`, `REVOKE ALL ON SCHEMA _extensions FROM PUBLIC`,
+`GRANT USAGE ON SCHEMA _extensions TO PUBLIC` and, for each name, `CREATE EXTENSION IF NOT
+EXISTS "<name>" WITH SCHEMA _extensions`, as the installation's `zz-extensions.sql` does.
+A name is 1 to 63 lowercase ASCII letters, digits, `_` and `-`, starting with a letter. An
+extension the PostgreSQL on `PATH` lacks fails the test; nothing skips.
 
 The cluster lives as long as one fixture of the process holds it. The last one stops
 the server with `pg_ctl stop --mode=immediate`, which also releases its shared memory,

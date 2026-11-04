@@ -73,6 +73,19 @@ impl TestDb {
         &self.database
     }
 
+    /// Create in this database what the installation bootstrap creates for extensions:
+    /// the `_extensions` schema, owned by the cluster's superuser, which every role may
+    /// use and none may write, and each extension of `names` in it, such as `vector`. It
+    /// runs as the superuser over the cluster's private socket, since an installation's
+    /// owner creates no extension, and panics when the PostgreSQL on `PATH` lacks one or a
+    /// name is not an extension's name. Creating one again changes nothing.
+    pub async fn create_extensions(&self, names: &[&str]) {
+        tokio::time::timeout(SETUP, self.cluster.create_extensions(&self.database, names))
+            .await
+            .unwrap_or_else(|_| panic!("Store fixture extensions exceeded {SETUP:?}"))
+            .unwrap_or_else(|failure| panic!("{failure}"));
+    }
+
     /// Another owner pool, such as a third replica.
     pub async fn connect(&self) -> PlatformStore {
         connect(self.config(), "owner pool")

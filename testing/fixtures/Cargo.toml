@@ -41,3 +41,7 @@ tokio = { workspace = true, features = ["full"] }
 [[test]]
 name = "database_conformance"
 required-features = ["database-conformance"]
+
+[[test]]
+name = "extensions"
+required-features = ["store"]
