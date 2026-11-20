@@ -123,7 +123,7 @@ names no owner, and each owner's detail reaches the archive in `unmapped.veoveo`
 qualifies actual S3 delivery with the hosted writer and sealer against a disposable
 database from the PostgreSQL fixture. `VEOVEO_AUDIT_TEST_S3_CONFIG` names a public
 export configuration with an S3 destination, an existing bucket and Object Lock
-disabled. The normal S3 credential chain supplies credentials, and the PostgreSQL 18
+disabled. The normal S3 credential chain supplies credentials, and the PostgreSQL 19
 programs must be on `PATH`. The fixture adds a unique prefix, compares downloaded source
 records and signed blocks, checks receipts from a second pool, and restarts the audit
 service. It

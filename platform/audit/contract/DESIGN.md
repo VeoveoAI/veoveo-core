@@ -15,7 +15,7 @@
 | RFC 3339 and JSON | Typed timestamps, tagged closed enums and checked deserialization |
 | `https://veoveo.ai/formats/audit-record` | One record shape across producers and readers |
 | `https://veoveo.ai/formats/audit-block` | Signed block heads, members and checkpoints |
-| PostgreSQL 18 through sqlx 0.9.0 | The `postgres` feature only: `text` bindings for `AuditClass`, `AuditOutcome`, `AuditReason`, `AuditTarget`, `AuditExportRejection` and `AuditTraceId`, a `uuid` binding for `AuditRecordId`, and `audit.append` for transactional appends |
+| PostgreSQL 19 through sqlx 0.9.0 | The `postgres` feature only: `text` bindings for `AuditClass`, `AuditOutcome`, `AuditReason`, `AuditTarget`, `AuditExportRejection` and `AuditTraceId`, a `uuid` binding for `AuditRecordId`, and `audit.append` for transactional appends |
 
 This library defines the audit record envelope and the registry of owner-declared
 classes. It names no protocol, server or domain: every record's action is a class its

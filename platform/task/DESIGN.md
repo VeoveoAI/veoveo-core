@@ -10,7 +10,7 @@ Task, and the caller reads, answers, cancels and watches it through `OwnerTaskQu
 
 | Standard or interface | Profile |
 |---|---|
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0401` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
+| [PostgreSQL 19](https://www.postgresql.org/docs/19/) | The `tasks` schema of the [database design](../../docs/DATABASE.md), migrations `0400`–`0401` in `platform/store/migrations`; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | `SELECT … FOR UPDATE SKIP LOCKED` | Work claims |
 | `LISTEN` / `NOTIFY` | `kernel.notify_change` payloads, keyed by Task ID and tenant, on the channel of the Task's server, `tasks.<server>` |
 | Row-level security | A member of `veoveo_server` reads and writes only the Tasks of its own servers |

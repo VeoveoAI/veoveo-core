@@ -13,7 +13,7 @@ names no server, unit vocabulary beyond FOCUS's format, or price.
 |---|---|
 | [FinOps Open Cost and Usage Specification (FOCUS) 1.4](https://focus.finops.org/focus-specification/) | Record columns, ServiceCategory and ChargeCategory values, ChargeClass `Correction`, and the Unit Format of quantities; a FOCUS export is a later step, and the mapping below fixes its columns |
 | ISO 4217 | Alphabetic currency codes; `XXX` marks a stored record without money |
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | The `usage` schema, migration `0600_usage.sql` in `platform/store/migrations`, with records partitioned by month; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
+| [PostgreSQL 19](https://www.postgresql.org/docs/19/) | The `usage` schema, migration `0600_usage.sql` in `platform/store/migrations`, with records partitioned by month; every query is a `.sql` file in `queries/` checked by sqlx 0.9.0 |
 | Row-level security | A member of `veoveo_server` reads only the records and kinds of its own servers, and writes only through the SECURITY DEFINER functions |
 | RFC 9562 UUIDv7 | Record identity |
 | RFC 3339 | Charge period timestamps |

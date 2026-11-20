@@ -75,7 +75,7 @@ struct Programs {
 
 impl Programs {
     fn find() -> Result<Self, Failure> {
-        let requirement = "the fixture requires PostgreSQL 18 `postgres`, `initdb`, `pg_ctl`, \
+        let requirement = "the fixture requires PostgreSQL 19 `postgres`, `initdb`, `pg_ctl`, \
                            `createdb` and `dropdb` in one directory on PATH";
         let path = std::env::var_os("PATH").unwrap_or_default();
         let directory = std::env::split_paths(&path)

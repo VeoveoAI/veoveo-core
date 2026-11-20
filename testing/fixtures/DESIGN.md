@@ -4,10 +4,10 @@
 
 | Boundary | Profile |
 |---|---|
-| PostgreSQL 18 | The `postgres`, `initdb`, `pg_ctl`, `createdb` and `dropdb` programs of one PGDG or Homebrew 18.x installation on `PATH`; one private cluster per test process on a loopback port with a private socket directory; the extensions a test creates, such as pgvector 0.8.7, installed for that PostgreSQL |
+| PostgreSQL 19 | The `postgres`, `initdb`, `pg_ctl`, `createdb` and `dropdb` programs of one PGDG or Homebrew 19.x installation on `PATH`; one private cluster per test process on a loopback port with a private socket directory; the extensions a test creates, such as pgvector 0.8.7, installed for that PostgreSQL |
 | sqlx 0.9.0 | Superuser sessions over the socket for administration; `PlatformStore` pools over TCP with SCRAM passwords for tests; the offline query metadata format of a `.sqlx` directory (`query`, `hash`) |
-| [pg_query](https://github.com/pganalyze/pg_query.rs) 6.2.1 | The parse tree and scanner of libpg_query, PostgreSQL 17's parser built as a library, for the database conformance checks; statements that need PostgreSQL 18 grammar fail to parse and are reported |
-| `EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON)`, `pg_restore_relation_stats` | PostgreSQL 18 generic plans with `enable_seqscan = off`, read for scan nodes, after singleton tables receive one-row statistics |
+| [pg_query](https://github.com/pganalyze/pg_query.rs) 6.2.1 | The parse tree and scanner of libpg_query, PostgreSQL 17's parser built as a library, for the database conformance checks; statements that need PostgreSQL 19 grammar fail to parse and are reported |
+| `EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON)`, `pg_restore_relation_stats` | PostgreSQL 19 generic plans with `enable_seqscan = off`, read for scan nodes, after singleton tables receive one-row statistics |
 | Rust test harness | Source modules reused by owning tests; no separate smoke process or assertion framework |
 
 ## PostgreSQL

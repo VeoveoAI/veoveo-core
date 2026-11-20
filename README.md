@@ -53,9 +53,9 @@ checks run too. The same commands run inside the development
 environment.
 
 Tests that need a database start a private PostgreSQL cluster per test process from
-the PostgreSQL 18 programs on `PATH`. The `dev` image installs the PGDG
-`postgresql-18` 18.7 packages and `sqlx-cli` 0.9.0; on macOS, Homebrew's
-`postgresql@18` provides the same programs.
+the PostgreSQL 19 programs on `PATH`. The `dev` image installs the PGDG
+`postgresql-19` 19.0 packages and `sqlx-cli` 0.9.0; on macOS, Homebrew's
+`postgresql@19` provides the same programs.
 
 ## Dependency Policy
 

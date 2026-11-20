@@ -29,7 +29,7 @@ These rules apply to veoveo-core.
   migration, regenerate `.sqlx` with `cargo sqlx prepare --workspace -- --all-targets
   --all-features` against a migrated database.
 - Tests that need PostgreSQL use the store fixture, which runs a private `postgres` from
-  the PostgreSQL 18 programs on `PATH`.
+  the PostgreSQL 19 programs on `PATH`.
 - Run `docker build --target check .` on macOS and on Linux before pushing. The `check`
   stage keeps Cargo's registry and the workspace `target/` in BuildKit cache mounts, so
   consecutive checks reuse compiled crates. These caches live only in the build host's

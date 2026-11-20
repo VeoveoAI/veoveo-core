@@ -1,4 +1,4 @@
-//! Kernel behavior against a private PostgreSQL 18 cluster: migrations, server roles and
+//! Kernel behavior against a private PostgreSQL 19 cluster: migrations, server roles and
 //! schemas, process instances, singletons and change notifications.
 #[allow(dead_code, reason = "each test binary uses part of the shared fixture")]
 #[path = "../../../testing/fixtures/src/store.rs"]

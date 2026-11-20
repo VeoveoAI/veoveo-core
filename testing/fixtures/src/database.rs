@@ -3,7 +3,7 @@
 //! [`Conformance`] migrates a fixture database, applies a server's or an owner's
 //! migrations, reads every query of a sqlx offline directory and checks four rules: tenant predicates, row bounds, index use under
 //! generic plans and the schema rules of `docs/DATABASE.md`. One call reports every
-//! violation and every exemption. Requires the PostgreSQL 18 server programs on `PATH`.
+//! violation and every exemption. Requires the PostgreSQL 19 server programs on `PATH`.
 //!
 //! ```ignore
 //! veoveo_fixtures::database::Conformance::new()

@@ -1,5 +1,5 @@
 //! A fresh PostgreSQL database per test, cloned from a migrated template on a private
-//! cluster. Requires the PostgreSQL 18 server programs on `PATH`.
+//! cluster. Requires the PostgreSQL 19 server programs on `PATH`.
 use std::{sync::Arc, time::Duration};
 
 use secrecy::SecretString;

@@ -10,7 +10,7 @@ grants that Postgres enforces.
 
 | Standard or interface | Profile |
 |---|---|
-| [PostgreSQL 18](https://www.postgresql.org/docs/18/) | Server 18.6, the latest stable release. Core needs no extension, only the server's built-in features listed here, so the image is the installation's choice; tests run the same major version from the PGDG packages |
+| [PostgreSQL 19](https://www.postgresql.org/docs/19/) | Server 19.0, the latest stable release. Core needs no extension, only the server's built-in features listed here, so the image is the installation's choice; tests run the same major version from the PGDG packages |
 | PostgreSQL frontend/backend protocol | Through [sqlx](https://docs.rs/sqlx/0.9.0) 0.9.0 with Rustls; every static query is checked at compile time against the migrated schema |
 | SQL migrations | sqlx `Migrator`, one migration set for the kernel schemas and one per server schema, checksummed and applied under the migrator's advisory lock; `platform/store/sqlx.toml` names the kernel history table |
 | `LISTEN` / `NOTIFY` | Change notifications; payloads are JSON objects under 8,000 bytes |
@@ -19,7 +19,7 @@ grants that Postgres enforces.
 | Row-level security, roles and `GRANT` | Isolation between the kernel and registered servers |
 | `xid8` and `pg_snapshot_xmin` | Commit-safe ordering for the audit log |
 | `COMMENT ON TABLE` | Every table's comment states its retention, starting `Retention:` |
-| [pg_query](https://github.com/pganalyze/pg_query.rs) 6.2.1 and `EXPLAIN (GENERIC_PLAN)` | Test-only server schema rules: the parse tree of libpg_query, PostgreSQL 17's parser, and PostgreSQL 18 generic plans |
+| [pg_query](https://github.com/pganalyze/pg_query.rs) 6.2.1 and `EXPLAIN (GENERIC_PLAN)` | Test-only server schema rules: the parse tree of libpg_query, PostgreSQL 17's parser, and PostgreSQL 19 generic plans |
 
 ## Database, Schemas And Roles
 
@@ -355,9 +355,9 @@ authority, may arrive as `jsonb` and decode into its typed record.
 
 ## Testing
 
-`veoveo-fixtures` starts one Postgres server per test process from the PostgreSQL 18
+`veoveo-fixtures` starts one Postgres server per test process from the PostgreSQL 19
 programs on `PATH`, listening on a loopback port with a private socket directory. The
 first fixture on a machine migrates a template database and keeps its data directory;
 each process copies it, and each `TestDb` clones a fresh database from the template and
-drops it when the test ends. The development image installs the PGDG `postgresql-18`
+drops it when the test ends. The development image installs the PGDG `postgresql-19`
 packages and puts their binaries on `PATH`.

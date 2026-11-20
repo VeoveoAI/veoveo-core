@@ -198,7 +198,7 @@ async fn cleanup(s3: &dyn ObjectStore, prefix: &Path) -> bool {
 }
 
 #[tokio::test]
-#[ignore = "requires VEOVEO_AUDIT_TEST_S3_CONFIG, S3 credentials and PostgreSQL 18; owns an isolated prefix and database"]
+#[ignore = "requires VEOVEO_AUDIT_TEST_S3_CONFIG, S3 credentials and PostgreSQL 19; owns an isolated prefix and database"]
 async fn real_s3_delivery_preserves_records_signatures_and_replica_receipts() {
     let path = std::env::var_os("VEOVEO_AUDIT_TEST_S3_CONFIG")
         .expect("set VEOVEO_AUDIT_TEST_S3_CONFIG to a public export configuration");

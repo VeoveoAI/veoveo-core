@@ -1,4 +1,4 @@
 # Login shells reset PATH, so the toolchain's variables live here as well as in ENV.
 export RUSTUP_HOME=/usr/local/rustup
 export CARGO_HOME=/usr/local/cargo
-export PATH=/usr/lib/postgresql/18/bin:/usr/local/cargo/bin:$PATH
+export PATH=/usr/lib/postgresql/19/bin:/usr/local/cargo/bin:$PATH

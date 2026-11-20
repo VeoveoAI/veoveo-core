@@ -1,4 +1,4 @@
-//! Identity records against a private PostgreSQL 18 cluster.
+//! Identity records against a private PostgreSQL 19 cluster.
 #[allow(dead_code, reason = "each test binary uses part of the shared fixture")]
 #[path = "../../../testing/fixtures/src/store.rs"]
 mod store;

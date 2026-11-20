@@ -16,7 +16,7 @@ that their generated code implements. Each consuming library owns its domain dec
 | OAuth 2.0, RFC 6749 section 3.3 | Code-owned scope-token syntax; dynamic installation scopes keep `ScopeName` admission |
 | Naming vocabulary keyword `namingProfile` | Scope and Task hooks and identity/resource schema emitters delegate local classification to public foundational helpers; instance serialization is unchanged. |
 | Veoveo Task operation names | The `TaskTypeName` lexical profile, with distinct spellings |
-| PostgreSQL 18 through sqlx 0.9.0 | Optional consumer-only `Type`, `Encode`, `Decode` and `PgHasArrayType` for Postgres: vocabularies bind as `text`, identities as `uuid` or `text` |
+| PostgreSQL 19 through sqlx 0.9.0 | Optional consumer-only `Type`, `Encode`, `Decode` and `PgHasArrayType` for Postgres: vocabularies bind as `text`, identities as `uuid` or `text` |
 | SHA-256, FIPS 180-4 | Digest of the embedded document's original UTF-8 bytes |
 
 ## Naming Metadata Delegation

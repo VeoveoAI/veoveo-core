@@ -5,7 +5,7 @@
 | Boundary | Supported profile |
 |---|---|
 | JSON and JSON Schema 2020-12 | Closed Task status and recovery-class strings through Serde and the shared Vocabulary declaration |
-| PostgreSQL 18 through sqlx 0.9.0 | With the `postgres` feature, both vocabularies bind to `text` columns using their wire spellings |
+| PostgreSQL 19 through sqlx 0.9.0 | With the `postgres` feature, both vocabularies bind to `text` columns using their wire spellings |
 
 ## Ownership And Dependencies
 
