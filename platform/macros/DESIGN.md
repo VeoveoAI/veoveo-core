@@ -8,7 +8,7 @@ that their generated code implements. Each consuming library owns its domain dec
 
 | Standard or format | Supported profile |
 |---|---|
-| Rust 2024, toolchain 1.99.0 | Attribute declarations for nongeneric identity newtypes and resource structs/enums, a unit-vocabulary derive, and a function-like document macro |
+| Rust 2024, toolchain 1.100.0 | Attribute declarations for nongeneric identity newtypes and resource structs/enums, a unit-vocabulary derive, and a function-like document macro |
 | Serde 1.0.229 | Unit-enum serialization for ordinary vocabularies and string serialization for scopes; identity and address owners declare their serialization profile |
 | JSON Schema 2020-12, schemars 1.2.2 | Owner metadata and existing vocabulary schemas; identity and address profiles select generated metadata or an owner schema |
 | RFC 3986 and WHATWG URL resource components | Resource routes delegate concrete parsing and encoding to the foundational URI profile; network adapters keep their own profiles |
