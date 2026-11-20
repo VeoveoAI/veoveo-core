@@ -98,7 +98,7 @@ impl Programs {
             .output()
             .map_err(|error| failure("PostgreSQL version", format!("I/O {:?}", error.kind())))?;
         let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        if !version.contains("(PostgreSQL) 18.") {
+        if !version.contains("(PostgreSQL) 19.") {
             return Err(failure(
                 "PostgreSQL version",
                 format!("found {version:?}; {requirement}"),
